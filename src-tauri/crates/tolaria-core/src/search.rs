@@ -120,13 +120,14 @@ pub fn search_vault(
     query: &str,
     _mode: &str,
     limit: usize,
+    hide_gitignored_files: bool,
 ) -> Result<SearchResponse, String> {
     search_vault_with_options(SearchOptions {
         vault_path,
         query,
         mode: _mode,
         limit,
-        hide_gitignored_files: crate::settings::hide_gitignored_files_enabled(),
+        hide_gitignored_files,
         exclude_frontmatter: false,
     })
 }
@@ -244,7 +245,7 @@ mod tests {
     use tempfile::Builder;
 
     fn init_git_repo(root: &Path) {
-        crate::hidden_command("git")
+        crate::process::hidden_command("git")
             .args(["init"])
             .current_dir(root)
             .output()
@@ -362,7 +363,7 @@ mod tests {
         .unwrap();
 
         let response =
-            search_vault(dir.path().to_str().unwrap(), "keyword", "keyword", 10).unwrap();
+            search_vault(dir.path().to_str().unwrap(), "keyword", "keyword", 10, false).unwrap();
 
         assert_eq!(response.results.len(), 1);
         assert_eq!(response.results[0].title, "Updated Display Title");

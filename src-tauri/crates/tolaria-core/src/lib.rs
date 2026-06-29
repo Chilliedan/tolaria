@@ -4,5 +4,6 @@
 pub mod frontmatter;
 pub mod git;
 pub mod process;
+pub mod search;
 pub mod shell_env;
 pub mod vault;

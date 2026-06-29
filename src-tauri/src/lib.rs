@@ -31,7 +31,7 @@ pub mod pi_cli;
 mod pi_config;
 mod pi_discovery;
 mod pi_events;
-pub mod search;
+pub use tolaria_core::search;
 pub mod settings;
 pub mod telemetry;
 pub use tolaria_core::vault;
