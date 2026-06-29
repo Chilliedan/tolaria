@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "crates/tolaria-core"]
+resolver = "2"
+
 [package]
 name = "tolaria"
 version = "0.1.0"
