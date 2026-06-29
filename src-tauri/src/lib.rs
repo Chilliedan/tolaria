@@ -40,9 +40,6 @@ pub mod vault_watcher;
 #[cfg(desktop)]
 mod window_state;
 
-use std::ffi::OsStr;
-use std::process::Command;
-
 #[cfg(desktop)]
 use std::path::{Path, PathBuf};
 #[cfg(desktop)]
@@ -50,23 +47,7 @@ use std::process::Child;
 #[cfg(desktop)]
 use std::sync::Mutex;
 
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
-pub(crate) fn hidden_command(program: impl AsRef<OsStr>) -> Command {
-    let mut command = Command::new(program);
-    suppress_windows_console(&mut command);
-    command
-}
-
-#[cfg(windows)]
-fn suppress_windows_console(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    command.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-fn suppress_windows_console(_command: &mut Command) {}
+pub(crate) use tolaria_core::process::hidden_command;
 
 #[cfg(desktop)]
 struct WsBridgeChild(Mutex<Option<Child>>);
