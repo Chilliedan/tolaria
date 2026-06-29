@@ -5589,6 +5589,8 @@ dependencies = [
 name = "tolaria-core"
 version = "0.1.0"
 dependencies = [
+ "gray_matter",
+ "serde",
  "tempfile",
 ]
 

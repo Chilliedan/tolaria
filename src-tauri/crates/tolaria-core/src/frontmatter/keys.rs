@@ -7,10 +7,10 @@ pub(crate) struct FrontmatterKeyRule {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct FrontmatterKey<'a>(&'a str);
+pub struct FrontmatterKey<'a>(&'a str);
 
 impl<'a> FrontmatterKey<'a> {
-    pub(crate) fn new(key: &'a str) -> Self {
+    pub fn new(key: &'a str) -> Self {
         Self(key)
     }
 
@@ -18,7 +18,7 @@ impl<'a> FrontmatterKey<'a> {
         self.0.trim().to_ascii_lowercase().replace(' ', "_")
     }
 
-    pub(crate) fn is_reserved(self) -> bool {
+    pub fn is_reserved(self) -> bool {
         self.normalized().starts_with('_') || is_known_frontmatter_key(self)
     }
 }
@@ -168,7 +168,7 @@ pub(crate) fn frontmatter_key_rule(key: FrontmatterKey<'_>) -> Option<Frontmatte
         .find(|rule| rule.matches(key))
 }
 
-pub(crate) fn canonical_known_frontmatter_key(key: FrontmatterKey<'_>) -> Option<&'static str> {
+pub fn canonical_known_frontmatter_key(key: FrontmatterKey<'_>) -> Option<&'static str> {
     frontmatter_key_rule(key).map(FrontmatterKeyRule::read_key)
 }
 

@@ -1,4 +1,4 @@
-pub(crate) mod keys;
+pub mod keys;
 mod ops;
 #[cfg(test)]
 mod ops_update_tests;

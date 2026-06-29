@@ -9,7 +9,7 @@ mod claude_invocation;
 mod cli_agent_runtime;
 pub mod codex_cli;
 mod commands;
-pub mod frontmatter;
+pub use tolaria_core::frontmatter;
 pub mod gemini_cli;
 mod gemini_config;
 mod gemini_discovery;
