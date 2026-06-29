@@ -698,7 +698,7 @@ mod tests {
     }
 
     fn run_git(vault: &Path, args: &[&str]) {
-        let output = crate::hidden_command("git")
+        let output = crate::process::hidden_command("git")
             .args(args)
             .current_dir(vault)
             .output()

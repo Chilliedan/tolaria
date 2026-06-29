@@ -2,5 +2,7 @@
 //! logic shared by the desktop (Tauri) app and the web server. No GUI/IPC deps.
 
 pub mod frontmatter;
+pub mod git;
 pub mod process;
 pub mod shell_env;
+pub mod vault;

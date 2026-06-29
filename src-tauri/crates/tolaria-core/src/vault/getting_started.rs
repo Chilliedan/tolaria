@@ -591,7 +591,7 @@ fn refresh_cloned_vault_config_files(vault_path: &Path) -> Result<(), String> {
 }
 
 fn vault_has_pending_changes(vault_path: &Path) -> Result<bool, String> {
-    let output = crate::hidden_command("git")
+    let output = crate::process::hidden_command("git")
         .args(["status", "--porcelain"])
         .current_dir(vault_path)
         .output()

@@ -13,7 +13,7 @@ pub use tolaria_core::frontmatter;
 pub mod gemini_cli;
 mod gemini_config;
 mod gemini_discovery;
-pub mod git;
+pub use tolaria_core::git;
 pub mod hermes_cli;
 mod hermes_discovery;
 pub mod kiro_cli;
@@ -34,7 +34,7 @@ mod pi_events;
 pub mod search;
 pub mod settings;
 pub mod telemetry;
-pub mod vault;
+pub use tolaria_core::vault;
 pub mod vault_list;
 pub mod vault_watcher;
 #[cfg(desktop)]

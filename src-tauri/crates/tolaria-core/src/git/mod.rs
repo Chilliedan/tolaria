@@ -21,7 +21,7 @@ use std::sync::OnceLock;
 #[cfg(test)]
 use std::cell::RefCell;
 
-use crate::cli_agent_runtime::{env_value_from_process_or_user_shell, EnvName};
+use crate::shell_env::{env_value_from_process_or_user_shell, EnvName};
 
 pub(crate) use author::ensure_author_config;
 pub use author::{git_author_identity, GitAuthorIdentity};
@@ -108,7 +108,7 @@ struct GitShellEnvBinding {
 
 pub(crate) fn git_command() -> Command {
     let config = git_launch_config();
-    let mut command = crate::hidden_command(&config.program);
+    let mut command = crate::process::hidden_command(&config.program);
     if let Some(path) = &config.path {
         command.env("PATH", path);
     }
@@ -229,7 +229,7 @@ fn shell_git_config() -> Option<ShellGitConfig> {
 
 #[cfg(target_os = "macos")]
 fn shell_git_config_from_shell(shell: &Path) -> Option<ShellGitConfig> {
-    let output = crate::hidden_command(shell)
+    let output = crate::process::hidden_command(shell)
         .arg("-lc")
         .arg("printf '%s\\n%s' \"$(command -v git 2>/dev/null || true)\" \"$PATH\"")
         .output()
@@ -760,7 +760,7 @@ mod tests {
 
     #[test]
     fn test_linux_appimage_git_commands_remove_appimage_loader_env() {
-        let mut command = crate::hidden_command("git");
+        let mut command = crate::process::hidden_command("git");
 
         sanitize_linux_appimage_git_env_for_launch(&mut command, true);
 
@@ -773,7 +773,7 @@ mod tests {
 
     #[test]
     fn test_non_appimage_git_commands_keep_parent_env_unmodified() {
-        let mut command = crate::hidden_command("git");
+        let mut command = crate::process::hidden_command("git");
 
         sanitize_linux_appimage_git_env_for_launch(&mut command, false);
 

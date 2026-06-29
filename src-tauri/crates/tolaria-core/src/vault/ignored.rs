@@ -46,7 +46,7 @@ fn has_gitignore_file(vault_path: &Path) -> bool {
 }
 
 fn run_git_check_ignore(vault_path: &Path, relative_paths: &[String]) -> Option<String> {
-    let mut child = crate::hidden_command("git")
+    let mut child = crate::process::hidden_command("git")
         .args(["check-ignore", "--no-index", "--stdin"])
         .current_dir(vault_path)
         .stdin(Stdio::piped())
@@ -214,7 +214,7 @@ mod tests {
     }
 
     fn init_git_repo(root: &Path) {
-        crate::hidden_command("git")
+        crate::process::hidden_command("git")
             .args(["init"])
             .current_dir(root)
             .output()

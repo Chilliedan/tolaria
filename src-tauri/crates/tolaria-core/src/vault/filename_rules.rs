@@ -7,11 +7,11 @@ pub(crate) fn validate_filename_stem(stem: &str) -> Result<(), String> {
     validate_portable_name_segment(stem, "Invalid filename")
 }
 
-pub(crate) fn validate_folder_name(name: &str) -> Result<(), String> {
+pub fn validate_folder_name(name: &str) -> Result<(), String> {
     validate_portable_name_segment(name, "Invalid folder name")
 }
 
-pub(crate) fn validate_view_filename_stem(stem: &str) -> Result<(), String> {
+pub fn validate_view_filename_stem(stem: &str) -> Result<(), String> {
     validate_portable_name_segment(stem, "Invalid view filename")
 }
 

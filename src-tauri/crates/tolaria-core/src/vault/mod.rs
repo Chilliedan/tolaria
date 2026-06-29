@@ -2,7 +2,7 @@ mod cache;
 mod config_seed;
 mod entry;
 mod file;
-pub(crate) mod filename_rules;
+pub mod filename_rules;
 mod folders;
 mod frontmatter;
 mod getting_started;
@@ -72,7 +72,7 @@ fn preferred_relationship_refs(
         .unwrap_or_default()
 }
 
-pub(crate) fn derive_markdown_title_from_content(content: &str, filename: &str) -> String {
+pub fn derive_markdown_title_from_content(content: &str, filename: &str) -> String {
     let matter = Matter::<YAML>::new();
     let parsed = matter.parse(content);
     let (frontmatter, _, _) = extract_fm_and_rels(parsed.data, content);

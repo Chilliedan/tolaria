@@ -5589,9 +5589,19 @@ dependencies = [
 name = "tolaria-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "csv",
+ "dirs 5.0.1",
  "gray_matter",
+ "log",
+ "regex",
  "serde",
+ "serde_json",
+ "serde_yaml",
  "tempfile",
+ "uuid",
+ "walkdir",
 ]
 
 [[package]]
