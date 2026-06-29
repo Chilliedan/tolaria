@@ -5,10 +5,9 @@ use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 
-mod shell_env;
 mod windows_cmd_shim;
 
-pub(crate) use shell_env::{
+pub(crate) use tolaria_core::shell_env::{
     apply_user_shell_env_vars_if_missing, env_value_from_process_or_user_shell, EnvName,
 };
 

@@ -5,23 +5,23 @@ use std::process::{Command, Stdio};
 const OUTPUT_PREFIX: &str = "__TOLARIA_ENV__:";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) struct EnvName<'a>(&'a str);
+pub struct EnvName<'a>(&'a str);
 
 impl<'a> EnvName<'a> {
-    pub(crate) fn new(raw: &'a str) -> Option<Self> {
+    pub fn new(raw: &'a str) -> Option<Self> {
         is_valid_name(raw).then_some(Self(raw))
     }
 
-    pub(crate) const fn trusted(raw: &'a str) -> Self {
+    pub const fn trusted(raw: &'a str) -> Self {
         Self(raw)
     }
 
-    pub(crate) fn as_str(self) -> &'a str {
+    pub fn as_str(self) -> &'a str {
         self.0
     }
 }
 
-pub(crate) fn apply_user_shell_env_vars_if_missing(command: &mut Command, names: &[EnvName<'_>]) {
+pub fn apply_user_shell_env_vars_if_missing(command: &mut Command, names: &[EnvName<'_>]) {
     let missing = valid_unique_names(names)
         .into_iter()
         .filter(|name| !process_has_value(name) && !command_has_value(command, name))
@@ -31,7 +31,7 @@ pub(crate) fn apply_user_shell_env_vars_if_missing(command: &mut Command, names:
     }
 }
 
-pub(crate) fn env_value_from_process_or_user_shell(name: EnvName<'_>) -> Option<String> {
+pub fn env_value_from_process_or_user_shell(name: EnvName<'_>) -> Option<String> {
     process_value(name).or_else(|| user_shell_value(name))
 }
 
@@ -107,7 +107,7 @@ fn user_shell_bindings_for_platform(_names: &[EnvName<'_>]) -> Vec<EnvBinding> {
 
 #[cfg(unix)]
 fn user_shell_bindings_from_shell(shell: &Path, names: &[EnvName<'_>]) -> Option<Vec<EnvBinding>> {
-    let output = crate::hidden_command(shell)
+    let output = crate::process::hidden_command(shell)
         .arg("-lc")
         .arg(shell_probe_script(shell, names))
         .stdin(Stdio::null())
