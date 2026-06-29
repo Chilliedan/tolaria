@@ -65,6 +65,17 @@ ensure_node_tooling() {
 }
 
 require_main_push() {
+  REMOTE_NAME="$1"
+  REMOTE_URL="$2"
+  # The direct-to-main rule guards the production remote only. Pushes to other
+  # remotes (e.g. a personal fork for testing before a PR) are allowed; the full
+  # gate below still runs.
+  if [ "$REMOTE_NAME" != "origin" ] && \
+     ! printf '%s' "$REMOTE_URL" | grep -q "refactoringhq/tolaria"; then
+    echo "ℹ️  Pushing to non-production remote '${REMOTE_NAME:-?}' — skipping main-only check (full gate still runs)."
+    return 0
+  fi
+
   CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
   if [ "$CURRENT_BRANCH" != "main" ] && [ "$CURRENT_BRANCH" != "HEAD" ]; then
     echo "❌ Pushes must happen from main or a detached HEAD that is pushed directly to main. Current branch: $CURRENT_BRANCH"
@@ -97,7 +108,7 @@ if [ -t 0 ]; then
 else
   PUSH_INPUT=$(cat)
 fi
-require_main_push
+require_main_push "$1" "$2"
 ensure_node_tooling
 
 START_TIME=$(date +%s)
