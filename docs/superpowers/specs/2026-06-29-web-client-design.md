@@ -227,8 +227,12 @@ Mobile/responsive layout is not a v1 goal (target is the desktop browser).
 ## 11. Deployment
 
 - Single server binary + static web assets.
-- Configuration via env/file: vault path, remote URL, push credential, listen
-  address, session secret. TLS terminated by a reverse proxy.
+- Configuration via env/file: vault path, remote URL, listen address, session
+  secret. TLS terminated by a reverse proxy.
+- The **single server-side push credential** to the remote is supplied at
+  **Docker image build time** (build arg / baked deploy key or token), so the
+  running container can push without per-user remote credentials. Per-user
+  attribution is still preserved through commit authorship (§8).
 - Docker image for self-hosting.
 
 ## 12. ADRs to create during implementation
