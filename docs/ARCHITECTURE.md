@@ -741,6 +741,25 @@ The vault backend (`src-tauri/src/vault/`) is split into focused submodules:
 | `vault_list.rs` | Vault list persistence |
 | `menu.rs` | Native desktop menu definitions and command IDs (not mounted on Linux) |
 
+## Web Server (Phase 2)
+
+`src-tauri/crates/tolaria-server` is an Axum binary crate that serves the vault to browser clients. It has no Tauri dependency and links `tolaria-core` directly for all vault/search logic. See [ADR-0147](./adr/0147-web-server-read-only-phase.md).
+
+**Routes:**
+
+| Route | Description |
+|---|---|
+| `POST /api/cmd/:command` | Generic read-only RPC. Dispatches whitelisted commands (`list_vault`, `reload_vault`, `get_note_content`, `get_all_content`, `reload_vault_entry`, `list_vault_folders`, `search_vault`) to `tolaria-core`. Any other command returns HTTP 501. |
+| `/*` (fallback) | Serves the compiled SPA from `$TOLARIA_STATIC_DIR`. |
+
+**Configuration** (environment variables): `TOLARIA_VAULT_PATH` (required), `TOLARIA_STATIC_DIR` (default `/app/dist`), `TOLARIA_HOST` (default `0.0.0.0`), `TOLARIA_PORT` (default `8787`).
+
+**Web transport shim:** `vite.config.web.ts` merges over the base Vite config and aliases `@tauri-apps/api/core`, `/event`, `/window`, and `/webview` to thin shims in `src/web/`. The `invoke` shim POSTs to `/api/cmd/${command}` and resolves 501 responses to `undefined` so unsupported commands degrade silently. No application source files are forked.
+
+**Docker deployment:** A three-stage `Dockerfile` builds the SPA (Node 22), the server binary (Rust, no Tauri system deps), and packages them into a `debian:bookworm-slim` runtime image. `docker-compose.yml` defines the `tolaria-web` service (vault mounted read-only at `/vault`, bound to `127.0.0.1:8787`) and an optional `proxy` service (nginx, profile `docker-edge`) for edge termination. `nginx.prod.conf` provides the upstream proxy config for users running host nginx directly.
+
+**Phase 2 scope:** unauthenticated, read-only, intended behind a trusted reverse proxy. Auth (Phase 3), write (Phase 4), and git sync + WebSocket events (Phase 5) are deferred.
+
 ## Tauri IPC Commands
 
 ### Vault Operations
