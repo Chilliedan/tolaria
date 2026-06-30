@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "crates/tolaria-core"]
+members = [".", "crates/tolaria-core", "crates/tolaria-server"]
 resolver = "2"
 
 [package]
