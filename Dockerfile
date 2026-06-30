@@ -21,7 +21,6 @@ WORKDIR /app
 COPY --from=server /build/src-tauri/target/release/tolaria-server /usr/local/bin/tolaria-server
 COPY --from=web /app/dist /app/dist
 ENV TOLARIA_STATIC_DIR=/app/dist \
-    TOLARIA_VAULT_PATH=/vault \
     TOLARIA_HOST=0.0.0.0 \
     TOLARIA_PORT=8787
 EXPOSE 8787

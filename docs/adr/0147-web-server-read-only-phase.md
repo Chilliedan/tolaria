@@ -80,14 +80,20 @@ concern.
 
 ### Docker packaging (`Dockerfile`, `docker-compose.yml`, `nginx.prod.conf`)
 
-A three-stage Dockerfile builds:
+A plain two-source-stage Dockerfile builds:
 
 1. **Stage 1 (Node 22):** `pnpm build:web` compiles the SPA to `dist/`.
-2. **Stage 2 (Rust + Cargo Chef):** `cargo build --release -p tolaria-server`
-   produces the server binary, skipping Tauri's system library dependencies.
+2. **Stage 2 (rust:1-bookworm):** `cargo build --release -p tolaria-server`
+   produces the server binary using a plain `cargo build` (no Cargo Chef layer
+   caching). Tauri's system library dependencies are avoided because only the
+   `tolaria-server` crate is compiled.
 3. **Stage 3 (debian:bookworm-slim):** copies the binary and `dist/` into a
-   minimal runtime image, sets the environment variable defaults, and exposes
-   port 8787.
+   minimal runtime image and exposes port 8787. Environment variable defaults
+   (`TOLARIA_STATIC_DIR`, `TOLARIA_HOST`, `TOLARIA_PORT`) are baked in;
+   `TOLARIA_VAULT_PATH` is intentionally **not** baked so that a bare
+   `docker run` without a vault mount fails with a clear configuration error
+   rather than silently pointing at a non-existent path. `docker-compose.yml`
+   supplies `TOLARIA_VAULT_PATH` explicitly.
 
 `docker-compose.yml` defines two services:
 
