@@ -51,7 +51,8 @@ src/
 vite.config.web.ts                        # web build target (aliases @tauri-apps/api/*)
 Dockerfile                                # multi-stage frontend+server build
 .dockerignore
-docker-compose.yml                        # vault volume + port mapping example
+docker-compose.yml                        # localhost app + profile-gated nginx edge
+nginx.prod.conf                           # reverse proxy (single upstream, WS-ready)
 ```
 
 ---
@@ -842,15 +843,18 @@ git commit -m "feat(server): handle boot-critical read commands for browser rend
 
 ---
 
-### Task 8: Multi-stage Dockerfile + compose
+### Task 8: Multi-stage Dockerfile + compose + nginx reverse proxy
 
 **Files:**
 - Create: `Dockerfile`
 - Create: `.dockerignore`
 - Create: `docker-compose.yml`
+- Create: `nginx.prod.conf`
 
 **Interfaces:**
-- Produces: a `tolaria-server` image that builds the web bundle and the server, and runs the server serving a mounted vault.
+- Produces: a `tolaria-server` image that builds the web bundle and the server, runs the server serving a mounted vault on `127.0.0.1:8787`, and an optional profile-gated nginx proxy fronting it on port 80 (mirrors the deployment pattern in `/Users/daniel/Projects/portfolio/{docker-compose.yml,nginx.prod.conf}`).
+
+> Deployment shape (from the user's other project): app containers bind to `127.0.0.1` only; a `profiles: [docker-edge]` nginx service is the public listener; nginx uses a `$connection_upgrade` map for WebSockets. Tolaria's server is a **single** binary serving both the SPA and `/api/*`, so there is **one** upstream and one `location /` (no client/backend split). The WS upgrade headers are included now so Phase 5's `/api/events` works without nginx changes.
 
 - [ ] **Step 1: `.dockerignore`**
 
@@ -908,7 +912,39 @@ ENTRYPOINT ["tolaria-server"]
 
 > `tolaria-server` depends only on `tolaria-core` (no Tauri/GTK/webkit system libs), so the Rust stage does NOT need the Tauri build dependencies. If `cargo build -p tolaria-server` tries to compile the `tolaria` app crate, add `--no-default-features` is not enough — instead confirm the workspace build only pulls `tolaria-server` + `tolaria-core` for that `-p` target (it does, since cargo builds only the named package and its path deps).
 
-- [ ] **Step 3: docker-compose for local/server run**
+- [ ] **Step 3: nginx reverse-proxy config**
+
+Create `nginx.prod.conf` (single upstream; SPA + `/api/*` both served by `tolaria-server`; WS-ready for Phase 5):
+
+```nginx
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+upstream tolaria_web {
+    server tolaria-web:8787;
+}
+
+server {
+    listen 80;
+    server_name _;
+    client_max_body_size 25m;
+
+    location / {
+        proxy_pass http://tolaria_web;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+- [ ] **Step 4: docker-compose (app bound to localhost; profile-gated nginx edge)**
 
 Create `docker-compose.yml`:
 
@@ -917,35 +953,56 @@ services:
   tolaria-web:
     build: .
     image: tolaria-server:latest
-    ports:
-      - "8787:8787"
-    volumes:
-      # Mount a vault clone read-only into the container.
-      - ./demo-vault-v2:/vault:ro
+    container_name: tolaria_web
+    restart: unless-stopped
     environment:
       TOLARIA_VAULT_PATH: /vault
+    volumes:
+      # Mount a vault clone read-only into the container.
+      - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault:ro
+    ports:
+      # Bind to localhost only; the nginx edge (or host nginx) is the public listener.
+      - "127.0.0.1:8787:8787"
+
+  proxy:
+    image: nginx:1.27-alpine
+    container_name: tolaria_proxy
+    profiles:
+      - docker-edge
     restart: unless-stopped
+    depends_on:
+      - tolaria-web
+    ports:
+      - "${PROXY_BIND_HOST:-0.0.0.0}:${PROXY_PORT:-80}:80"
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
 ```
 
-- [ ] **Step 4: Build the image**
+> Two deployment modes, matching the portfolio project: (a) run only `tolaria-web` (localhost:8787) and point an existing **host nginx** at it; or (b) `docker compose --profile docker-edge up` to also run the bundled nginx edge on port 80. The container name `tolaria-web` is the nginx `upstream` host inside the compose network.
+
+- [ ] **Step 5: Build the image**
 
 Run: `docker build -t tolaria-server:latest .`
 Expected: all three stages succeed; final image built.
 
-- [ ] **Step 5: Run and verify**
+- [ ] **Step 6: Run and verify (app only, then via the nginx edge)**
 
 ```bash
-docker run --rm -p 8787:8787 -v "$PWD/demo-vault-v2:/vault:ro" tolaria-server:latest &
+# App only (localhost):
+docker run --rm -p 127.0.0.1:8787:8787 -v "$PWD/demo-vault-v2:/vault:ro" tolaria-server:latest &
 sleep 3
 curl -s -XPOST localhost:8787/api/cmd/list_vault -H 'content-type: application/json' -d '{"path":"/vault"}' | head -c 200
+# Full edge (app + nginx on :80):
+docker compose --profile docker-edge up --build -d
+curl -s -XPOST localhost/api/cmd/list_vault -H 'content-type: application/json' -d '{"path":"/vault"}' | head -c 200
 ```
-Expected: JSON array of entries. Open `http://localhost:8787` in a browser → read-only vault renders.
+Expected: JSON array of entries from both `:8787` (direct) and `:80` (via nginx). Open `http://localhost` in a browser → read-only vault renders through the proxy.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add Dockerfile .dockerignore docker-compose.yml
-git commit -m "feat(docker): multi-stage image building web bundle + tolaria-server"
+git add Dockerfile .dockerignore docker-compose.yml nginx.prod.conf
+git commit -m "feat(docker): multi-stage image + nginx reverse-proxy deployment"
 ```
 
 ---
