@@ -1,4 +1,5 @@
 use axum::http::StatusCode;
+use axum::response::IntoResponse;
 use std::path::PathBuf;
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::set_status::SetStatus;
@@ -9,7 +10,7 @@ pub fn service(static_dir: PathBuf) -> ServeDir<SetStatus<ServeFile>> {
     ServeDir::new(static_dir).not_found_service(ServeFile::new(index))
 }
 
-/// 404 JSON for unmatched API routes (so the SPA fallback never swallows them).
-pub async fn api_not_found() -> (StatusCode, &'static str) {
-    (StatusCode::NOT_FOUND, "not found")
+/// JSON 404 for unmatched `/api/...` routes so the SPA fallback never swallows them.
+pub(crate) async fn api_not_found() -> impl IntoResponse {
+    (StatusCode::NOT_FOUND, axum::Json(serde_json::json!({ "error": "not found" })))
 }

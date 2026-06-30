@@ -1,9 +1,23 @@
-use axum::extract::Path as AxumPath;
+use axum::extract::{Path as AxumPath, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::Serialize;
 use serde_json::{json, Value};
+use std::path::PathBuf;
+use std::sync::Arc;
+
+/// Shared application state threaded through Axum handlers.
+#[derive(Clone)]
+pub struct AppState {
+    pub vault_root: Arc<PathBuf>,
+}
+
+impl AppState {
+    pub fn new(vault_root: PathBuf) -> Self {
+        Self { vault_root: Arc::new(vault_root) }
+    }
+}
 
 /// An RPC failure rendered as `{ "error": "..." }` with a status code.
 #[derive(Debug)]
@@ -42,11 +56,12 @@ pub fn ok_json<T: Serialize>(value: T) -> Response {
 
 /// `POST /api/cmd/:command` — body is the JSON args object.
 pub async fn command_route(
+    State(state): State<AppState>,
     AxumPath(command): AxumPath<String>,
     body: Option<Json<Value>>,
 ) -> Response {
     let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
-    match crate::handlers::dispatch(&command, args) {
+    match crate::handlers::dispatch(&state.vault_root, &command, args) {
         Ok(value) => ok_json(value),
         Err(err) => err.into_response(),
     }
