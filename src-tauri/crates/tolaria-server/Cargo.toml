@@ -5,6 +5,10 @@ edition = "2021"
 rust-version = "1.77.2"
 license = "AGPL-3.0-or-later"
 
+[lib]
+name = "tolaria_server"
+path = "src/lib.rs"
+
 [[bin]]
 name = "tolaria-server"
 path = "src/main.rs"

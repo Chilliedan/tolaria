@@ -1,7 +1,9 @@
+use axum::extract::Path as AxumPath;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use axum::Json;
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 /// An RPC failure rendered as `{ "error": "..." }` with a status code.
 #[derive(Debug)]
@@ -36,6 +38,18 @@ impl IntoResponse for RpcError {
 /// Serialize a value as a 200 JSON response.
 pub fn ok_json<T: Serialize>(value: T) -> Response {
     axum::Json(value).into_response()
+}
+
+/// `POST /api/cmd/:command` — body is the JSON args object.
+pub async fn command_route(
+    AxumPath(command): AxumPath<String>,
+    body: Option<Json<Value>>,
+) -> Response {
+    let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
+    match crate::handlers::dispatch(&command, args) {
+        Ok(value) => ok_json(value),
+        Err(err) => err.into_response(),
+    }
 }
 
 #[cfg(test)]
