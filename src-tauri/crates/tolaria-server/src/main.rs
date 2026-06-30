@@ -1,6 +1,7 @@
 //! Tolaria web server: serves the SPA and a read-only vault RPC over tolaria-core.
 
 mod config;
+mod handlers;
 mod rpc;
 
 #[tokio::main]
