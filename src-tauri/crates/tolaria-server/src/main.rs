@@ -1,5 +1,7 @@
 //! Tolaria web server: serves the SPA and a read-only vault RPC over tolaria-core.
 
+mod config;
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
