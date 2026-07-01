@@ -7,6 +7,8 @@ pub struct ServerConfig {
     pub vault_path: PathBuf,
     pub static_dir: PathBuf,
     pub listen_addr: SocketAddr,
+    pub users_db_path: PathBuf,
+    pub cookie_secure: bool,
 }
 
 impl ServerConfig {
@@ -21,7 +23,14 @@ impl ServerConfig {
         let listen_addr = format!("{host}:{port}")
             .parse()
             .map_err(|e| format!("invalid listen address {host}:{port}: {e}"))?;
-        Ok(Self { vault_path, static_dir, listen_addr })
+        let users_db_path = get("TOLARIA_USERS_DB")
+            .unwrap_or_else(|| "/app/data/users.db".into())
+            .into();
+        let cookie_secure = !matches!(
+            get("TOLARIA_COOKIE_SECURE").as_deref(),
+            Some("false") | Some("0")
+        );
+        Ok(Self { vault_path, static_dir, listen_addr, users_db_path, cookie_secure })
     }
 
     pub fn from_env() -> Result<Self, String> {
@@ -57,5 +66,20 @@ mod tests {
     fn rejects_bad_address() {
         let map = HashMap::from([("TOLARIA_VAULT_PATH", "/vault"), ("TOLARIA_PORT", "notaport")]);
         assert!(ServerConfig::from_lookup(lookup(&map)).is_err());
+    }
+
+    #[test]
+    fn defaults_users_db_and_cookie_secure() {
+        let map = HashMap::from([("TOLARIA_VAULT_PATH", "/vault")]);
+        let cfg = ServerConfig::from_lookup(lookup(&map)).unwrap();
+        assert_eq!(cfg.users_db_path, PathBuf::from("/app/data/users.db"));
+        assert!(cfg.cookie_secure);
+    }
+
+    #[test]
+    fn cookie_secure_can_be_disabled() {
+        let map = HashMap::from([("TOLARIA_VAULT_PATH", "/vault"), ("TOLARIA_COOKIE_SECURE", "false")]);
+        let cfg = ServerConfig::from_lookup(lookup(&map)).unwrap();
+        assert!(!cfg.cookie_secure);
     }
 }
