@@ -7,15 +7,31 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::session::SessionStore;
+use crate::users::UsersDb;
+
 /// Shared application state threaded through Axum handlers.
 #[derive(Clone)]
 pub struct AppState {
     pub vault_root: Arc<PathBuf>,
+    pub users: UsersDb,
+    pub sessions: SessionStore,
+    pub cookie_secure: bool,
 }
 
 impl AppState {
-    pub fn new(vault_root: PathBuf) -> Self {
-        Self { vault_root: Arc::new(vault_root) }
+    pub fn new(
+        vault_root: PathBuf,
+        users: UsersDb,
+        sessions: SessionStore,
+        cookie_secure: bool,
+    ) -> Self {
+        Self {
+            vault_root: Arc::new(vault_root),
+            users,
+            sessions,
+            cookie_secure,
+        }
     }
 }
 
@@ -28,10 +44,16 @@ pub struct RpcError {
 
 impl RpcError {
     pub fn bad_request(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::BAD_REQUEST, message: message.into() }
+        Self {
+            status: StatusCode::BAD_REQUEST,
+            message: message.into(),
+        }
     }
     pub fn internal(message: impl Into<String>) -> Self {
-        Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: message.into() }
+        Self {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: message.into(),
+        }
     }
 }
 

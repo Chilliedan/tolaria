@@ -16,7 +16,10 @@ use std::path::PathBuf;
 /// `vault_root` is the directory the server is allowed to read.
 /// `static_dir` is the compiled SPA directory served as the fallback.
 pub fn build_router(vault_root: PathBuf, static_dir: PathBuf) -> Router {
-    let state = rpc::AppState::new(vault_root);
+    let users = crate::users::UsersDb::open(std::path::Path::new(":memory:")).expect("users db");
+    let sessions =
+        crate::session::SessionStore::new(std::time::Duration::from_secs(60 * 60 * 24 * 7));
+    let state = rpc::AppState::new(vault_root, users, sessions, true);
     Router::new()
         .route("/api/cmd/:command", post(rpc::command_route))
         .route(
