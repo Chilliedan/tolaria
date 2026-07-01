@@ -3,6 +3,7 @@
 pub mod config;
 pub mod handlers;
 pub mod rpc;
+pub mod session;
 pub mod static_files;
 pub mod users;
 
