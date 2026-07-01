@@ -20,7 +20,20 @@ async fn main() {
     };
     tracing::info!("serving vault {:?} on {}", cfg.vault_path, cfg.listen_addr);
 
-    let app = tolaria_server::build_router(cfg.vault_path, cfg.static_dir);
+    let users = tolaria_server::users::UsersDb::open(&cfg.users_db_path).unwrap_or_else(|e| {
+        tracing::error!("users db: {e}");
+        std::process::exit(1);
+    });
+    let sessions = tolaria_server::session::SessionStore::new(std::time::Duration::from_secs(
+        60 * 60 * 24 * 7,
+    ));
+    let app = tolaria_server::build_router(
+        cfg.vault_path,
+        cfg.static_dir,
+        users,
+        sessions,
+        cfg.cookie_secure,
+    );
     let listener = tokio::net::TcpListener::bind(cfg.listen_addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
