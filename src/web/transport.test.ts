@@ -21,4 +21,15 @@ describe('web invoke transport', () => {
     const result = await invoke('save_note_content', { path: '/v/n.md', content: 'x' })
     expect(result).toBeUndefined()
   })
+
+  it('returns undefined and redirects to /login on 401', async () => {
+    const assign = vi.fn()
+    vi.stubGlobal('window', { location: { assign } })
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ error: 'not authenticated' }), { status: 401 }),
+    ))
+    const result = await invoke('list_vault', { path: '/v' })
+    expect(result).toBeUndefined()
+    expect(assign).toHaveBeenCalledWith('/login')
+  })
 })

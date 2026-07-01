@@ -52,6 +52,11 @@ export async function invoke<T = unknown>(
     // Command not implemented on web (read-only phase) — degrade gracefully.
     return undefined as T
   }
+  if (res.status === 401) {
+    // Session expired or missing — bounce to login instead of throwing.
+    if (typeof window !== 'undefined') window.location.assign('/login')
+    return undefined as T
+  }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ error: res.statusText }))
     throw new Error(typeof detail?.error === 'string' ? detail.error : `invoke ${command} failed`)

@@ -2,8 +2,38 @@
 
 use tolaria_server::config;
 
+fn main() {
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some("useradd") {
+        // tolaria-server useradd <username> <git_name> <git_email>   (password via TOLARIA_NEW_PASSWORD)
+        let cfg = config::ServerConfig::from_env().unwrap_or_else(|e| {
+            eprintln!("config error: {e}");
+            std::process::exit(1);
+        });
+        let username = args.get(2).cloned().unwrap_or_default();
+        let git_name = args.get(3).cloned().unwrap_or_else(|| username.clone());
+        let git_email = args.get(4).cloned().unwrap_or_default();
+        let password = std::env::var("TOLARIA_NEW_PASSWORD").unwrap_or_default();
+        let users = tolaria_server::users::UsersDb::open(&cfg.users_db_path).unwrap_or_else(|e| {
+            eprintln!("users db: {e}");
+            std::process::exit(1);
+        });
+        match tolaria_server::users::run_useradd(&users, &username, &password, &git_name, &git_email) {
+            Ok(()) => {
+                println!("created user '{username}'");
+            }
+            Err(e) => {
+                eprintln!("useradd failed: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+    serve();
+}
+
 #[tokio::main]
-async fn main() {
+async fn serve() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()

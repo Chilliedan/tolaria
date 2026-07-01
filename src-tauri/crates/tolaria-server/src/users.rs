@@ -111,6 +111,20 @@ impl UsersDb {
     }
 }
 
+/// Create a user, rejecting empty inputs. Used by the `useradd` CLI.
+pub fn run_useradd(
+    users: &UsersDb,
+    username: &str,
+    password: &str,
+    git_name: &str,
+    git_email: &str,
+) -> Result<(), String> {
+    if username.trim().is_empty() || password.is_empty() {
+        return Err("username and password must not be empty".to_string());
+    }
+    users.create_user(username, password, git_name, git_email)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,5 +183,18 @@ mod tests {
             "stored hash must be argon2 PHC string"
         );
         assert!(!stored.contains("plaintextpw"));
+    }
+
+    #[test]
+    fn run_useradd_creates_verifiable_user() {
+        let db = UsersDb::open_in_memory().unwrap();
+        run_useradd(&db, "eve", "pw12345", "Eve", "eve@example.com").unwrap();
+        assert!(db.verify_credentials("eve", "pw12345").is_some());
+    }
+
+    #[test]
+    fn run_useradd_rejects_empty_password() {
+        let db = UsersDb::open_in_memory().unwrap();
+        assert!(run_useradd(&db, "eve", "", "Eve", "eve@example.com").is_err());
     }
 }
