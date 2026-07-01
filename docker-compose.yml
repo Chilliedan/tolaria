@@ -6,9 +6,13 @@ services:
     restart: unless-stopped
     environment:
       TOLARIA_VAULT_PATH: /vault
+      TOLARIA_USERS_DB: /app/data/users.db
+      TOLARIA_COOKIE_SECURE: ${TOLARIA_COOKIE_SECURE:-true}
     volumes:
       # Mount a vault clone read-only into the container.
       - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault:ro
+      # Persist the SQLite users DB (argon2 password hashes) across restarts.
+      - tolaria_users:/app/data
     ports:
       # Bind to localhost only; the nginx edge (or host nginx) is the public listener.
       - "127.0.0.1:8787:8787"
@@ -25,3 +29,6 @@ services:
       - "${PROXY_BIND_HOST:-0.0.0.0}:${PROXY_PORT:-80}:80"
     volumes:
       - ./nginx.prod.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  tolaria_users:

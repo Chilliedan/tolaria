@@ -22,6 +22,8 @@ COPY --from=server /build/src-tauri/target/release/tolaria-server /usr/local/bin
 COPY --from=web /app/dist /app/dist
 ENV TOLARIA_STATIC_DIR=/app/dist \
     TOLARIA_HOST=0.0.0.0 \
-    TOLARIA_PORT=8787
+    TOLARIA_PORT=8787 \
+    TOLARIA_USERS_DB=/app/data/users.db
+RUN mkdir -p /app/data
 EXPOSE 8787
 ENTRYPOINT ["tolaria-server"]

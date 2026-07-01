@@ -760,6 +760,17 @@ The vault backend (`src-tauri/src/vault/`) is split into focused submodules:
 
 **Phase 2 scope:** unauthenticated, read-only, intended behind a trusted reverse proxy. Auth (Phase 3), write (Phase 4), and git sync + WebSocket events (Phase 5) are deferred.
 
+### Authentication (Phase 3)
+
+Phase 3 adds built-in auth in front of the Phase 2 read-only server. See [ADR-0148](./adr/0148-web-server-builtin-auth.md).
+
+- **User store** (`users.rs`): SQLite (`TOLARIA_USERS_DB`, default `/app/data/users.db`), one row per user with an argon2 password hash plus `git_name`/`git_email` (stored now, consumed by write/git-sync in later phases). No self-service signup — accounts are created with the `tolaria-server useradd <username> <git_name> <git_email>` CLI (password via `TOLARIA_NEW_PASSWORD` env var).
+- **Sessions** (`session.rs`): in-memory `SessionStore`, keyed by a 256-bit opaque token (not a JWT), 7-day TTL, lazily evicted on read. Restarting the server invalidates all sessions.
+- **Cookie** (`auth_routes.rs`): `tolaria_session`, `HttpOnly`, `SameSite=Lax`, `Secure` gated by `TOLARIA_COOKIE_SECURE` (default `true`; set `false` only for non-TLS local testing).
+- **Login UI**: `GET /login` is server-rendered HTML (not part of the React SPA/i18n system). `POST /api/auth/login` verifies credentials and sets the cookie; `POST /api/auth/logout` clears it; `GET /api/auth/me` returns the current session's username or 401.
+- **Route protection** (`auth_middleware.rs`): `require_auth` middleware returns `401` JSON for unauthenticated `/api/*` requests and redirects everything else to `/login`.
+- **Docker**: `TOLARIA_USERS_DB` defaults to `/app/data/users.db` in the runtime image; `docker-compose.yml` persists it via the `tolaria_users` named volume and exposes `TOLARIA_COOKIE_SECURE` as a compose-level override.
+
 ## Tauri IPC Commands
 
 ### Vault Operations
