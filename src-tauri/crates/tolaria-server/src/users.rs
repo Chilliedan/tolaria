@@ -1,0 +1,173 @@
+use argon2::password_hash::{
+    rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString,
+};
+use argon2::Argon2;
+use rusqlite::Connection;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+/// A user account (password hash intentionally excluded).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserRecord {
+    pub id: i64,
+    pub username: String,
+    pub git_name: String,
+    pub git_email: String,
+}
+
+/// SQLite-backed user store. Cheap to clone (shares one connection).
+#[derive(Clone)]
+pub struct UsersDb {
+    conn: Arc<Mutex<Connection>>,
+}
+
+impl UsersDb {
+    pub fn open(path: &Path) -> Result<Self, String> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("users db dir: {e}"))?;
+        }
+        let conn = Connection::open(path).map_err(|e| format!("open users db: {e}"))?;
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                git_name TEXT NOT NULL,
+                git_email TEXT NOT NULL
+            )",
+            [],
+        )
+        .map_err(|e| format!("create users table: {e}"))?;
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+
+    /// Open an in-memory store for tests.
+    #[cfg(test)]
+    pub fn open_in_memory() -> Result<Self, String> {
+        let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
+        conn.execute(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, git_name TEXT NOT NULL, git_email TEXT NOT NULL)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
+    }
+
+    pub fn create_user(
+        &self,
+        username: &str,
+        password: &str,
+        git_name: &str,
+        git_email: &str,
+    ) -> Result<(), String> {
+        let salt = SaltString::generate(&mut OsRng);
+        let hash = Argon2::default()
+            .hash_password(password.as_bytes(), &salt)
+            .map_err(|e| format!("hash: {e}"))?
+            .to_string();
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| "users db poisoned".to_string())?;
+        conn.execute(
+            "INSERT INTO users (username, password_hash, git_name, git_email) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![username, hash, git_name, git_email],
+        )
+        .map_err(|e| format!("insert user: {e}"))?;
+        Ok(())
+    }
+
+    pub fn verify_credentials(&self, username: &str, password: &str) -> Option<UserRecord> {
+        let conn = self.conn.lock().ok()?;
+        let mut stmt = conn
+            .prepare("SELECT id, username, password_hash, git_name, git_email FROM users WHERE username = ?1")
+            .ok()?;
+        let row = stmt
+            .query_row(rusqlite::params![username], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })
+            .ok()?;
+        let (id, username, password_hash, git_name, git_email) = row;
+        let parsed = PasswordHash::new(&password_hash).ok()?;
+        Argon2::default()
+            .verify_password(password.as_bytes(), &parsed)
+            .ok()?;
+        Some(UserRecord {
+            id,
+            username,
+            git_name,
+            git_email,
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_then_verify_correct_password() {
+        let db = UsersDb::open_in_memory().unwrap();
+        db.create_user("alice", "s3cret", "Alice", "alice@example.com")
+            .unwrap();
+        let user = db
+            .verify_credentials("alice", "s3cret")
+            .expect("correct password verifies");
+        assert_eq!(user.username, "alice");
+        assert_eq!(user.git_email, "alice@example.com");
+    }
+
+    #[test]
+    fn wrong_password_rejected() {
+        let db = UsersDb::open_in_memory().unwrap();
+        db.create_user("bob", "right", "Bob", "bob@example.com")
+            .unwrap();
+        assert!(db.verify_credentials("bob", "wrong").is_none());
+    }
+
+    #[test]
+    fn unknown_user_rejected() {
+        let db = UsersDb::open_in_memory().unwrap();
+        assert!(db.verify_credentials("nobody", "x").is_none());
+    }
+
+    #[test]
+    fn duplicate_username_errors() {
+        let db = UsersDb::open_in_memory().unwrap();
+        db.create_user("carol", "p", "Carol", "c@example.com")
+            .unwrap();
+        assert!(db
+            .create_user("carol", "p2", "Carol2", "c2@example.com")
+            .is_err());
+    }
+
+    #[test]
+    fn password_is_hashed_not_plaintext() {
+        let db = UsersDb::open_in_memory().unwrap();
+        db.create_user("dave", "plaintextpw", "Dave", "d@example.com")
+            .unwrap();
+        let conn = db.conn.lock().unwrap();
+        let stored: String = conn
+            .query_row(
+                "SELECT password_hash FROM users WHERE username='dave'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(
+            stored.starts_with("$argon2"),
+            "stored hash must be argon2 PHC string"
+        );
+        assert!(!stored.contains("plaintextpw"));
+    }
+}
