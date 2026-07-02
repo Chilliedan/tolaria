@@ -15,6 +15,16 @@ pub struct UserRecord {
     pub git_email: String,
 }
 
+/// Schema for the `users` table, shared by the persistent and in-memory
+/// stores so the column set can never drift between them.
+const CREATE_USERS_SQL: &str = "CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    git_name TEXT NOT NULL,
+    git_email TEXT NOT NULL
+)";
+
 /// SQLite-backed user store. Cheap to clone (shares one connection).
 #[derive(Clone)]
 pub struct UsersDb {
@@ -27,17 +37,8 @@ impl UsersDb {
             std::fs::create_dir_all(parent).map_err(|e| format!("users db dir: {e}"))?;
         }
         let conn = Connection::open(path).map_err(|e| format!("open users db: {e}"))?;
-        conn.execute(
-            "CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL UNIQUE,
-                password_hash TEXT NOT NULL,
-                git_name TEXT NOT NULL,
-                git_email TEXT NOT NULL
-            )",
-            [],
-        )
-        .map_err(|e| format!("create users table: {e}"))?;
+        conn.execute(CREATE_USERS_SQL, [])
+            .map_err(|e| format!("create users table: {e}"))?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -47,11 +48,8 @@ impl UsersDb {
     #[cfg(test)]
     pub fn open_in_memory() -> Result<Self, String> {
         let conn = Connection::open_in_memory().map_err(|e| e.to_string())?;
-        conn.execute(
-            "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, git_name TEXT NOT NULL, git_email TEXT NOT NULL)",
-            [],
-        )
-        .map_err(|e| e.to_string())?;
+        conn.execute(CREATE_USERS_SQL, [])
+            .map_err(|e| e.to_string())?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })

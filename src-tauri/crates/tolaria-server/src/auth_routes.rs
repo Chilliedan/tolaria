@@ -75,7 +75,7 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> Response {
     if let Some(c) = jar.get(SESSION_COOKIE) {
         state.sessions.remove(c.value());
     }
-    let jar = jar.remove(Cookie::from(SESSION_COOKIE));
+    let jar = jar.remove(Cookie::build((SESSION_COOKIE, "")).path("/").build());
     (jar, Redirect::to("/login")).into_response()
 }
 
