@@ -771,6 +771,17 @@ Phase 3 adds built-in auth in front of the Phase 2 read-only server. See [ADR-01
 - **Route protection** (`auth_middleware.rs`): `require_auth` middleware returns `401` JSON for unauthenticated `/api/*` requests and redirects everything else to `/login`.
 - **Docker**: `TOLARIA_USERS_DB` defaults to `/app/data/users.db` in the runtime image; `docker-compose.yml` persists it via the `tolaria_users` named volume and exposes `TOLARIA_COOKIE_SECURE` as a compose-level override.
 
+### Write path & concurrency (Phase 4)
+
+Phase 4 adds authenticated write commands over the Phase 3 auth layer. See [ADR-0149](./adr/0149-web-server-write-path-optimistic-concurrency.md).
+
+- **Write command set** (`write_handlers.rs`): `save_note_content`, `create_note`/`create_note_content`, `rename_note`, `rename_note_filename`, `delete_note`, `update_frontmatter`, `delete_frontmatter_property`. `dispatch_write` routes these async through `tolaria_core::vault`/`frontmatter`; `command_route` sends any command matching `is_write_command` here instead of the read-only `handlers::dispatch`. Vault containment is re-checked on every write (`contained_note_path` / `contained_note_path_for_write`, the latter confining on the parent directory for not-yet-existing files).
+- **Optimistic concurrency** (`version.rs`): the version token is a lowercase-hex sha256 of the note's UTF-8 content, computed identically on server (`content_version`) and client (Web Crypto SHA-256), so the client never needs a server round-trip to learn the current hash. `save_note_content` accepts an optional `baseHash`; if the file exists and its current content hash no longer matches `baseHash`, the save is rejected with `409` and a JSON body `{ "error": "conflict", "currentContent": <on-disk content> }` — reject-stale-and-reload, never a silent overwrite. A successful save/create returns `{ "version": <new hash> }`.
+- **Per-path locking** (`locks.rs`): `PathLocks` hands out one `tokio::sync::Mutex` per canonicalized path (registry behind a `std::sync::Mutex<HashMap<..>>`), so concurrent writes to the same file serialize (stale-check + write happen atomically under the lock) while writes to different files proceed independently.
+- **CSRF** (`csrf.rs`): double-submit cookie. Login sets a non-HttpOnly `tolaria_csrf` cookie; the client echoes it in the `X-CSRF-Token` request header on every `/api/cmd/*` call; `command_route` rejects the request with `403` unless the cookie and header are both present and equal.
+- **Vault mount**: `docker-compose.yml` mounts the vault read-write (no `:ro`) so writes persist to disk.
+- **Out of scope (Phase 5)**: git commit/push/pull and remote conflict resolution. Writes land on disk but are not committed to git by the server yet.
+
 ## Tauri IPC Commands
 
 ### Vault Operations

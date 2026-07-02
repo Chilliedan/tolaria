@@ -9,8 +9,9 @@ services:
       TOLARIA_USERS_DB: /app/data/users.db
       TOLARIA_COOKIE_SECURE: ${TOLARIA_COOKIE_SECURE:-true}
     volumes:
-      # Mount a vault clone read-only into the container.
-      - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault:ro
+      # Mount a vault clone read-write into the container: Phase 4 write
+      # commands (save/create/rename/delete/frontmatter) persist to disk here.
+      - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault
       # Persist the SQLite users DB (argon2 password hashes) across restarts.
       - tolaria_users:/app/data
     ports:
