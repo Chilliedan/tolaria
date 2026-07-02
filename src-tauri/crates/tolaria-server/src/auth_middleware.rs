@@ -59,6 +59,7 @@ mod tests {
             UsersDb::open_in_memory().unwrap(),
             SessionStore::new(Duration::from_secs(60)),
             false,
+            crate::locks::PathLocks::new(),
         );
         let token = state.sessions.create(1, "alice");
         (state, token)

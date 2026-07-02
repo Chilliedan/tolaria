@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::locks::PathLocks;
 use crate::session::SessionStore;
 use crate::users::UsersDb;
 
@@ -17,6 +18,7 @@ pub struct AppState {
     pub users: UsersDb,
     pub sessions: SessionStore,
     pub cookie_secure: bool,
+    pub locks: PathLocks,
 }
 
 impl AppState {
@@ -25,12 +27,14 @@ impl AppState {
         users: UsersDb,
         sessions: SessionStore,
         cookie_secure: bool,
+        locks: PathLocks,
     ) -> Self {
         Self {
             vault_root: Arc::new(vault_root),
             users,
             sessions,
             cookie_secure,
+            locks,
         }
     }
 }
@@ -76,15 +80,33 @@ pub fn ok_json<T: Serialize>(value: T) -> Response {
     axum::Json(value).into_response()
 }
 
+/// Render a `409 CONFLICT` `RpcError` whose message is the JSON conflict body
+/// (`{"error":"conflict","currentContent":...}`) produced by `write_handlers`.
+fn conflict_response(message: &str) -> Response {
+    let body: Value =
+        serde_json::from_str(message).unwrap_or_else(|_| json!({ "error": "conflict" }));
+    (StatusCode::CONFLICT, axum::Json(body)).into_response()
+}
+
 /// `POST /api/cmd/:command` — body is the JSON args object.
+///
+/// Write commands are routed to the async `write_handlers::dispatch_write`
+/// (per-path locked, optimistic-concurrency checked); everything else uses
+/// the synchronous read-only `handlers::dispatch`.
 pub async fn command_route(
     State(state): State<AppState>,
     AxumPath(command): AxumPath<String>,
     body: Option<Json<Value>>,
 ) -> Response {
     let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
-    match crate::handlers::dispatch(&state.vault_root, &command, args) {
+    let result = if crate::write_handlers::is_write_command(&command) {
+        crate::write_handlers::dispatch_write(&state, &command, args).await
+    } else {
+        crate::handlers::dispatch(&state.vault_root, &command, args)
+    };
+    match result {
         Ok(value) => ok_json(value),
+        Err(err) if err.status == StatusCode::CONFLICT => conflict_response(&err.message),
         Err(err) => err.into_response(),
     }
 }

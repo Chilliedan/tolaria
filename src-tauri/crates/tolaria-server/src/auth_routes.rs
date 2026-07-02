@@ -117,6 +117,7 @@ mod tests {
             users,
             SessionStore::new(Duration::from_secs(60)),
             false,
+            crate::locks::PathLocks::new(),
         )
     }
 
