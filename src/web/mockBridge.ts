@@ -37,6 +37,12 @@ const SERVER_COMMANDS = new Set<string>([
   'delete_note',
   'update_frontmatter',
   'delete_frontmatter_property',
+  // Vault registry — the server reports its single real vault so the app builds
+  // note paths under it (not the mock's default path).
+  'load_vault_list',
+  'get_last_vault_path',
+  'set_last_vault_path',
+  'save_vault_list',
 ])
 
 export function isTauri(): boolean {

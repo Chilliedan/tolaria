@@ -96,6 +96,26 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             let entry = parse_md_file(&safe, None).map_err(RpcError::internal)?;
             Ok(serde_json::to_value(entry).map_err(|e| RpcError::internal(e.to_string()))?)
         }
+        // Vault registry: the server serves exactly one vault (`vault_root`), so
+        // the app is told its single vault is that path — this is what makes the
+        // client build every note path under the real server vault instead of a
+        // mock default.
+        "load_vault_list" => {
+            let path = vault_root.to_string_lossy().to_string();
+            let label = vault_root
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.clone());
+            Ok(json!({
+                "vaults": [{ "label": label, "path": path }],
+                "active_vault": path,
+                "hidden_defaults": [],
+            }))
+        }
+        "get_last_vault_path" => Ok(json!(vault_root.to_string_lossy())),
+        // Single-vault server: the client cannot reconfigure which vault is
+        // served, so persistence of the vault list / last path is a no-op.
+        "set_last_vault_path" | "save_vault_list" => Ok(Value::Null),
         other => Err(rpc::unsupported(other)),
     }
 }
@@ -105,6 +125,23 @@ mod tests {
     use super::*;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn load_vault_list_returns_server_vault_as_active() {
+        let dir = tempdir().unwrap();
+        let out = dispatch(dir.path(), "load_vault_list", json!({})).unwrap();
+        let active = out["active_vault"].as_str().unwrap();
+        assert_eq!(active, dir.path().to_string_lossy());
+        assert_eq!(out["vaults"][0]["path"].as_str().unwrap(), active);
+        assert!(out["hidden_defaults"].is_array());
+    }
+
+    #[test]
+    fn get_last_vault_path_returns_server_vault() {
+        let dir = tempdir().unwrap();
+        let out = dispatch(dir.path(), "get_last_vault_path", json!({})).unwrap();
+        assert_eq!(out.as_str().unwrap(), dir.path().to_string_lossy());
+    }
 
     #[test]
     fn list_vault_returns_entries() {
