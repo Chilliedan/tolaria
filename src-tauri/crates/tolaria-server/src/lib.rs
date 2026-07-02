@@ -4,10 +4,12 @@ pub mod auth_middleware;
 pub mod auth_routes;
 pub mod config;
 pub mod handlers;
+pub mod locks;
 pub mod rpc;
 pub mod session;
 pub mod static_files;
 pub mod users;
+pub mod version;
 
 use axum::routing::post;
 use axum::Router;
