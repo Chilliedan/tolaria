@@ -39,14 +39,38 @@ export class Channel<T = unknown> {
   }
 }
 
+/** Tracks the last known content hash per note path, keyed by vault-relative
+ *  path. Populated on `get_note_content` reads and updated on successful
+ *  saves; used to supply `baseHash` for optimistic-concurrency checks. */
+const noteVersions = new Map<string, string>()
+
+/** SHA-256 hex digest of `text`, used to fingerprint note content for the
+ *  optimistic-concurrency `baseHash` handshake with the server. */
+async function sha256Hex(text: string): Promise<string> {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+/** Reads the double-submit CSRF token from the `tolaria_csrf` cookie. */
+function csrfToken(): string {
+  if (typeof document === 'undefined') return ''
+  const m = document.cookie.match(/(?:^|;\s*)tolaria_csrf=([^;]+)/)
+  return m ? m[1] : ''
+}
+
 export async function invoke<T = unknown>(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
+  const path = typeof args?.path === 'string' ? (args.path as string) : undefined
+  let body: Record<string, unknown> = { ...(args ?? {}) }
+  if (command === 'save_note_content' && path && noteVersions.has(path)) {
+    body = { ...body, baseHash: noteVersions.get(path) }
+  }
   const res = await fetch(`/api/cmd/${command}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(args ?? {}),
+    headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken() },
+    body: JSON.stringify(body),
   })
   if (res.status === 501) {
     // Command not implemented on web (read-only phase) — degrade gracefully.
@@ -57,9 +81,26 @@ export async function invoke<T = unknown>(
     if (typeof window !== 'undefined') window.location.assign('/login')
     return undefined as T
   }
+  if (res.status === 409) {
+    // Optimistic-concurrency conflict: someone else changed the note since
+    // our baseHash was recorded. Discard the stale edit and reload with the
+    // server's current version rather than risk silently clobbering it.
+    if (typeof window !== 'undefined') {
+      window.alert('This note changed on the server. Reloading the latest version — your last change was not saved.')
+      window.location.reload()
+    }
+    return undefined as T
+  }
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(typeof detail?.error === 'string' ? detail.error : `invoke ${command} failed`)
+    throw new Error(typeof (detail as { error?: string })?.error === 'string' ? (detail as { error: string }).error : `invoke ${command} failed`)
   }
-  return (await res.json()) as T
+  const data = (await res.json()) as T
+  if (command === 'get_note_content' && path && typeof data === 'string') {
+    noteVersions.set(path, await sha256Hex(data))
+  }
+  if (command === 'save_note_content' && path) {
+    noteVersions.set(path, await sha256Hex(String((args as { content?: unknown } | undefined)?.content ?? '')))
+  }
+  return data
 }
