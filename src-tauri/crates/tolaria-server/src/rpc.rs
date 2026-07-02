@@ -96,8 +96,13 @@ fn conflict_response(message: &str) -> Response {
 pub async fn command_route(
     State(state): State<AppState>,
     AxumPath(command): AxumPath<String>,
+    jar: axum_extra::extract::cookie::CookieJar,
+    headers: axum::http::HeaderMap,
     body: Option<Json<Value>>,
 ) -> Response {
+    if !crate::csrf::verify(&jar, &headers) {
+        return (StatusCode::FORBIDDEN, axum::Json(json!({ "error": "csrf" }))).into_response();
+    }
     let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
     let result = if crate::write_handlers::is_write_command(&command) {
         crate::write_handlers::dispatch_write(&state, &command, args).await
