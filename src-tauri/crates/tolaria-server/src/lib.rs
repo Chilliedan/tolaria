@@ -3,16 +3,21 @@
 pub mod auth_middleware;
 pub mod auth_routes;
 pub mod config;
+pub mod csrf;
 pub mod handlers;
+pub mod locks;
 pub mod rpc;
 pub mod session;
 pub mod static_files;
 pub mod users;
+pub mod version;
+pub mod write_handlers;
 
 use axum::routing::post;
 use axum::Router;
 use std::path::PathBuf;
 
+use crate::locks::PathLocks;
 use crate::session::SessionStore;
 use crate::users::UsersDb;
 
@@ -31,7 +36,7 @@ pub fn build_router(
     sessions: SessionStore,
     cookie_secure: bool,
 ) -> Router {
-    let state = rpc::AppState::new(vault_root, users, sessions, cookie_secure);
+    let state = rpc::AppState::new(vault_root, users, sessions, cookie_secure, PathLocks::new());
 
     // Public routes: reachable without a session.
     let public = Router::new()

@@ -32,4 +32,30 @@ describe('web invoke transport', () => {
     expect(result).toBeUndefined()
     expect(assign).toHaveBeenCalledWith('/login')
   })
+
+  it('sends X-CSRF-Token header from the tolaria_csrf cookie', async () => {
+    vi.stubGlobal('document', { cookie: 'tolaria_csrf=tok123; other=x' } as unknown as Document)
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(['a']), { status: 200 }))
+    vi.stubGlobal('fetch', fetchMock)
+    await invoke('list_vault', { path: '/v' })
+    const init = fetchMock.mock.calls[0][1] as RequestInit
+    expect((init.headers as Record<string, string>)['X-CSRF-Token']).toBe('tok123')
+  })
+
+  it('sends baseHash on save from a prior get_note_content and reloads on 409', async () => {
+    vi.stubGlobal('document', { cookie: 'tolaria_csrf=t' } as unknown as Document)
+    // First: read content so the transport records its hash.
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify('hello'), { status: 200 })))
+    await invoke('get_note_content', { path: '/v/n.md' })
+    // Then a 409 save → warns + reloads, returns undefined.
+    const reload = vi.fn()
+    vi.stubGlobal('window', { location: { reload, assign: vi.fn() }, alert: vi.fn() })
+    const saveFetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: 'conflict', currentContent: 'server' }), { status: 409 }))
+    vi.stubGlobal('fetch', saveFetch)
+    const result = await invoke('save_note_content', { path: '/v/n.md', content: 'mine' })
+    const body = JSON.parse((saveFetch.mock.calls[0][1] as RequestInit).body as string)
+    expect(body.baseHash).toBeDefined()
+    expect(result).toBeUndefined()
+    expect(reload).toHaveBeenCalled()
+  })
 })

@@ -64,7 +64,12 @@ pub async fn login(
     {
         Some(user) => {
             let token = state.sessions.create(user.id, &user.username);
-            let jar = jar.add(session_cookie(token, state.cookie_secure));
+            let jar = jar
+                .add(session_cookie(token, state.cookie_secure))
+                .add(crate::csrf::csrf_cookie(
+                    crate::csrf::generate_token(),
+                    state.cookie_secure,
+                ));
             (jar, Redirect::to("/")).into_response()
         }
         None => Redirect::to("/login?error=1").into_response(),
@@ -75,7 +80,9 @@ pub async fn logout(State(state): State<AppState>, jar: CookieJar) -> Response {
     if let Some(c) = jar.get(SESSION_COOKIE) {
         state.sessions.remove(c.value());
     }
-    let jar = jar.remove(Cookie::build((SESSION_COOKIE, "")).path("/").build());
+    let jar = jar
+        .remove(Cookie::build((SESSION_COOKIE, "")).path("/").build())
+        .remove(Cookie::build((crate::csrf::CSRF_COOKIE, "")).path("/").build());
     (jar, Redirect::to("/login")).into_response()
 }
 
@@ -117,6 +124,7 @@ mod tests {
             users,
             SessionStore::new(Duration::from_secs(60)),
             false,
+            crate::locks::PathLocks::new(),
         )
     }
 
@@ -141,9 +149,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-        let set_cookie = resp.headers().get("set-cookie").unwrap().to_str().unwrap();
-        assert!(set_cookie.contains("tolaria_session="));
-        assert!(set_cookie.contains("HttpOnly"));
+        let set_cookies: Vec<&str> = resp
+            .headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| v.to_str().unwrap())
+            .collect();
+        let session_cookie = set_cookies
+            .iter()
+            .find(|c| c.contains("tolaria_session="))
+            .expect("session cookie set");
+        assert!(session_cookie.contains("HttpOnly"));
+
+        let csrf_cookie = set_cookies
+            .iter()
+            .find(|c| c.contains("tolaria_csrf="))
+            .expect("csrf cookie set");
+        assert!(!csrf_cookie.contains("HttpOnly"));
     }
 
     #[tokio::test]

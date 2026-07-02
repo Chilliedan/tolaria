@@ -117,8 +117,8 @@ pub fn run_useradd(
     git_name: &str,
     git_email: &str,
 ) -> Result<(), String> {
-    if username.trim().is_empty() || password.is_empty() {
-        return Err("username and password must not be empty".to_string());
+    if username.trim().is_empty() || password.is_empty() || git_email.trim().is_empty() {
+        return Err("username, password, and git email must not be empty".to_string());
     }
     users.create_user(username, password, git_name, git_email)
 }
@@ -194,5 +194,11 @@ mod tests {
     fn run_useradd_rejects_empty_password() {
         let db = UsersDb::open_in_memory().unwrap();
         assert!(run_useradd(&db, "eve", "", "Eve", "eve@example.com").is_err());
+    }
+
+    #[test]
+    fn run_useradd_rejects_empty_git_email() {
+        let db = UsersDb::open_in_memory().unwrap();
+        assert!(run_useradd(&db, "eve", "pw", "Eve", "").is_err());
     }
 }

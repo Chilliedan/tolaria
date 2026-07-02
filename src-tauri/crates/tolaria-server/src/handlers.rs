@@ -28,7 +28,7 @@ fn parse_args<T: serde::de::DeserializeOwned>(args: Value) -> Result<T, RpcError
 /// Ensure `requested` resolves to a path inside `vault_root`.
 /// Returns the canonicalized path on success, or a `RpcError` if it does not exist
 /// or is outside the vault.
-fn contained_note_path(vault_root: &Path, requested: &Path) -> Result<PathBuf, RpcError> {
+pub(crate) fn contained_note_path(vault_root: &Path, requested: &Path) -> Result<PathBuf, RpcError> {
     let root = std::fs::canonicalize(vault_root)
         .map_err(|e| RpcError::internal(format!("vault root error: {e}")))?;
     let full = std::fs::canonicalize(requested)
