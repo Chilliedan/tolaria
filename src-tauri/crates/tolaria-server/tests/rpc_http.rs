@@ -156,3 +156,61 @@ async fn list_vault_without_session_is_401() {
     let resp = app.oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
 }
+
+#[tokio::test]
+async fn save_stale_basehash_returns_409_conflict_body() {
+    let dir = tempdir().unwrap();
+    let note = dir.path().join("n.md");
+    fs::write(&note, "current-server-content").unwrap();
+    let (app, token, csrf_token) = test_app(dir.path());
+
+    // baseHash of content the client THINKS it edited from, but the server has
+    // "current-server-content" on disk — a genuine stale conflict.
+    let stale = tolaria_server::version::content_version("stale");
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/cmd/save_note_content")
+        .header("content-type", "application/json")
+        .header("cookie", authed_cookie_header(&token, &csrf_token))
+        .header("x-csrf-token", &csrf_token)
+        .body(Body::from(
+            json!({ "path": note, "content": "my-edit", "baseHash": stale }).to_string(),
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::CONFLICT);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["error"], "conflict");
+    assert_eq!(v["currentContent"], "current-server-content");
+    // The stale write must NOT have touched the file.
+    assert_eq!(fs::read_to_string(&note).unwrap(), "current-server-content");
+}
+
+#[tokio::test]
+async fn save_matching_basehash_succeeds_over_http() {
+    let dir = tempdir().unwrap();
+    let note = dir.path().join("n.md");
+    fs::write(&note, "current-server-content").unwrap();
+    let (app, token, csrf_token) = test_app(dir.path());
+
+    let base = tolaria_server::version::content_version("current-server-content");
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/cmd/save_note_content")
+        .header("content-type", "application/json")
+        .header("cookie", authed_cookie_header(&token, &csrf_token))
+        .header("x-csrf-token", &csrf_token)
+        .body(Body::from(
+            json!({ "path": note, "content": "my-edit", "baseHash": base }).to_string(),
+        ))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v["version"], json!(tolaria_server::version::content_version("my-edit")));
+    assert_eq!(fs::read_to_string(&note).unwrap(), "my-edit");
+}

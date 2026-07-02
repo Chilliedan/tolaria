@@ -94,7 +94,14 @@ fn stale_conflict(safe: &std::path::Path, base: &str) -> Result<Option<String>, 
 /// write the new content and return its version hash.
 async fn save_note_content(state: &AppState, args: Value) -> Result<Value, RpcError> {
     let a: SaveArgs = parse(args)?;
-    let safe = contained_note_path_for_write(&state.vault_root, &a.path)?;
+    // When the file already exists, resolve it the same way the other
+    // existing-file arms do (fully canonicalized) so a concurrent save +
+    // frontmatter/delete on the same file take the same lock and serialize.
+    // Fall back to the parent-confined path for a first save (file absent).
+    let safe = match contained_note_path(&state.vault_root, &a.path) {
+        Ok(existing) => existing,
+        Err(_) => contained_note_path_for_write(&state.vault_root, &a.path)?,
+    };
     let _guard = state.locks.lock(&safe).await;
 
     if let Some(base) = &a.base_hash {
