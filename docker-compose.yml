@@ -7,7 +7,7 @@ services:
     environment:
       TOLARIA_VAULT_PATH: /vault
       TOLARIA_USERS_DB: /app/data/users.db
-      TOLARIA_COOKIE_SECURE: ${TOLARIA_COOKIE_SECURE:-true}
+      TOLARIA_COOKIE_SECURE: "false"
     volumes:
       # Mount a vault clone read-only into the container.
       - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault:ro
