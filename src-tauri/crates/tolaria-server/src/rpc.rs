@@ -176,7 +176,8 @@ pub async fn command_route(
         };
     }
     let result = if crate::write_handlers::is_write_command(&command) {
-        crate::write_handlers::dispatch_write(&state, &command, args).await
+        let identity = state.acting_user(&jar);
+        crate::write_handlers::dispatch_write(&state, identity.as_ref(), &command, args).await
     } else {
         crate::handlers::dispatch(&state.vault_root, &command, args)
     };
