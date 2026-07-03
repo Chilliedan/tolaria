@@ -43,6 +43,7 @@ const SERVER_COMMANDS = new Set<string>([
   'get_last_vault_path',
   'set_last_vault_path',
   'save_vault_list',
+  'check_vault_exists',
 ])
 
 export function isTauri(): boolean {
