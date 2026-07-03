@@ -123,8 +123,13 @@ mod tests {
             std::path::PathBuf::from("/tmp"),
             users,
             SessionStore::new(Duration::from_secs(60)),
-            false,
             crate::locks::PathLocks::new(),
+            crate::rpc::AppStateConfig {
+                cookie_secure: false,
+                committer_name: "Tolaria Server".to_string(),
+                committer_email: "server@tolaria.local".to_string(),
+                autogit: true,
+            },
         )
     }
 

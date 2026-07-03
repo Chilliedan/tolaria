@@ -264,8 +264,13 @@ mod tests {
             dir.to_path_buf(),
             crate::users::UsersDb::open_in_memory().unwrap(),
             crate::session::SessionStore::new(std::time::Duration::from_secs(60)),
-            false,
             crate::locks::PathLocks::new(),
+            crate::rpc::AppStateConfig {
+                cookie_secure: false,
+                committer_name: "Tolaria Server".to_string(),
+                committer_email: "server@tolaria.local".to_string(),
+                autogit: true,
+            },
         )
     }
 
