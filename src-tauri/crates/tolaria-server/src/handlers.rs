@@ -113,6 +113,18 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             }))
         }
         "get_last_vault_path" => Ok(json!(vault_root.to_string_lossy())),
+        // Availability check the app runs per vault before loading it. True only
+        // for the server's own vault, so the client marks `/vault` available
+        // instead of falling into onboarding.
+        "check_vault_exists" => {
+            let a: PathArgs = parse_args(args)?;
+            let matches_vault = std::fs::canonicalize(&a.path)
+                .ok()
+                .zip(std::fs::canonicalize(vault_root).ok())
+                .map(|(requested, root)| requested == root)
+                .unwrap_or(false);
+            Ok(json!(matches_vault))
+        }
         // Single-vault server: the client cannot reconfigure which vault is
         // served, so persistence of the vault list / last path is a no-op.
         "set_last_vault_path" | "save_vault_list" => Ok(Value::Null),
@@ -141,6 +153,16 @@ mod tests {
         let dir = tempdir().unwrap();
         let out = dispatch(dir.path(), "get_last_vault_path", json!({})).unwrap();
         assert_eq!(out.as_str().unwrap(), dir.path().to_string_lossy());
+    }
+
+    #[test]
+    fn check_vault_exists_true_for_server_vault_false_otherwise() {
+        let dir = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let yes = dispatch(dir.path(), "check_vault_exists", json!({ "path": dir.path() })).unwrap();
+        let no = dispatch(dir.path(), "check_vault_exists", json!({ "path": outside.path() })).unwrap();
+        assert_eq!(yes, json!(true));
+        assert_eq!(no, json!(false));
     }
 
     #[test]
