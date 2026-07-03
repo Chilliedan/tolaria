@@ -21,7 +21,7 @@ import { invoke } from './transport'
 import { mockHandlers } from '../mock-tauri/mock-handlers'
 
 /** Commands the web server implements; these go to the real HTTP transport. */
-const SERVER_COMMANDS = new Set<string>([
+export const SERVER_COMMANDS = new Set<string>([
   'list_vault',
   'reload_vault',
   'list_vault_folders',
@@ -44,6 +44,14 @@ const SERVER_COMMANDS = new Set<string>([
   'set_last_vault_path',
   'save_vault_list',
   'check_vault_exists',
+  // git sync (Phase 5)
+  'git_remote_status',
+  'git_author_identity',
+  'git_commit',
+  'git_push',
+  'git_pull',
+  'git_resolve_conflict',
+  'git_commit_conflict_resolution',
 ])
 
 export function isTauri(): boolean {
