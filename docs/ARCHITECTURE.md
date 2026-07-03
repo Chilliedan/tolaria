@@ -782,6 +782,15 @@ Phase 4 adds authenticated write commands over the Phase 3 auth layer. See [ADR-
 - **Vault mount**: `docker-compose.yml` mounts the vault read-write (no `:ro`) so writes persist to disk.
 - **Out of scope (Phase 5)**: git commit/push/pull and remote conflict resolution. Writes land on disk but are not committed to git by the server yet.
 
+### Web client compatibility layer
+
+The browser build runs the **unmodified desktop React app** against `tolaria-server`. Bridging the two required a small compatibility layer, documented in [ADR-0150](./adr/0150-web-client-compatibility-layer.md).
+
+- **Mock bridge** (`src/web/mockBridge.ts`, wired via a `resolveId` plugin in `vite.config.web.ts` that redirects `mock-tauri` imports): the desktop app has ~115 `isTauri()` branches whose non-Tauri side calls `mockInvoke`. In the browser `isTauri()` stays `false` (so `if (isTauri()) <tauri-plugin-call>` guards remain off), but `mockInvoke` routes commands on the `SERVER_COMMANDS` allowlist to the real HTTP transport (`src/web/transport.ts`) and everything else to the original in-memory `mockHandlers`. This keeps data operations (reads/writes/search) on the real server while unimplemented desktop-only commands (AI, git, PDF, workspace sessions) return placeholder data instead of `undefined` (which the app would `.map()` and crash on).
+- **Vault registry over HTTP** (`handlers.rs`): the server presents its single `vault_root` as a one-entry vault registry so the app's vault-discovery flow resolves to the real vault. `load_vault_list` → `{ vaults:[{label,path}], active_vault, hidden_defaults:[] }`; `get_last_vault_path` → `vault_root`; `check_vault_exists({path})` → true only when the path canonicalizes to `vault_root`; `set_last_vault_path`/`save_vault_list` → no-op (a single-vault server does not let clients reconfigure the served vault).
+- **Insecure-context (HTTP) degradation**: `crypto.subtle` only exists in secure contexts (HTTPS/`localhost`), so over plain HTTP the transport's `sha256Hex` returns `null` and content-version tracking is skipped rather than throwing — optimistic concurrency degrades to best-effort (no `baseHash` sent). The session cookie's `Secure` flag must also be disabled (`TOLARIA_COOKIE_SECURE=false`) over non-TLS. **Deploy behind TLS for full functionality.**
+- **Desktop-only bridges gated**: the AI UI-action WebSocket (`ws://localhost:9711`, `useAiActivity`) is skipped when `isTauri()` is false, so the web build does not attempt a local connection that will never succeed.
+
 ## Tauri IPC Commands
 
 ### Vault Operations
