@@ -31,7 +31,7 @@ pub(crate) use author::{
     LEGACY_FALLBACK_EMAIL,
 };
 pub use clone::clone_repo;
-pub use commit::git_commit;
+pub use commit::{git_commit, git_commit_all_as, git_commit_paths_as, CommitIdentity};
 pub use conflict::{
     get_conflict_files, get_conflict_mode, git_commit_conflict_resolution, git_resolve_conflict,
     is_merge_in_progress, is_rebase_in_progress,
