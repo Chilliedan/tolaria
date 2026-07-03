@@ -107,6 +107,25 @@ impl UsersDb {
             git_email,
         })
     }
+
+    /// Look up a user's public record (including git identity) by id. Returns
+    /// `None` if no such user exists.
+    pub fn find_by_id(&self, id: i64) -> Option<UserRecord> {
+        let conn = self.conn.lock().ok()?;
+        conn.query_row(
+            "SELECT id, username, git_name, git_email FROM users WHERE id = ?1",
+            rusqlite::params![id],
+            |r| {
+                Ok(UserRecord {
+                    id: r.get(0)?,
+                    username: r.get(1)?,
+                    git_name: r.get(2)?,
+                    git_email: r.get(3)?,
+                })
+            },
+        )
+        .ok()
+    }
 }
 
 /// Create a user, rejecting empty inputs. Used by the `useradd` CLI.
@@ -200,5 +219,20 @@ mod tests {
     fn run_useradd_rejects_empty_git_email() {
         let db = UsersDb::open_in_memory().unwrap();
         assert!(run_useradd(&db, "eve", "pw", "Eve", "").is_err());
+    }
+
+    #[test]
+    fn find_by_id_returns_git_identity() {
+        let db = UsersDb::open_in_memory().unwrap();
+        db.create_user("carol", "pw-carol-123", "Carol Q", "carol@example.com")
+            .unwrap();
+        let created = db.verify_credentials("carol", "pw-carol-123").unwrap();
+
+        let found = db.find_by_id(created.id).expect("user exists");
+        assert_eq!(found.username, "carol");
+        assert_eq!(found.git_name, "Carol Q");
+        assert_eq!(found.git_email, "carol@example.com");
+
+        assert!(db.find_by_id(9999).is_none());
     }
 }
