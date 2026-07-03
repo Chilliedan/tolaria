@@ -214,3 +214,79 @@ async fn save_matching_basehash_succeeds_over_http() {
     assert_eq!(v["version"], json!(tolaria_server::version::content_version("my-edit")));
     assert_eq!(fs::read_to_string(&note).unwrap(), "my-edit");
 }
+
+#[tokio::test]
+async fn git_author_identity_over_http_returns_session_user() {
+    let dir = tempdir().unwrap();
+    let static_dir = dir.path().join("_static_not_used");
+    let users = tolaria_server::users::UsersDb::open(&dir.path().join("users.db")).unwrap();
+    users
+        .create_user("dora", "pw-dora-1234", "Dora D", "dora@example.com")
+        .unwrap();
+    let user_id = users
+        .verify_credentials("dora", "pw-dora-1234")
+        .unwrap()
+        .id;
+    let sessions =
+        tolaria_server::session::SessionStore::new(std::time::Duration::from_secs(60));
+    let token = sessions.create(user_id, "dora");
+    let csrf_token = tolaria_server::csrf::generate_token();
+    let app = tolaria_server::build_router(
+        dir.path().to_path_buf(),
+        static_dir,
+        users,
+        sessions,
+        false,
+    );
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/cmd/git_author_identity")
+        .header("content-type", "application/json")
+        .header("cookie", authed_cookie_header(&token, &csrf_token))
+        .header("x-csrf-token", &csrf_token)
+        .body(Body::from(json!({}).to_string()))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        v,
+        json!({
+            "name": "Dora D",
+            "email": "dora@example.com",
+            "source": "web-session",
+            "warning": null,
+        })
+    );
+}
+
+#[tokio::test]
+async fn git_author_identity_without_session_is_401() {
+    let dir = tempdir().unwrap();
+    let users = tolaria_server::users::UsersDb::open(&dir.path().join("users.db")).unwrap();
+    let sessions =
+        tolaria_server::session::SessionStore::new(std::time::Duration::from_secs(60));
+    let app = tolaria_server::build_router(
+        dir.path().to_path_buf(),
+        dir.path().to_path_buf(),
+        users,
+        sessions,
+        false,
+    );
+
+    let req = Request::builder()
+        .method("POST")
+        .uri("/api/cmd/git_author_identity")
+        .header("content-type", "application/json")
+        .body(Body::from(json!({}).to_string()))
+        .unwrap();
+
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::UNAUTHORIZED);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let v: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(v, json!({ "error": "not authenticated" }));
+}
