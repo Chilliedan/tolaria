@@ -8,6 +8,19 @@ services:
       TOLARIA_VAULT_PATH: /vault
       TOLARIA_USERS_DB: /app/data/users.db
       TOLARIA_COOKIE_SECURE: ${TOLARIA_COOKIE_SECURE:-true}
+      # Phase 5 git sync: fixed server committer identity for autogit/explicit
+      # commits (author is always the acting user's own git_name/git_email).
+      TOLARIA_COMMITTER_NAME: ${TOLARIA_COMMITTER_NAME:-Tolaria Server}
+      TOLARIA_COMMITTER_EMAIL: ${TOLARIA_COMMITTER_EMAIL:-server@tolaria.local}
+      # Auto-commit each write as the acting user. Set to false to disable
+      # and rely solely on the explicit git_commit control.
+      TOLARIA_AUTOGIT: ${TOLARIA_AUTOGIT:-true}
+      # To enable git push/pull to a remote, provide a deploy credential, e.g. an SSH key:
+      #   volumes:
+      #     - ./secrets/deploy_key:/home/app/.ssh/id_ed25519:ro
+      #   environment:
+      #     GIT_SSH_COMMAND: "ssh -i /home/app/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
+      # The vault clone must already have its remote configured (git remote add origin ...).
     volumes:
       # Mount a vault clone read-write into the container: Phase 4 write
       # commands (save/create/rename/delete/frontmatter) persist to disk here.

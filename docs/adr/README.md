@@ -209,3 +209,4 @@ proposed → active → superseded
 | [0148](0148-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
 | [0149](0149-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
 | [0150](0150-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
+| [0151](0151-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
