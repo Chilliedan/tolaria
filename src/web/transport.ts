@@ -45,9 +45,18 @@ export class Channel<T = unknown> {
 const noteVersions = new Map<string, string>()
 
 /** SHA-256 hex digest of `text`, used to fingerprint note content for the
- *  optimistic-concurrency `baseHash` handshake with the server. */
-async function sha256Hex(text: string): Promise<string> {
-  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+ *  optimistic-concurrency `baseHash` handshake with the server.
+ *
+ *  Returns `null` when Web Crypto's SubtleCrypto is unavailable. `crypto.subtle`
+ *  only exists in secure contexts (HTTPS or localhost); over plain HTTP it is
+ *  `undefined`. In that case we skip version tracking so note load/save keep
+ *  working — optimistic concurrency degrades to best-effort (no `baseHash` is
+ *  sent, so the server does not run the stale-write check). Deploy behind TLS
+ *  to get full conflict protection. */
+async function sha256Hex(text: string): Promise<string | null> {
+  const subtle = typeof crypto !== 'undefined' ? crypto.subtle : undefined
+  if (!subtle) return null
+  const buf = await subtle.digest('SHA-256', new TextEncoder().encode(text))
   return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
@@ -97,10 +106,12 @@ export async function invoke<T = unknown>(
   }
   const data = (await res.json()) as T
   if (command === 'get_note_content' && path && typeof data === 'string') {
-    noteVersions.set(path, await sha256Hex(data))
+    const version = await sha256Hex(data)
+    if (version) noteVersions.set(path, version)
   }
   if (command === 'save_note_content' && path) {
-    noteVersions.set(path, await sha256Hex(String((args as { content?: unknown } | undefined)?.content ?? '')))
+    const version = await sha256Hex(String((args as { content?: unknown } | undefined)?.content ?? ''))
+    if (version) noteVersions.set(path, version)
   }
   return data
 }
