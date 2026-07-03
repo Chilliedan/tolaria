@@ -162,6 +162,19 @@ pub async fn command_route(
         };
     }
     let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
+    if crate::git_handlers::is_git_command(&command) {
+        let Some(identity) = state.acting_user(&jar) else {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({ "error": "not authenticated" })),
+            )
+                .into_response();
+        };
+        return match crate::git_handlers::dispatch_git(&state, &identity, &command, args).await {
+            Ok(value) => ok_json(value),
+            Err(err) => err.into_response(),
+        };
+    }
     let result = if crate::write_handlers::is_write_command(&command) {
         crate::write_handlers::dispatch_write(&state, &command, args).await
     } else {
