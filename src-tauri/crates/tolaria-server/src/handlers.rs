@@ -128,6 +128,13 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
         // Single-vault server: the client cannot reconfigure which vault is
         // served, so persistence of the vault list / last path is a no-op.
         "set_last_vault_path" | "save_vault_list" => Ok(Value::Null),
+        // Read-only git status: always operates on the server's own vault_root,
+        // ignoring any client-supplied vaultPath, for containment.
+        "git_remote_status" => {
+            let status =
+                tolaria_core::git::git_remote_status(vault_root).map_err(RpcError::internal)?;
+            Ok(serde_json::to_value(status).map_err(|e| RpcError::internal(e.to_string()))?)
+        }
         other => Err(rpc::unsupported(other)),
     }
 }
@@ -247,5 +254,29 @@ mod tests {
         assert!(out.is_object(), "reload_vault_entry returns a JSON object");
         let title = out.get("title").and_then(|v| v.as_str());
         assert_eq!(title, Some("My Note"), "title field matches h1 heading");
+    }
+
+    #[test]
+    fn git_remote_status_reports_no_remote_for_fresh_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        for args in [
+            ["init"].as_slice(),
+            ["config", "user.email", "t@t"].as_slice(),
+            ["config", "user.name", "T"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        let out = dispatch(
+            vault,
+            "git_remote_status",
+            serde_json::json!({ "vaultPath": vault.to_string_lossy() }),
+        )
+        .unwrap();
+        assert_eq!(out["hasRemote"], serde_json::json!(false));
     }
 }

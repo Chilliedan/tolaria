@@ -144,6 +144,23 @@ pub async fn command_route(
     if !crate::csrf::verify(&jar, &headers) {
         return (StatusCode::FORBIDDEN, axum::Json(json!({ "error": "csrf" }))).into_response();
     }
+    // Special-cased here (not in handlers::dispatch) because it reflects the
+    // logged-in user's identity, which requires the session cookie jar.
+    if command == "git_author_identity" {
+        return match state.acting_user(&jar) {
+            Some(id) => ok_json(json!({
+                "name": id.author_name,
+                "email": id.author_email,
+                "source": "web-session",
+                "warning": Value::Null,
+            })),
+            None => (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({ "error": "not authenticated" })),
+            )
+                .into_response(),
+        };
+    }
     let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
     let result = if crate::write_handlers::is_write_command(&command) {
         crate::write_handlers::dispatch_write(&state, &command, args).await
