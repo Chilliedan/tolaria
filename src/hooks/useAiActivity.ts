@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { isTauri } from '../mock-tauri'
 
 export type HighlightElement = 'editor' | 'tab' | 'properties' | 'notelist' | null
 
@@ -134,6 +135,11 @@ function useUiActionMessageHandler(
 
 function useUiActionSocket(handleMessage: (event: MessageEvent) => void, clearHighlightTimer: () => void): void {
   useEffect(() => {
+    // The UI action bridge is a local process the desktop app talks to over
+    // ws://localhost:9711. On web there is no such local process, so skip the
+    // connection entirely (avoids failing-connect noise + reconnect storms).
+    if (!isTauri()) return
+
     let ws: WebSocket | null = null
     let mounted = true
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null

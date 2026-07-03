@@ -58,4 +58,15 @@ describe('web invoke transport', () => {
     expect(result).toBeUndefined()
     expect(reload).toHaveBeenCalled()
   })
+
+  it('loads note content over insecure HTTP where crypto.subtle is undefined', async () => {
+    // Plain HTTP is not a secure context, so window.crypto.subtle is undefined.
+    // get_note_content must still resolve its content instead of throwing on
+    // the optimistic-concurrency version-hash step.
+    vi.stubGlobal('crypto', {} as unknown as Crypto)
+    vi.stubGlobal('document', { cookie: '' } as unknown as Document)
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify('hello world'), { status: 200 })))
+    const content = await invoke<string>('get_note_content', { path: '/v/n.md' })
+    expect(content).toBe('hello world')
+  })
 })
