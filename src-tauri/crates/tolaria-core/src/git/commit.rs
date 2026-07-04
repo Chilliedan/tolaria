@@ -31,6 +31,11 @@ impl CommitIdentity {
 /// Stage exactly `paths` and commit them as `identity`. "Nothing to commit"
 /// resolves to `Ok(String::new())` so the per-save autogit path is a no-op when
 /// the file content did not actually change. Empty `paths` stages nothing new.
+///
+/// Unlike [`git_commit`], this does NOT call `ensure_author_config`: passing
+/// `identity` through [`CommitIdentity::apply`] sets `GIT_AUTHOR_*` /
+/// `GIT_COMMITTER_*` env vars, which fully override git config resolution, so
+/// there is no local/global config to fall back to or ensure.
 pub fn git_commit_paths_as(
     vault_path: &str,
     paths: &[String],
@@ -71,6 +76,11 @@ pub fn git_commit_paths_as(
 
 /// Stage all changes (`git add -A`) and commit as `identity`. Used by the
 /// explicit web "commit" control; "nothing to commit" is a real error here.
+///
+/// Unlike [`git_commit`], this does NOT call `ensure_author_config`: passing
+/// `identity` through [`CommitIdentity::apply`] sets `GIT_AUTHOR_*` /
+/// `GIT_COMMITTER_*` env vars, which fully override git config resolution, so
+/// there is no local/global config to fall back to or ensure.
 pub fn git_commit_all_as(
     vault_path: &str,
     message: &str,

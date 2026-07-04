@@ -138,4 +138,40 @@ mod tests {
             "Eve E <eve@example.com>"
         );
     }
+
+    #[tokio::test]
+    async fn git_push_on_repo_without_remote_returns_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        let state = repo_state(vault);
+
+        let out = dispatch_git(&state, &eve(), "git_push", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(out["status"], json!("no_remote"));
+    }
+
+    #[tokio::test]
+    async fn git_pull_on_repo_without_remote_returns_status() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        let state = repo_state(vault);
+
+        let out = dispatch_git(&state, &eve(), "git_pull", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(out["status"], json!("no_remote"));
+    }
+
+    #[tokio::test]
+    async fn git_resolve_conflict_missing_args_is_bad_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        let state = repo_state(vault);
+
+        let err = dispatch_git(&state, &eve(), "git_resolve_conflict", json!({}))
+            .await
+            .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::BAD_REQUEST);
+    }
 }

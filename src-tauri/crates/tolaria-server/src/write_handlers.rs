@@ -89,9 +89,11 @@ fn file_label(safe: &std::path::Path) -> String {
 ///
 /// No-ops when `identity` is `None` or `state.autogit` is `false`. A commit
 /// failure is logged but never fails the write — the file is already safely
-/// persisted to disk. Runs under the repo lock, acquired only after the
-/// per-path lock guarding the mutation has already been dropped by the
-/// caller, so there is no lock-ordering inversion.
+/// persisted to disk. Runs under the repo lock, which is intentionally
+/// acquired while the caller's per-path `_guard` is still held (the guard is
+/// held until the caller returns) — a known throughput trade-off documented
+/// in ADR 0151. Lock acquisition order is always per-path-lock → repo-lock,
+/// never the reverse, so this cannot deadlock.
 async fn autogit_commit_paths(
     state: &AppState,
     identity: Option<&tolaria_core::git::CommitIdentity>,
@@ -115,7 +117,10 @@ async fn autogit_commit_paths(
 /// not their paths), so a path-scoped commit would miss them.
 ///
 /// Same no-op / failure-logging / lock-ordering contract as
-/// [`autogit_commit_paths`].
+/// [`autogit_commit_paths`]: the repo lock is intentionally acquired while
+/// the caller's per-path `_guard` is still held (a known throughput
+/// trade-off documented in ADR 0151); acquisition order is always
+/// per-path-lock → repo-lock, never the reverse, so this cannot deadlock.
 async fn autogit_commit_all(
     state: &AppState,
     identity: Option<&tolaria_core::git::CommitIdentity>,
@@ -725,6 +730,71 @@ mod tests {
         assert!(
             line.starts_with("Frank F <frank@example.com>|"),
             "got: {line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_note_autogit_commits_the_removal() {
+        let dir = tempdir().unwrap();
+        let vault = dir.path();
+        for args in [
+            ["init"].as_slice(),
+            ["config", "user.email", "s@t"].as_slice(),
+            ["config", "user.name", "S"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        let state = state_for(vault);
+        let identity = tolaria_core::git::CommitIdentity {
+            author_name: "Frank F".into(),
+            author_email: "frank@example.com".into(),
+            committer_name: "Tolaria Server".into(),
+            committer_email: "server@tolaria.local".into(),
+        };
+        let p = vault.join("auto.md");
+
+        dispatch_write(
+            &state,
+            Some(&identity),
+            "create_note_content",
+            json!({ "path": p.to_string_lossy(), "content": "# Auto\n" }),
+        )
+        .await
+        .unwrap();
+
+        dispatch_write(
+            &state,
+            Some(&identity),
+            "delete_note",
+            json!({ "path": p.to_string_lossy() }),
+        )
+        .await
+        .unwrap();
+
+        let log = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%an <%ae>|%s"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        let line = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            line.starts_with("Frank F <frank@example.com>|"),
+            "got: {line}"
+        );
+
+        let deleted = std::process::Command::new("git")
+            .args(["log", "-1", "--diff-filter=D", "--name-only"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        let deleted_out = String::from_utf8_lossy(&deleted.stdout);
+        assert!(
+            deleted_out.contains("auto.md"),
+            "expected auto.md to show as deleted in HEAD, got: {deleted_out}"
         );
     }
 
