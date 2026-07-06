@@ -27,6 +27,7 @@ services:
       - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault
       # Persist the SQLite users DB (argon2 password hashes) across restarts.
       - tolaria_users:/app/data
+      - ./secrets/deploy_key:/home/daniel/.ssh/id_ed25519:ro
     ports:
       # Bind to localhost only; the nginx edge (or host nginx) is the public listener.
       - "127.0.0.1:8787:8787"
