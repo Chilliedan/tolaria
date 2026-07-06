@@ -7,9 +7,24 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum_extra::extract::cookie::CookieJar;
+use tolaria_core::git::CommitIdentity;
+
 use crate::locks::PathLocks;
 use crate::session::SessionStore;
 use crate::users::UsersDb;
+
+/// Server-wide settings that do not vary per request: cookie transport
+/// security and the fixed git committer identity/autogit toggle used for
+/// server-authored commits. Grouped so `AppState::new` stays within
+/// clippy's argument-count limit.
+#[derive(Debug, Clone)]
+pub struct AppStateConfig {
+    pub cookie_secure: bool,
+    pub committer_name: String,
+    pub committer_email: String,
+    pub autogit: bool,
+}
 
 /// Shared application state threaded through Axum handlers.
 #[derive(Clone)]
@@ -19,6 +34,11 @@ pub struct AppState {
     pub sessions: SessionStore,
     pub cookie_secure: bool,
     pub locks: PathLocks,
+    /// Serializes all index-mutating git operations across the vault.
+    pub repo_lock: Arc<tokio::sync::Mutex<()>>,
+    pub committer_name: Arc<str>,
+    pub committer_email: Arc<str>,
+    pub autogit: bool,
 }
 
 impl AppState {
@@ -26,16 +46,37 @@ impl AppState {
         vault_root: PathBuf,
         users: UsersDb,
         sessions: SessionStore,
-        cookie_secure: bool,
         locks: PathLocks,
+        config: AppStateConfig,
     ) -> Self {
         Self {
             vault_root: Arc::new(vault_root),
             users,
             sessions,
-            cookie_secure,
+            cookie_secure: config.cookie_secure,
             locks,
+            repo_lock: Arc::new(tokio::sync::Mutex::new(())),
+            committer_name: config.committer_name.into(),
+            committer_email: config.committer_email.into(),
+            autogit: config.autogit,
         }
+    }
+
+    /// Resolve the acting user's commit identity from the session cookie.
+    /// Author = the user's git identity; committer = the fixed server
+    /// identity. Returns `None` if unauthenticated — should not happen
+    /// behind `require_auth`, but handled defensively.
+    pub fn acting_user(&self, jar: &CookieJar) -> Option<CommitIdentity> {
+        let session = jar
+            .get(crate::auth_routes::SESSION_COOKIE)
+            .and_then(|c| self.sessions.get(c.value()))?;
+        let user = self.users.find_by_id(session.user_id)?;
+        Some(CommitIdentity {
+            author_name: user.git_name,
+            author_email: user.git_email,
+            committer_name: self.committer_name.to_string(),
+            committer_email: self.committer_email.to_string(),
+        })
     }
 }
 
@@ -103,9 +144,40 @@ pub async fn command_route(
     if !crate::csrf::verify(&jar, &headers) {
         return (StatusCode::FORBIDDEN, axum::Json(json!({ "error": "csrf" }))).into_response();
     }
+    // Special-cased here (not in handlers::dispatch) because it reflects the
+    // logged-in user's identity, which requires the session cookie jar.
+    if command == "git_author_identity" {
+        return match state.acting_user(&jar) {
+            Some(id) => ok_json(json!({
+                "name": id.author_name,
+                "email": id.author_email,
+                "source": "web-session",
+                "warning": Value::Null,
+            })),
+            None => (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({ "error": "not authenticated" })),
+            )
+                .into_response(),
+        };
+    }
     let args = body.map(|Json(v)| v).unwrap_or(Value::Null);
+    if crate::git_handlers::is_git_command(&command) {
+        let Some(identity) = state.acting_user(&jar) else {
+            return (
+                StatusCode::UNAUTHORIZED,
+                axum::Json(json!({ "error": "not authenticated" })),
+            )
+                .into_response();
+        };
+        return match crate::git_handlers::dispatch_git(&state, &identity, &command, args).await {
+            Ok(value) => ok_json(value),
+            Err(err) => err.into_response(),
+        };
+    }
     let result = if crate::write_handlers::is_write_command(&command) {
-        crate::write_handlers::dispatch_write(&state, &command, args).await
+        let identity = state.acting_user(&jar);
+        crate::write_handlers::dispatch_write(&state, identity.as_ref(), &command, args).await
     } else {
         crate::handlers::dispatch(&state.vault_root, &command, args)
     };
@@ -119,6 +191,10 @@ pub async fn command_route(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session::SessionStore;
+    use crate::users::UsersDb;
+    use axum_extra::extract::cookie::Cookie;
+    use std::time::Duration;
 
     #[test]
     fn unsupported_is_501_with_message() {
@@ -126,5 +202,45 @@ mod tests {
         assert_eq!(err.status, StatusCode::NOT_IMPLEMENTED);
         assert!(err.message.contains("save_note_content"));
         assert!(err.message.contains("not supported on web"));
+    }
+
+    fn state_for_identity() -> (AppState, String) {
+        let users = UsersDb::open_in_memory().unwrap();
+        users
+            .create_user("dora", "pw-dora-1234", "Dora D", "dora@example.com")
+            .unwrap();
+        let rec = users.verify_credentials("dora", "pw-dora-1234").unwrap();
+        let sessions = SessionStore::new(Duration::from_secs(60));
+        let token = sessions.create(rec.id, "dora");
+        let state = AppState::new(
+            std::path::PathBuf::from("/tmp"),
+            users,
+            sessions,
+            PathLocks::new(),
+            AppStateConfig {
+                cookie_secure: false,
+                committer_name: "Tolaria Server".to_string(),
+                committer_email: "server@tolaria.local".to_string(),
+                autogit: true,
+            },
+        );
+        (state, token)
+    }
+
+    #[test]
+    fn acting_user_resolves_author_from_session() {
+        let (state, token) = state_for_identity();
+        let jar = CookieJar::new().add(Cookie::new(crate::auth_routes::SESSION_COOKIE, token));
+        let id = state.acting_user(&jar).expect("resolves");
+        assert_eq!(id.author_name, "Dora D");
+        assert_eq!(id.author_email, "dora@example.com");
+        assert_eq!(id.committer_name, "Tolaria Server");
+        assert_eq!(id.committer_email, "server@tolaria.local");
+    }
+
+    #[test]
+    fn acting_user_none_without_session() {
+        let (state, _t) = state_for_identity();
+        assert!(state.acting_user(&CookieJar::new()).is_none());
     }
 }

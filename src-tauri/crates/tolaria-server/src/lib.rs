@@ -4,6 +4,7 @@ pub mod auth_middleware;
 pub mod auth_routes;
 pub mod config;
 pub mod csrf;
+pub mod git_handlers;
 pub mod handlers;
 pub mod locks;
 pub mod rpc;
@@ -36,7 +37,19 @@ pub fn build_router(
     sessions: SessionStore,
     cookie_secure: bool,
 ) -> Router {
-    let state = rpc::AppState::new(vault_root, users, sessions, cookie_secure, PathLocks::new());
+    let (committer_name, committer_email) = config::committer_identity();
+    let state = rpc::AppState::new(
+        vault_root,
+        users,
+        sessions,
+        PathLocks::new(),
+        rpc::AppStateConfig {
+            cookie_secure,
+            committer_name,
+            committer_email,
+            autogit: config::autogit_enabled(),
+        },
+    );
 
     // Public routes: reachable without a session.
     let public = Router::new()

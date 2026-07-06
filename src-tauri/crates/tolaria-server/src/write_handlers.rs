@@ -44,20 +44,96 @@ fn parse<T: serde::de::DeserializeOwned>(args: Value) -> Result<T, RpcError> {
 }
 
 /// Dispatch a write command name + JSON args to its async handler.
+///
+/// `identity` is the acting user's commit identity, resolved from the
+/// session cookie by the caller. When present and `state.autogit` is
+/// enabled, the write is followed by an autogit commit authored by that
+/// user; when `None` (e.g. internal callers, unauthenticated defensive
+/// paths, or tests asserting file effects only), no commit is made.
 pub async fn dispatch_write(
     state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
     command: &str,
     args: Value,
 ) -> Result<Value, RpcError> {
     match command {
-        "save_note_content" => save_note_content(state, args).await,
-        "create_note_content" | "create_note" => create_note_content(state, args).await,
-        "delete_note" => delete_note(state, args).await,
-        "rename_note" => rename_note(state, args).await,
-        "rename_note_filename" => rename_note_filename(state, args).await,
-        "update_frontmatter" => update_frontmatter(state, args).await,
-        "delete_frontmatter_property" => delete_frontmatter_property(state, args).await,
+        "save_note_content" => save_note_content(state, identity, args).await,
+        "create_note_content" | "create_note" => create_note_content(state, identity, args).await,
+        "delete_note" => delete_note(state, identity, args).await,
+        "rename_note" => rename_note(state, identity, args).await,
+        "rename_note_filename" => rename_note_filename(state, identity, args).await,
+        "update_frontmatter" => update_frontmatter(state, identity, args).await,
+        "delete_frontmatter_property" => delete_frontmatter_property(state, identity, args).await,
         other => Err(crate::rpc::unsupported(other)),
+    }
+}
+
+/// The vault-relative path used for `git add`, falling back to the absolute
+/// path string if it is not under the vault root (should not happen — writes
+/// are containment-checked).
+fn rel_path(state: &AppState, safe: &std::path::Path) -> String {
+    safe.strip_prefix(state.vault_root.as_ref())
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_else(|_| safe.to_string_lossy().to_string())
+}
+
+fn file_label(safe: &std::path::Path) -> String {
+    safe.file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+/// Commit exactly `rel_paths` as `identity`, when autogit is enabled. Used
+/// for single-file writes (save/create/delete/frontmatter) where the set of
+/// changed files is known precisely.
+///
+/// No-ops when `identity` is `None` or `state.autogit` is `false`. A commit
+/// failure is logged but never fails the write — the file is already safely
+/// persisted to disk. Runs under the repo lock, which is intentionally
+/// acquired while the caller's per-path `_guard` is still held (the guard is
+/// held until the caller returns) — a known throughput trade-off documented
+/// in ADR 0151. Lock acquisition order is always per-path-lock → repo-lock,
+/// never the reverse, so this cannot deadlock.
+async fn autogit_commit_paths(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    rel_paths: &[String],
+    message: &str,
+) {
+    let Some(identity) = identity else { return };
+    if !state.autogit {
+        return;
+    }
+    let _repo = state.repo_lock.lock().await;
+    let vault = state.vault_root.to_string_lossy().to_string();
+    if let Err(e) = tolaria_core::git::git_commit_paths_as(&vault, rel_paths, message, identity) {
+        eprintln!("autogit commit failed for {rel_paths:?}: {e}");
+    }
+}
+
+/// Commit ALL working-tree changes as `identity`, when autogit is enabled.
+/// Used for rename handlers: renaming rewrites wikilinks across an unknown
+/// set of other notes (the result only reports a count via `updated_files`,
+/// not their paths), so a path-scoped commit would miss them.
+///
+/// Same no-op / failure-logging / lock-ordering contract as
+/// [`autogit_commit_paths`]: the repo lock is intentionally acquired while
+/// the caller's per-path `_guard` is still held (a known throughput
+/// trade-off documented in ADR 0151); acquisition order is always
+/// per-path-lock → repo-lock, never the reverse, so this cannot deadlock.
+async fn autogit_commit_all(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    message: &str,
+) {
+    let Some(identity) = identity else { return };
+    if !state.autogit {
+        return;
+    }
+    let _repo = state.repo_lock.lock().await;
+    let vault = state.vault_root.to_string_lossy().to_string();
+    if let Err(e) = tolaria_core::git::git_commit_all_as(&vault, message, identity) {
+        eprintln!("autogit commit-all failed: {e}");
     }
 }
 
@@ -92,7 +168,11 @@ fn stale_conflict(safe: &std::path::Path, base: &str) -> Result<Option<String>, 
 /// Optimistic save: under the per-path lock, reject with `409` if the file
 /// exists and `baseHash` no longer matches the on-disk content; otherwise
 /// write the new content and return its version hash.
-async fn save_note_content(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn save_note_content(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: SaveArgs = parse(args)?;
     // When the file already exists, resolve it the same way the other
     // existing-file arms do (fully canonicalized) so a concurrent save +
@@ -112,6 +192,13 @@ async fn save_note_content(state: &AppState, args: Value) -> Result<Value, RpcEr
 
     let path_str = safe.to_string_lossy().to_string();
     vault::save_note_content(&path_str, &a.content).map_err(RpcError::internal)?;
+    autogit_commit_paths(
+        state,
+        identity,
+        &[rel_path(state, &safe)],
+        &format!("update {}", file_label(&safe)),
+    )
+    .await;
     Ok(json!({ "version": content_version(&a.content) }))
 }
 
@@ -124,11 +211,22 @@ struct CreateArgs {
 
 /// Create a new note at `path` (parent-confined, since the file itself does
 /// not exist yet) and write its initial content.
-async fn create_note_content(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn create_note_content(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: CreateArgs = parse(args)?;
     let safe = contained_note_path_for_write(&state.vault_root, &a.path)?;
     let _guard = state.locks.lock(&safe).await;
     vault::create_note_content(&safe.to_string_lossy(), &a.content).map_err(RpcError::internal)?;
+    autogit_commit_paths(
+        state,
+        identity,
+        &[rel_path(state, &safe)],
+        &format!("create {}", file_label(&safe)),
+    )
+    .await;
     Ok(json!({ "path": safe.to_string_lossy(), "version": content_version(&a.content) }))
 }
 
@@ -138,11 +236,22 @@ struct DeleteArgs {
 }
 
 /// Permanently delete an existing note.
-async fn delete_note(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn delete_note(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: DeleteArgs = parse(args)?;
     let safe = contained_note_path(&state.vault_root, &a.path)?;
     let _guard = state.locks.lock(&safe).await;
     let removed = vault::delete_note(&safe.to_string_lossy()).map_err(RpcError::internal)?;
+    autogit_commit_paths(
+        state,
+        identity,
+        &[rel_path(state, &safe)],
+        &format!("delete {}", file_label(&safe)),
+    )
+    .await;
     Ok(json!(removed))
 }
 
@@ -157,7 +266,11 @@ struct RenameArgs {
 /// Rename a note's title (and, if needed, its filename slug), rewriting
 /// wikilinks in other notes that referenced it. The vault root always comes
 /// from server state, never the client-supplied `vaultPath`.
-async fn rename_note(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn rename_note(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: RenameArgs = parse(args)?;
     let safe_old = contained_note_path(&state.vault_root, &a.old_path)?;
     let _guard = state.locks.lock(&safe_old).await;
@@ -170,6 +283,15 @@ async fn rename_note(state: &AppState, args: Value) -> Result<Value, RpcError> {
         old_title_hint: a.old_title_hint.as_deref(),
     })
     .map_err(RpcError::internal)?;
+    // Renaming rewrites wikilinks across an unknown set of other notes (the
+    // result only reports a count, not paths), so this must commit
+    // everything currently dirty rather than a fixed path list.
+    autogit_commit_all(
+        state,
+        identity,
+        &format!("rename note to {}", a.new_title),
+    )
+    .await;
     serde_json::to_value(result).map_err(|e| RpcError::internal(e.to_string()))
 }
 
@@ -182,7 +304,11 @@ struct RenameFilenameArgs {
 
 /// Rename only a note's filename (stem), leaving its title untouched,
 /// rewriting wikilinks in other notes that referenced its old filename.
-async fn rename_note_filename(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn rename_note_filename(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: RenameFilenameArgs = parse(args)?;
     let safe_old = contained_note_path(&state.vault_root, &a.old_path)?;
     let _guard = state.locks.lock(&safe_old).await;
@@ -194,6 +320,15 @@ async fn rename_note_filename(state: &AppState, args: Value) -> Result<Value, Rp
         new_filename_stem: &a.new_filename_stem,
     })
     .map_err(RpcError::internal)?;
+    // Same reasoning as `rename_note`: wikilink rewrites touch an unknown
+    // set of other notes, so commit everything dirty rather than a fixed
+    // path list.
+    autogit_commit_all(
+        state,
+        identity,
+        &format!("rename note file to {}", a.new_filename_stem),
+    )
+    .await;
     serde_json::to_value(result).map_err(|e| RpcError::internal(e.to_string()))
 }
 
@@ -205,12 +340,23 @@ struct UpdateFrontmatterArgs {
 }
 
 /// Set (or overwrite) a single frontmatter property on an existing note.
-async fn update_frontmatter(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn update_frontmatter(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: UpdateFrontmatterArgs = parse(args)?;
     let safe = contained_note_path(&state.vault_root, &a.path)?;
     let _guard = state.locks.lock(&safe).await;
     let content = frontmatter::update_frontmatter(&safe.to_string_lossy(), &a.key, a.value)
         .map_err(RpcError::internal)?;
+    autogit_commit_paths(
+        state,
+        identity,
+        &[rel_path(state, &safe)],
+        &format!("update frontmatter on {}", file_label(&safe)),
+    )
+    .await;
     Ok(json!(content))
 }
 
@@ -221,12 +367,23 @@ struct DeleteFrontmatterArgs {
 }
 
 /// Remove a single frontmatter property from an existing note.
-async fn delete_frontmatter_property(state: &AppState, args: Value) -> Result<Value, RpcError> {
+async fn delete_frontmatter_property(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
     let a: DeleteFrontmatterArgs = parse(args)?;
     let safe = contained_note_path(&state.vault_root, &a.path)?;
     let _guard = state.locks.lock(&safe).await;
     let content = frontmatter::delete_frontmatter_property(&safe.to_string_lossy(), &a.key)
         .map_err(RpcError::internal)?;
+    autogit_commit_paths(
+        state,
+        identity,
+        &[rel_path(state, &safe)],
+        &format!("delete frontmatter property on {}", file_label(&safe)),
+    )
+    .await;
     Ok(json!(content))
 }
 
@@ -264,8 +421,13 @@ mod tests {
             dir.to_path_buf(),
             crate::users::UsersDb::open_in_memory().unwrap(),
             crate::session::SessionStore::new(std::time::Duration::from_secs(60)),
-            false,
             crate::locks::PathLocks::new(),
+            crate::rpc::AppStateConfig {
+                cookie_secure: false,
+                committer_name: "Tolaria Server".to_string(),
+                committer_email: "server@tolaria.local".to_string(),
+                autogit: true,
+            },
         )
     }
 
@@ -276,6 +438,7 @@ mod tests {
         fs::write(&p, "old").unwrap();
         let out = save_note_content(
             &state_for(dir.path()),
+            None,
             json!({ "path": p, "content": "new" }),
         )
         .await
@@ -292,6 +455,7 @@ mod tests {
         let base = content_version("old");
         let out = save_note_content(
             &state_for(dir.path()),
+            None,
             json!({ "path": p, "content": "new", "baseHash": base }),
         )
         .await
@@ -307,6 +471,7 @@ mod tests {
         fs::write(&p, "server-changed").unwrap();
         let err = save_note_content(
             &state_for(dir.path()),
+            None,
             json!({ "path": p, "content": "my-edit", "baseHash": content_version("what-i-loaded") }),
         )
         .await
@@ -321,9 +486,13 @@ mod tests {
         let dir = tempdir().unwrap();
         let outside = tempdir().unwrap();
         let p = outside.path().join("evil.md");
-        let err = save_note_content(&state_for(dir.path()), json!({ "path": p, "content": "x" }))
-            .await
-            .unwrap_err();
+        let err = save_note_content(
+            &state_for(dir.path()),
+            None,
+            json!({ "path": p, "content": "x" }),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
@@ -339,7 +508,7 @@ mod tests {
         // Hold a's lock manually to simulate an in-flight write, and confirm
         // a concurrent write to b is not blocked by it.
         let guard = state.locks.lock(&fs::canonicalize(&a).unwrap()).await;
-        let out = save_note_content(&state, json!({ "path": b, "content": "b-new" }))
+        let out = save_note_content(&state, None, json!({ "path": b, "content": "b-new" }))
             .await
             .unwrap();
         assert_eq!(fs::read_to_string(&b).unwrap(), "b-new");
@@ -354,6 +523,7 @@ mod tests {
         let state = state_for(dir.path());
         let out = dispatch_write(
             &state,
+            None,
             "create_note_content",
             json!({ "path": p, "content": "hello" }),
         )
@@ -372,6 +542,7 @@ mod tests {
         let state = state_for(dir.path());
         let err = dispatch_write(
             &state,
+            None,
             "create_note_content",
             json!({ "path": p, "content": "x" }),
         )
@@ -388,7 +559,7 @@ mod tests {
         fs::write(&p, "bye").unwrap();
         let canon = fs::canonicalize(&p).unwrap();
         let state = state_for(dir.path());
-        let out = dispatch_write(&state, "delete_note", json!({ "path": p }))
+        let out = dispatch_write(&state, None, "delete_note", json!({ "path": p }))
             .await
             .unwrap();
         assert!(!canon.exists());
@@ -400,7 +571,7 @@ mod tests {
         let dir = tempdir().unwrap();
         let p = dir.path().join("missing.md");
         let state = state_for(dir.path());
-        let err = dispatch_write(&state, "delete_note", json!({ "path": p }))
+        let err = dispatch_write(&state, None, "delete_note", json!({ "path": p }))
             .await
             .unwrap_err();
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
@@ -414,6 +585,7 @@ mod tests {
         let state = state_for(dir.path());
         let out = dispatch_write(
             &state,
+            None,
             "rename_note",
             json!({ "vaultPath": dir.path(), "oldPath": p, "newTitle": "New Title" }),
         )
@@ -434,6 +606,7 @@ mod tests {
         let state = state_for(dir.path());
         let err = dispatch_write(
             &state,
+            None,
             "rename_note",
             json!({ "vaultPath": dir.path(), "oldPath": p, "newTitle": "New Title" }),
         )
@@ -450,6 +623,7 @@ mod tests {
         let state = state_for(dir.path());
         let out = dispatch_write(
             &state,
+            None,
             "rename_note_filename",
             json!({ "vaultPath": dir.path(), "oldPath": p, "newFilenameStem": "new-stem" }),
         )
@@ -469,6 +643,7 @@ mod tests {
         let state = state_for(dir.path());
         dispatch_write(
             &state,
+            None,
             "update_frontmatter",
             json!({ "path": p, "key": "status", "value": "done" }),
         )
@@ -487,6 +662,7 @@ mod tests {
         let state = state_for(dir.path());
         let err = dispatch_write(
             &state,
+            None,
             "update_frontmatter",
             json!({ "path": p, "key": "status", "value": "done" }),
         )
@@ -503,6 +679,7 @@ mod tests {
         let state = state_for(dir.path());
         dispatch_write(
             &state,
+            None,
             "delete_frontmatter_property",
             json!({ "path": p, "key": "status" }),
         )
@@ -510,5 +687,152 @@ mod tests {
         .unwrap();
         let content = fs::read_to_string(&p).unwrap();
         assert!(!content.contains("status: done"));
+    }
+
+    #[tokio::test]
+    async fn save_auto_commits_the_file_as_acting_user() {
+        let dir = tempdir().unwrap();
+        let vault = dir.path();
+        for args in [
+            ["init"].as_slice(),
+            ["config", "user.email", "s@t"].as_slice(),
+            ["config", "user.name", "S"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        let state = state_for(vault);
+        let identity = tolaria_core::git::CommitIdentity {
+            author_name: "Frank F".into(),
+            author_email: "frank@example.com".into(),
+            committer_name: "Tolaria Server".into(),
+            committer_email: "server@tolaria.local".into(),
+        };
+        let p = vault.join("auto.md");
+        dispatch_write(
+            &state,
+            Some(&identity),
+            "save_note_content",
+            json!({ "path": p.to_string_lossy(), "content": "# Auto\n" }),
+        )
+        .await
+        .unwrap();
+
+        let log = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%an <%ae>|%s"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        let line = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            line.starts_with("Frank F <frank@example.com>|"),
+            "got: {line}"
+        );
+    }
+
+    #[tokio::test]
+    async fn delete_note_autogit_commits_the_removal() {
+        let dir = tempdir().unwrap();
+        let vault = dir.path();
+        for args in [
+            ["init"].as_slice(),
+            ["config", "user.email", "s@t"].as_slice(),
+            ["config", "user.name", "S"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        let state = state_for(vault);
+        let identity = tolaria_core::git::CommitIdentity {
+            author_name: "Frank F".into(),
+            author_email: "frank@example.com".into(),
+            committer_name: "Tolaria Server".into(),
+            committer_email: "server@tolaria.local".into(),
+        };
+        let p = vault.join("auto.md");
+
+        dispatch_write(
+            &state,
+            Some(&identity),
+            "create_note_content",
+            json!({ "path": p.to_string_lossy(), "content": "# Auto\n" }),
+        )
+        .await
+        .unwrap();
+
+        dispatch_write(
+            &state,
+            Some(&identity),
+            "delete_note",
+            json!({ "path": p.to_string_lossy() }),
+        )
+        .await
+        .unwrap();
+
+        let log = std::process::Command::new("git")
+            .args(["log", "-1", "--format=%an <%ae>|%s"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        let line = String::from_utf8_lossy(&log.stdout);
+        assert!(
+            line.starts_with("Frank F <frank@example.com>|"),
+            "got: {line}"
+        );
+
+        let deleted = std::process::Command::new("git")
+            .args(["log", "-1", "--diff-filter=D", "--name-only"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        let deleted_out = String::from_utf8_lossy(&deleted.stdout);
+        assert!(
+            deleted_out.contains("auto.md"),
+            "expected auto.md to show as deleted in HEAD, got: {deleted_out}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rename_note_does_not_autogit_when_identity_is_none() {
+        let dir = tempdir().unwrap();
+        let vault = dir.path();
+        for args in [
+            ["init"].as_slice(),
+            ["config", "user.email", "s@t"].as_slice(),
+            ["config", "user.name", "S"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        let p = vault.join("old-title.md");
+        fs::write(&p, "# Old Title\n\nbody").unwrap();
+        let state = state_for(vault);
+        dispatch_write(
+            &state,
+            None,
+            "rename_note",
+            json!({ "vaultPath": vault, "oldPath": p, "newTitle": "New Title" }),
+        )
+        .await
+        .unwrap();
+
+        let status = std::process::Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&status.stdout).trim().is_empty(),
+            "no commit should have been made without an identity"
+        );
     }
 }

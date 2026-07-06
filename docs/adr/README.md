@@ -203,3 +203,10 @@ proposed → active → superseded
 | [0142](0142-rich-editor-prosemirror-decoration-dependency.md) | Rich editor ProseMirror decoration dependency | active |
 | [0143](0143-shared-focus-ownership-guard.md) | Shared focus ownership guard | active |
 | [0144](0144-collections-and-presentations.md) | Collections carry presentation configuration | active |
+| [0145](0145-xdg-backed-app-config-path.md) | XDG-backed app config path | active |
+| [0146](0146-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
+| [0147](0147-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
+| [0148](0148-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
+| [0149](0149-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
+| [0150](0150-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
+| [0151](0151-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
