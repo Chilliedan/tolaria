@@ -15,7 +15,7 @@ RUN cargo build --release --manifest-path src-tauri/Cargo.toml -p tolaria-server
 
 # --- Stage 3: runtime ---
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 # The vault is bind-mounted from the host and is owned by the host UID, not the
 # container's root user. Since git 2.35.2 that triggers "detected dubious

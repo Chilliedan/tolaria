@@ -15,18 +15,22 @@ services:
       # Auto-commit each write as the acting user. Set to false to disable
       # and rely solely on the explicit git_commit control.
       TOLARIA_AUTOGIT: ${TOLARIA_AUTOGIT:-true}
-      # To enable git push/pull to a remote, provide a deploy credential, e.g. an SSH key:
-      #   volumes:
-      #     - ./secrets/deploy_key:/home/app/.ssh/id_ed25519:ro
-      #   environment:
-      #     GIT_SSH_COMMAND: "ssh -i /home/app/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new"
+      # Credential for git push/pull to an SSH remote. The container runs as
+      # root, so mount the key under /root/.ssh (see the volume below) and point
+      # GIT_SSH_COMMAND's -i at it. Set GIT_SSH_COMMAND in your .env, e.g.:
+      #   GIT_SSH_COMMAND=ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new
       # The vault clone must already have its remote configured (git remote add origin ...).
+      GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-}
     volumes:
       # Mount a vault clone read-write into the container: Phase 4 write
       # commands (save/create/rename/delete/frontmatter) persist to disk here.
       - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault
       # Persist the SQLite users DB (argon2 password hashes) across restarts.
       - tolaria_users:/app/data
+      # SSH deploy key for push/pull. Uncomment and point at a real key file
+      # (the container runs as root, so mount under /root/.ssh), then set
+      # GIT_SSH_COMMAND in .env to use it. Leave commented if you don't push.
+      # - ./secrets/deploy_key:/root/.ssh/id_ed25519:ro
     ports:
       # Bind to localhost only; the nginx edge (or host nginx) is the public listener.
       - "127.0.0.1:8787:8787"
