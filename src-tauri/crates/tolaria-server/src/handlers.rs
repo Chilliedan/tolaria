@@ -135,6 +135,48 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
                 tolaria_core::git::git_remote_status(vault_root).map_err(RpcError::internal)?;
             Ok(serde_json::to_value(status).map_err(|e| RpcError::internal(e.to_string()))?)
         }
+        "is_git_repo" => Ok(Value::Bool(vault_root.join(".git").is_dir())),
+        "get_modified_files" => serialize(tolaria_core::git::get_modified_files(vault_root)),
+        "get_modified_files_with_stats" => {
+            serialize(tolaria_core::git::get_modified_files_with_stats(vault_root))
+        }
+        "get_last_commit_info" => serialize(tolaria_core::git::get_last_commit_info(vault_root)),
+        "get_vault_pulse" => serialize(tolaria_core::git::get_vault_pulse(
+            vault_root,
+            arg_u64(&args, "limit", 30) as usize,
+            arg_u64(&args, "skip", 0) as usize,
+        )),
+        "get_file_diff" => {
+            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            serialize(tolaria_core::git::get_file_diff(
+                &vault_root.to_string_lossy(),
+                &f,
+            ))
+        }
+        "get_file_diff_at_commit" => {
+            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            let c = arg_str(&args, "commitHash", "commit_hash")
+                .or_else(|_| arg_str(&args, "commit", "commit"))?;
+            serialize(tolaria_core::git::get_file_diff_at_commit(
+                &vault_root.to_string_lossy(),
+                &f,
+                &c,
+            ))
+        }
+        "get_file_history" => {
+            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            serialize(tolaria_core::git::get_file_history(
+                &vault_root.to_string_lossy(),
+                &f,
+            ))
+        }
+        "git_file_url" => {
+            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            serialize(tolaria_core::git::git_file_url(
+                &vault_root.to_string_lossy(),
+                &f,
+            ))
+        }
         other => Err(rpc::unsupported(other)),
     }
 }
@@ -149,17 +191,28 @@ fn arg_str(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
         .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
 }
 
-/// Optional string arg by camelCase or snake_case key.
-fn arg_opt_str(args: &Value, camel: &str, snake: &str) -> Option<String> {
-    args.get(camel)
-        .or_else(|| args.get(snake))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-}
-
 /// Numeric arg with a default when absent or non-numeric.
 fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
     args.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
+}
+
+/// Resolve a client-supplied file path (vault-relative, as sent by the web
+/// client) into a full path string understood by `tolaria_core::git`, which
+/// expects paths already rooted at (or inside) the vault. Absolute paths are
+/// passed through unchanged so desktop-style callers keep working.
+fn vault_file_path(vault_root: &Path, file_path: &str) -> String {
+    if Path::new(file_path).is_absolute() {
+        file_path.to_string()
+    } else {
+        vault_root.join(file_path).to_string_lossy().to_string()
+    }
+}
+
+/// Map a `Result<T: Serialize, String>` core result into an RPC JSON result:
+/// core error → 500, serialization error → 500.
+fn serialize<T: serde::Serialize>(result: Result<T, String>) -> Result<Value, RpcError> {
+    let value = result.map_err(RpcError::internal)?;
+    serde_json::to_value(value).map_err(|e| RpcError::internal(e.to_string()))
 }
 
 #[cfg(test)]
@@ -304,6 +357,61 @@ mod tests {
     }
 
     #[test]
+    fn git_read_commands_dispatch_against_the_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        for a in [
+            ["init"].as_slice(),
+            ["config", "user.email", "t@t"].as_slice(),
+            ["config", "user.name", "T"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(a)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        std::fs::write(vault.join("note.md"), "# Note\n").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(vault)
+            .output()
+            .unwrap();
+
+        // is_git_repo → true for the vault
+        assert_eq!(
+            dispatch(vault, "is_git_repo", serde_json::json!({})).unwrap(),
+            serde_json::json!(true)
+        );
+        // get_modified_files → array (empty after commit)
+        assert!(dispatch(vault, "get_modified_files", serde_json::json!({}))
+            .unwrap()
+            .is_array());
+        // get_file_history for note.md (snake_case arg, the web form) → non-empty array
+        let hist = dispatch(
+            vault,
+            "get_file_history",
+            serde_json::json!({ "file_path": "note.md" }),
+        )
+        .unwrap();
+        assert!(hist.as_array().map(|a| !a.is_empty()).unwrap_or(false));
+        // get_vault_pulse honours limit
+        assert!(
+            dispatch(vault, "get_vault_pulse", serde_json::json!({ "limit": 5 }))
+                .unwrap()
+                .is_object()
+                || dispatch(vault, "get_vault_pulse", serde_json::json!({ "limit": 5 }))
+                    .unwrap()
+                    .is_array()
+        );
+    }
+
+    #[test]
     fn arg_str_accepts_camel_and_snake() {
         let camel = serde_json::json!({ "filePath": "a.md" });
         let snake = serde_json::json!({ "file_path": "b.md" });
@@ -312,10 +420,5 @@ mod tests {
         assert!(arg_str(&serde_json::json!({}), "filePath", "file_path").is_err());
         assert_eq!(arg_u64(&serde_json::json!({ "limit": 5 }), "limit", 20), 5);
         assert_eq!(arg_u64(&serde_json::json!({}), "limit", 20), 20);
-        // Verify arg_opt_str is available for later task usage
-        assert_eq!(
-            arg_opt_str(&camel, "filePath", "file_path"),
-            Some("a.md".to_string())
-        );
     }
 }
