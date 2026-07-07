@@ -27,9 +27,12 @@ services:
       - ${TOLARIA_VAULT_MOUNT:-./demo-vault-v2}:/vault
       # Persist the SQLite users DB (argon2 password hashes) across restarts.
       - tolaria_users:/app/data
-      # SSH deploy key for push/pull. The container runs as root, so mount
-      # under /root/.ssh and point GIT_SSH_COMMAND (.env) at this path.
-      - ./secrets/deploy_key:/root/.ssh/id_ed25519:ro
+      # SSH deploy key for push/pull. Set TOLARIA_SSH_KEY in .env to your key's
+      # host path, e.g. TOLARIA_SSH_KEY=/home/daniel/.ssh/id_ed25519 — it is
+      # mounted read-only where the default GIT_SSH_COMMAND expects it. Defaults
+      # to /dev/null (no key) so the stack still starts when you're not pushing.
+      # (Do NOT point at a non-existent path — Docker would create a phantom dir.)
+      - ${TOLARIA_SSH_KEY:-/dev/null}:/root/.ssh/id_ed25519:ro
     ports:
       # Bind to localhost only; the nginx edge (or host nginx) is the public listener.
       - "127.0.0.1:8787:8787"
