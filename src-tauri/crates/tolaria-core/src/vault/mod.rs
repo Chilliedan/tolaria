@@ -31,7 +31,7 @@ pub use config_seed::{
 };
 pub use entry::{FolderNode, VaultEntry};
 pub use file::{create_note_content, get_note_content, note_content_matches, save_note_content};
-pub use folders::{delete_folder, rename_folder, FolderRenameResult};
+pub use folders::{create_folder, delete_folder, rename_folder, FolderRenameResult};
 pub use getting_started::{create_getting_started_vault, default_vault_path, vault_exists};
 pub use ignored::{filter_gitignored_entries, filter_gitignored_folders, filter_gitignored_paths};
 pub use image::{copy_image_to_vault, save_image};

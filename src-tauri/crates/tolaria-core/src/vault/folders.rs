@@ -94,6 +94,22 @@ pub fn rename_folder(
     })
 }
 
+/// Create a folder at `folder_path` (vault-relative). Errors if it already
+/// exists. Returns the created relative path. Uses the same containment
+/// helper as `delete_folder`/`rename_folder` so `..` escapes are rejected.
+pub fn create_folder(vault_path: &Path, folder_path: &str) -> Result<String, String> {
+    let relative = ensure_relative_folder_path(folder_path)?;
+    let target = vault_path.join(&relative);
+    if target.exists() {
+        return Err(format!(
+            "Folder already exists: {}",
+            display_relative_path(&relative)
+        ));
+    }
+    fs::create_dir_all(&target).map_err(|e| format!("Failed to create folder: {e}"))?;
+    Ok(display_relative_path(&relative))
+}
+
 pub fn delete_folder(vault_path: &Path, folder_path: &str) -> Result<String, String> {
     let relative_path = ensure_relative_folder_path(folder_path)?;
     let target_path = vault_path.join(&relative_path);
@@ -189,5 +205,34 @@ mod tests {
         let error = delete_folder(dir.path(), "projects").unwrap_err();
 
         assert_eq!(error, "Folder does not exist: projects");
+    }
+
+    #[test]
+    fn create_folder_creates_nested_dir_and_returns_relative_path() {
+        let dir = TempDir::new().unwrap();
+
+        let created = create_folder(dir.path(), "a/b").unwrap();
+
+        assert_eq!(created, "a/b");
+        assert!(dir.path().join("a/b").is_dir());
+    }
+
+    #[test]
+    fn create_folder_rejects_when_already_exists() {
+        let dir = TempDir::new().unwrap();
+        make_folder(&dir, "projects");
+
+        let error = create_folder(dir.path(), "projects").unwrap_err();
+
+        assert_eq!(error, "Folder already exists: projects");
+    }
+
+    #[test]
+    fn create_folder_rejects_escaping_path() {
+        let dir = TempDir::new().unwrap();
+
+        let error = create_folder(dir.path(), "../escape");
+
+        assert!(error.is_err());
     }
 }

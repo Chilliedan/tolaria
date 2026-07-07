@@ -28,6 +28,9 @@ pub fn is_write_command(command: &str) -> bool {
             | "delete_note"
             | "update_frontmatter"
             | "delete_frontmatter_property"
+            | "create_vault_folder"
+            | "delete_vault_folder"
+            | "rename_vault_folder"
     )
 }
 
@@ -64,8 +67,21 @@ pub async fn dispatch_write(
         "rename_note_filename" => rename_note_filename(state, identity, args).await,
         "update_frontmatter" => update_frontmatter(state, identity, args).await,
         "delete_frontmatter_property" => delete_frontmatter_property(state, identity, args).await,
+        "create_vault_folder" => create_vault_folder(state, identity, args).await,
+        "delete_vault_folder" => delete_vault_folder(state, identity, args).await,
+        "rename_vault_folder" => rename_vault_folder(state, identity, args).await,
         other => Err(crate::rpc::unsupported(other)),
     }
+}
+
+/// Read a required string arg, trying `camel` (desktop Tauri) then `snake`
+/// (web mock path) — same casing-tolerance contract as `handlers::arg_str`.
+fn str_arg(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
+    args.get(camel)
+        .or_else(|| args.get(snake))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
 }
 
 /// The vault-relative path used for `git add`, falling back to the absolute
@@ -395,6 +411,58 @@ async fn delete_frontmatter_property(
     )
     .await;
     Ok(json!(content))
+}
+
+/// Create a folder under the vault root. The web client sends `folderName`
+/// and an optional `parentPath` (App.tsx); when a parent is given the new
+/// folder is nested under it. Folder ops touch an unknown set of paths (a
+/// nested `mkdir -p`), so this commits everything dirty rather than a fixed
+/// path list, matching the rename handlers' reasoning.
+async fn create_vault_folder(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
+    let name = str_arg(&args, "folderName", "folder_name")?;
+    let parent = str_arg(&args, "parentPath", "parent_path")
+        .ok()
+        .filter(|s| !s.is_empty());
+    let folder_path = match parent {
+        Some(p) => format!("{p}/{name}"),
+        None => name,
+    };
+    let created =
+        vault::create_folder(&state.vault_root, &folder_path).map_err(RpcError::internal)?;
+    autogit_commit_all(state, identity, &format!("create folder {created}")).await;
+    Ok(json!(created))
+}
+
+/// Delete a folder (and its contents) under the vault root. Commits
+/// everything dirty since a directory removal can span many tracked files.
+async fn delete_vault_folder(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
+    let folder = str_arg(&args, "folderPath", "folder_path")?;
+    let deleted = vault::delete_folder(&state.vault_root, &folder).map_err(RpcError::internal)?;
+    autogit_commit_all(state, identity, &format!("delete folder {folder}")).await;
+    Ok(json!(deleted))
+}
+
+/// Rename a folder under the vault root. Commits everything dirty, same
+/// reasoning as `rename_note`/`rename_note_filename`.
+async fn rename_vault_folder(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
+    let folder = str_arg(&args, "folderPath", "folder_path")?;
+    let new_name = str_arg(&args, "newName", "new_name")?;
+    let result = vault::rename_folder(&state.vault_root, &folder, &new_name)
+        .map_err(RpcError::internal)?;
+    autogit_commit_all(state, identity, &format!("rename folder {folder}")).await;
+    serde_json::to_value(result).map_err(|e| RpcError::internal(e.to_string()))
 }
 
 /// For writes the file may not exist yet (create/first save), so canonicalize
@@ -859,6 +927,87 @@ mod tests {
             deleted_out.contains("auto.md"),
             "expected auto.md to show as deleted in HEAD, got: {deleted_out}"
         );
+    }
+
+    #[tokio::test]
+    async fn create_vault_folder_makes_the_dir_from_web_args() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        dispatch_write(
+            &state,
+            None,
+            "create_vault_folder",
+            json!({ "vault_path": dir.path(), "folderName": "Projects" }),
+        )
+        .await
+        .expect("web create_vault_folder must succeed");
+        assert!(dir.path().join("Projects").is_dir());
+    }
+
+    #[tokio::test]
+    async fn create_vault_folder_with_parent_path_nests_under_parent() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        dispatch_write(
+            &state,
+            None,
+            "create_vault_folder",
+            json!({ "folderName": "sub", "parentPath": "Projects" }),
+        )
+        .await
+        .expect("web create_vault_folder with parentPath must succeed");
+        assert!(dir.path().join("Projects/sub").is_dir());
+    }
+
+    #[tokio::test]
+    async fn delete_vault_folder_removes_the_dir() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        dispatch_write(
+            &state,
+            None,
+            "create_vault_folder",
+            json!({ "folderName": "Projects" }),
+        )
+        .await
+        .unwrap();
+
+        dispatch_write(
+            &state,
+            None,
+            "delete_vault_folder",
+            json!({ "folderPath": "Projects" }),
+        )
+        .await
+        .expect("web delete_vault_folder must succeed");
+
+        assert!(!dir.path().join("Projects").exists());
+    }
+
+    #[tokio::test]
+    async fn rename_vault_folder_renames_the_dir() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        dispatch_write(
+            &state,
+            None,
+            "create_vault_folder",
+            json!({ "folderName": "Projects" }),
+        )
+        .await
+        .unwrap();
+
+        dispatch_write(
+            &state,
+            None,
+            "rename_vault_folder",
+            json!({ "folderPath": "Projects", "newName": "Archive" }),
+        )
+        .await
+        .expect("web rename_vault_folder must succeed");
+
+        assert!(dir.path().join("Archive").is_dir());
+        assert!(!dir.path().join("Projects").exists());
     }
 
     #[tokio::test]
