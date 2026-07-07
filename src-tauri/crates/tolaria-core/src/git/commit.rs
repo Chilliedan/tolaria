@@ -75,7 +75,10 @@ pub fn git_commit_paths_as(
 }
 
 /// Stage all changes (`git add -A`) and commit as `identity`. Used by the
-/// explicit web "commit" control; "nothing to commit" is a real error here.
+/// explicit web "commit" control. "nothing to commit" resolves to `Ok("")`,
+/// not an error: with autogit on (the default) every save is already
+/// committed, so an explicit commit routinely has nothing new — the commit +
+/// push flow must still proceed to push the already-committed work.
 ///
 /// Unlike [`git_commit`], this does NOT call `ensure_author_config`: passing
 /// `identity` through [`CommitIdentity::apply`] sets `GIT_AUTHOR_*` /
@@ -100,9 +103,15 @@ pub fn git_commit_all_as(
     }
     match run_commit_as(vault, message, identity, false) {
         Ok(stdout) => Ok(stdout),
+        Err(failure) if is_nothing_to_commit(&failure.detail()) => Ok(String::new()),
         Err(failure) if is_commit_signing_failure(&failure.detail()) => {
-            run_commit_as(vault, message, identity, true)
-                .map_err(|f| format!("git commit failed: {}", f.detail()))
+            run_commit_as(vault, message, identity, true).or_else(|f| {
+                if is_nothing_to_commit(&f.detail()) {
+                    Ok(String::new())
+                } else {
+                    Err(format!("git commit failed: {}", f.detail()))
+                }
+            })
         }
         Err(failure) => Err(format!("git commit failed: {}", failure.detail())),
     }
@@ -464,6 +473,28 @@ mod tests {
         git_commit_paths_as(vp, &["x.md".into()], "first", &identity).unwrap();
         // No new changes → autogit no-op → Ok("").
         let again = git_commit_paths_as(vp, &["x.md".into()], "again", &identity).unwrap();
+        assert_eq!(again, "");
+    }
+
+    // With autogit on, an explicit "commit" routinely has nothing new. It must
+    // be a no-op success (Ok("")) so the commit + push flow can still push the
+    // already-committed work, not an error that aborts the push.
+    #[test]
+    fn git_commit_all_as_nothing_to_commit_is_ok_empty() {
+        let _env = GitConfigEnvGuard::isolated();
+        let dir = setup_git_repo();
+        let vault = dir.path();
+        let vp = vault.to_str().unwrap();
+        let identity = CommitIdentity {
+            author_name: "Bob".into(),
+            author_email: "bob@example.com".into(),
+            committer_name: "Tolaria Server".into(),
+            committer_email: "server@tolaria.local".into(),
+        };
+        fs::write(vault.join("y.md"), "# Y\n").unwrap();
+        git_commit_all_as(vp, "first", &identity).unwrap();
+        // Working tree clean → no-op → Ok("").
+        let again = git_commit_all_as(vp, "again", &identity).unwrap();
         assert_eq!(again, "");
     }
 }
