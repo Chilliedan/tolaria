@@ -24,7 +24,10 @@ pub fn has_remote(vault_path: impl AsRef<Path>) -> Result<bool, String> {
     has_configured_remote(vault)
 }
 
-/// Pull latest changes from remote. Uses --no-rebase to merge.
+/// Pull latest changes from remote. Uses --no-rebase to merge, and --no-edit
+/// so the merge commit takes the auto-generated message without launching an
+/// editor (git_pull runs non-interactively — e.g. on the web server, where
+/// there is no editor or TTY, an interactive merge would fail outright).
 /// Returns a structured result with status and affected files.
 pub fn git_pull(vault_path: impl AsRef<Path>) -> Result<GitPullResult, String> {
     let vault = vault_path.as_ref();
@@ -38,7 +41,7 @@ pub fn git_pull(vault_path: impl AsRef<Path>) -> Result<GitPullResult, String> {
         });
     }
 
-    let output = git_output(vault, &["pull", "--no-rebase"])
+    let output = git_output(vault, &["pull", "--no-rebase", "--no-edit"])
         .map_err(|e| format!("Failed to run git pull: {}", e))?;
 
     let stdout = stdout_text(&output);
@@ -489,6 +492,32 @@ mod tests {
         let result = git_pull(pair.vault_b()).unwrap();
         assert_eq!(result.status, "updated");
         assert!(result.conflict_files.is_empty());
+    }
+
+    // Divergent, non-conflicting histories force git to create a MERGE COMMIT.
+    // Without --no-edit that would launch an editor for the merge message and
+    // fail where there is none (the web-server container). This guards that
+    // git_pull merges non-interactively.
+    #[test]
+    fn test_git_pull_auto_merges_divergent_histories_without_editor() {
+        let pair = RemotePair::seeded();
+        pair.sync_b();
+        // Remote advances on note.md.
+        pair.update_a_note();
+        pair.push_a();
+        // Local B advances on a DIFFERENT file, so the pull auto-merges
+        // (no conflict) and must write a merge commit.
+        fs::write(pair.clone_b.path().join("note-b.md"), "# B\n").unwrap();
+        git_commit(pair.vault_b(), "add note-b").unwrap();
+
+        let result = git_pull(pair.vault_b()).unwrap();
+        assert_eq!(result.status, "updated");
+        assert!(result.conflict_files.is_empty());
+        // The merge pulled in A's change and kept B's file.
+        assert!(fs::read_to_string(pair.clone_b.path().join("note.md"))
+            .unwrap()
+            .contains("Updated"));
+        assert!(pair.clone_b.path().join("note-b.md").exists());
     }
 
     #[test]
