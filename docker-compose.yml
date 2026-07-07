@@ -16,11 +16,11 @@ services:
       # and rely solely on the explicit git_commit control.
       TOLARIA_AUTOGIT: ${TOLARIA_AUTOGIT:-true}
       # Credential for git push/pull to an SSH remote. The container runs as
-      # root, so mount the key under /root/.ssh (see the volume below) and point
-      # GIT_SSH_COMMAND's -i at it. Set GIT_SSH_COMMAND in your .env, e.g.:
-      #   GIT_SSH_COMMAND=ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new
-      # The vault clone must already have its remote configured (git remote add origin ...).
-      GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-}
+      # root; mount the deploy key at /root/.ssh/id_ed25519 (see the volume
+      # below) with host permissions 600, and this default finds it. Override
+      # in .env only if your key lives elsewhere. The key file must be mode 600
+      # or ssh ignores it; the vault clone must already have its remote set.
+      GIT_SSH_COMMAND: ${GIT_SSH_COMMAND:-ssh -i /root/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new}
     volumes:
       # Mount a vault clone read-write into the container: Phase 4 write
       # commands (save/create/rename/delete/frontmatter) persist to disk here.
