@@ -194,7 +194,7 @@ fn arg_str(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
 /// client sends the vault-relative path under `path`; fall back to
 /// `file_path`/`filePath` for other callers (e.g. desktop, direct tests).
 fn file_path_arg(args: &Value) -> Result<String, RpcError> {
-    arg_str(args, "path", "file_path").or_else(|_| arg_str(args, "filePath", "filePath"))
+    arg_str(args, "path", "file_path").or_else(|_| arg_str(args, "filePath", "file_path"))
 }
 
 /// Numeric arg with a default when absent or non-numeric.
@@ -414,6 +414,61 @@ mod tests {
                 || dispatch(vault, "get_vault_pulse", serde_json::json!({ "limit": 5 }))
                     .unwrap()
                     .is_array()
+        );
+        // get_modified_files_with_stats → array (empty after commit)
+        assert!(dispatch(
+            vault,
+            "get_modified_files_with_stats",
+            serde_json::json!({})
+        )
+        .unwrap()
+        .is_array());
+        // get_last_commit_info → a real (non-null) object describing the commit just made
+        let last_commit =
+            dispatch(vault, "get_last_commit_info", serde_json::json!({})).unwrap();
+        assert!(
+            !last_commit.is_null(),
+            "get_last_commit_info returns commit info after a commit exists"
+        );
+        // git_file_url for note.md (`path`, the real web client key) → Ok, string or null
+        // depending on remote config (this repo has no remote configured).
+        let file_url = dispatch(
+            vault,
+            "git_file_url",
+            serde_json::json!({ "path": "note.md" }),
+        );
+        assert!(file_url.is_ok(), "git_file_url dispatches successfully");
+        let file_url = file_url.unwrap();
+        assert!(
+            file_url.is_string() || file_url.is_null(),
+            "git_file_url returns a string or null"
+        );
+        // get_file_diff_at_commit for note.md at HEAD, using the real client key
+        // `commitHash` (camelCase) rather than `commit_hash`.
+        let head_hash = String::from_utf8(
+            std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(vault)
+                .output()
+                .unwrap()
+                .stdout,
+        )
+        .unwrap()
+        .trim()
+        .to_string();
+        assert!(!head_hash.is_empty(), "HEAD hash was resolved");
+        let diff_at_commit = dispatch(
+            vault,
+            "get_file_diff_at_commit",
+            serde_json::json!({ "path": "note.md", "commitHash": head_hash }),
+        );
+        assert!(
+            diff_at_commit.is_ok(),
+            "get_file_diff_at_commit dispatches successfully with commitHash: {diff_at_commit:?}"
+        );
+        assert!(
+            diff_at_commit.unwrap().is_string(),
+            "get_file_diff_at_commit returns a string diff"
         );
     }
 
