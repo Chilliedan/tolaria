@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use super::command::{git_output, git_output_result, stderr_text, stdout_text};
-use super::conflict::get_conflict_files;
+use super::conflict::{get_conflict_files, is_merge_in_progress};
 use super::remote_config::has_configured_remote;
 
 const NO_REMOTE_STATUS: &str = "no_remote";
@@ -41,6 +41,30 @@ pub fn git_pull(vault_path: impl AsRef<Path>) -> Result<GitPullResult, String> {
         });
     }
 
+    // A merge left unconcluded by a prior pull (MERGE_HEAD present) makes
+    // `git pull` fail with a cryptic "You have not concluded your merge" error.
+    // Detect that state up front and report it cleanly and actionably instead.
+    let vault_text = vault.to_string_lossy();
+    if is_merge_in_progress(vault_text.as_ref()) {
+        let conflicts = get_conflict_files(vault_text.as_ref()).unwrap_or_default();
+        if !conflicts.is_empty() {
+            return Ok(GitPullResult {
+                status: "conflict".to_string(),
+                message: format!("Merge conflict in {} file(s)", conflicts.len()),
+                updated_files: vec![],
+                conflict_files: conflicts,
+            });
+        }
+        return Ok(GitPullResult {
+            status: "error".to_string(),
+            message:
+                "A previous merge is still in progress. Resolve or abort it (git merge --abort) before pulling."
+                    .to_string(),
+            updated_files: vec![],
+            conflict_files: vec![],
+        });
+    }
+
     let output = git_output(vault, &["pull", "--no-rebase", "--no-edit"])
         .map_err(|e| format!("Failed to run git pull: {}", e))?;
 
@@ -66,7 +90,6 @@ pub fn git_pull(vault_path: impl AsRef<Path>) -> Result<GitPullResult, String> {
     }
 
     // Check for merge conflicts
-    let vault_text = vault.to_string_lossy();
     let conflicts = get_conflict_files(vault_text.as_ref()).unwrap_or_default();
     if !conflicts.is_empty() {
         return Ok(GitPullResult {
@@ -518,6 +541,35 @@ mod tests {
             .unwrap()
             .contains("Updated"));
         assert!(pair.clone_b.path().join("note-b.md").exists());
+    }
+
+    // A merge left unconcluded by an earlier failed pull (MERGE_HEAD present,
+    // no conflicts) must be reported cleanly and actionably, not as the raw
+    // "You have not concluded your merge" git error.
+    #[test]
+    fn test_git_pull_reports_unconcluded_merge_cleanly() {
+        let pair = RemotePair::seeded();
+        // Simulate the leftover state: MERGE_HEAD set, working tree otherwise clean.
+        fs::write(
+            pair.clone_b.path().join(".git").join("MERGE_HEAD"),
+            "0000000000000000000000000000000000000000\n",
+        )
+        .unwrap();
+
+        let result = git_pull(pair.vault_b()).unwrap();
+        assert_eq!(result.status, "error");
+        assert!(result.conflict_files.is_empty());
+        let msg = result.message.to_lowercase();
+        assert!(
+            msg.contains("merge") && (msg.contains("progress") || msg.contains("abort")),
+            "should explain the unconcluded merge cleanly, got: {}",
+            result.message
+        );
+        assert!(
+            !msg.contains("not concluded"),
+            "should not surface the raw git error, got: {}",
+            result.message
+        );
     }
 
     #[test]
