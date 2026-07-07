@@ -78,13 +78,34 @@ async function runDeleteCommand(
   paths: string[],
   resolveVaultPathForPath?: (path: string) => string | null | undefined,
 ): Promise<string[]> {
+  if (!isTauri()) {
+    return deleteNotesViaServer(paths, resolveVaultPathForPath)
+  }
   const batches = groupDeletePathsByVault(paths, resolveVaultPathForPath)
   const deletedGroups = await Promise.all(batches.map((batch) => (
-    isTauri()
-      ? invoke<string[]>('batch_delete_notes_async', deleteCommandArgs(batch))
-      : mockInvoke<string[]>('batch_delete_notes', deleteCommandArgs(batch))
+    invoke<string[]>('batch_delete_notes_async', deleteCommandArgs(batch))
   )))
   return deletedGroups.flat()
+}
+
+// The web server has no batch-delete command; the desktop-only mock
+// `batch_delete_notes` just echoes the paths without touching disk, so a web
+// delete never persisted (the note reappeared on the next vault reload).
+// Delete each note through the real `delete_note` command, which removes the
+// file and autogit-commits the removal. Returns the input paths that the
+// server confirmed deleted.
+async function deleteNotesViaServer(
+  paths: string[],
+  resolveVaultPathForPath?: (path: string) => string | null | undefined,
+): Promise<string[]> {
+  const deleted: string[] = []
+  for (const path of paths) {
+    const vaultPath = resolveVaultPathForPath?.(path)?.trim() || undefined
+    const args = vaultPath ? { path, vaultPath } : { path }
+    const removed = await mockInvoke<string | undefined>('delete_note', args)
+    if (removed !== undefined && removed !== null) deleted.push(path)
+  }
+  return deleted
 }
 
 function useDeleteRunner({

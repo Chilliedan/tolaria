@@ -10,6 +10,19 @@ vi.mock('../mock-tauri', () => ({
 const { mockInvoke } = await import('../mock-tauri')
 const mockInvokeFn = mockInvoke as ReturnType<typeof vi.fn>
 
+// On web each note is deleted via the real `delete_note` command, which
+// returns the deleted path string. Default: every delete succeeds.
+function succeedAllDeletes() {
+  mockInvokeFn.mockImplementation(async (_command: string, args: { path: string }) => args.path)
+}
+
+// Only the paths in `deletedPaths` succeed; others resolve undefined (failed).
+function succeedDeletesFor(deletedPaths: string[]) {
+  mockInvokeFn.mockImplementation(async (_command: string, args: { path: string }) =>
+    (deletedPaths.includes(args.path) ? args.path : undefined),
+  )
+}
+
 describe('useDeleteActions', () => {
   let onDeselectNote: ReturnType<typeof vi.fn>
   let removeEntry: ReturnType<typeof vi.fn>
@@ -28,6 +41,7 @@ describe('useDeleteActions', () => {
     reloadVault = vi.fn().mockResolvedValue(undefined)
     setToastMessage = vi.fn()
     mockInvokeFn.mockReset()
+    succeedAllDeletes()
   })
 
   function renderDeleteActions(options: { resolveVaultPathForPath?: (path: string) => string | null | undefined } = {}) {
@@ -66,16 +80,18 @@ describe('useDeleteActions', () => {
     })
   }
 
-  async function confirmDeleteAndExpectBatchCall(paths: string[], deletedPaths = paths) {
-    mockInvokeFn.mockResolvedValue(deletedPaths)
+  async function confirmDeleteAndExpectServerCalls(paths: string[], deletedPaths = paths) {
+    succeedDeletesFor(deletedPaths)
     const { result } = renderDeleteActions()
 
     await openDeleteDialog(result, paths)
     await confirmCurrentDelete(result)
 
     expect(result.current.confirmDelete).toBeNull()
-    expect(mockInvokeFn).toHaveBeenCalledTimes(1)
-    expect(mockInvokeFn).toHaveBeenCalledWith('batch_delete_notes', { paths })
+    // Each note is deleted through the real server delete_note command.
+    for (const path of paths) {
+      expect(mockInvokeFn).toHaveBeenCalledWith('delete_note', { path })
+    }
 
     return { result }
   }
@@ -83,10 +99,10 @@ describe('useDeleteActions', () => {
   // --- deleteNoteFromDisk ---
 
   describe('deleteNoteFromDisk', () => {
-    it('invokes batch_delete_notes, updates pending state, and returns true', async () => {
-      let resolveDelete: ((paths: string[]) => void) | null = null
+    it('invokes delete_note, updates pending state, and returns true', async () => {
+      let resolveDelete: ((value: string) => void) | null = null
       mockInvokeFn.mockImplementation(() => new Promise((resolve) => {
-        resolveDelete = resolve as (paths: string[]) => void
+        resolveDelete = resolve as (value: string) => void
       }))
       const { result } = renderDeleteActions()
       let okPromise: Promise<boolean> | undefined
@@ -96,7 +112,7 @@ describe('useDeleteActions', () => {
       })
 
       expect(result.current.pendingDeleteCount).toBe(1)
-      expect(mockInvokeFn).toHaveBeenCalledWith('batch_delete_notes', { paths: ['/vault/a.md'] })
+      expect(mockInvokeFn).toHaveBeenCalledWith('delete_note', { path: '/vault/a.md' })
       expect(onDeselectNote).toHaveBeenCalledWith('/vault/a.md')
       expect(removeEntries).toHaveBeenCalledWith(['/vault/a.md'])
       expect(removeEntry).not.toHaveBeenCalled()
@@ -104,7 +120,7 @@ describe('useDeleteActions', () => {
 
       let ok: boolean | undefined
       await act(async () => {
-        resolveDelete?.(['/vault/a.md'])
+        resolveDelete?.('/vault/a.md')
         ok = await okPromise
       })
 
@@ -115,7 +131,6 @@ describe('useDeleteActions', () => {
     })
 
     it('passes the owning vault path when deleting a note outside the default vault', async () => {
-      mockInvokeFn.mockResolvedValue(['/team/a.md'])
       resolveVaultPathForPath.mockReturnValue('/team')
       const { result } = renderDeleteActions({ resolveVaultPathForPath })
 
@@ -123,8 +138,8 @@ describe('useDeleteActions', () => {
         await result.current.deleteNoteFromDisk('/team/a.md')
       })
 
-      expect(mockInvokeFn).toHaveBeenCalledWith('batch_delete_notes', {
-        paths: ['/team/a.md'],
+      expect(mockInvokeFn).toHaveBeenCalledWith('delete_note', {
+        path: '/team/a.md',
         vaultPath: '/team',
       })
     })
@@ -154,7 +169,7 @@ describe('useDeleteActions', () => {
     })
 
     it('onConfirm deletes the note and clears dialog', async () => {
-      await confirmDeleteAndExpectBatchCall(['/vault/a.md'])
+      await confirmDeleteAndExpectServerCalls(['/vault/a.md'])
       expect(setToastMessage).toHaveBeenCalledWith('Note permanently deleted')
     })
   })
@@ -173,15 +188,14 @@ describe('useDeleteActions', () => {
       expect(result.current.confirmDelete?.title).toBe(expectedTitle)
     })
 
-    it('onConfirm deletes all paths in one backend call and shows toast', async () => {
-      await confirmDeleteAndExpectBatchCall(['/vault/a.md', '/vault/b.md'])
+    it('onConfirm deletes all paths and shows toast', async () => {
+      await confirmDeleteAndExpectServerCalls(['/vault/a.md', '/vault/b.md'])
       expect(removeEntries).toHaveBeenCalledWith(['/vault/a.md', '/vault/b.md'])
       expect(setToastMessage).toHaveBeenCalledWith('2 notes permanently deleted')
     })
 
-    it('splits bulk deletes by owning vault path', async () => {
-      mockInvokeFn.mockImplementation(async (_command, args: { paths: string[] }) => args.paths)
-      resolveVaultPathForPath.mockImplementation((path: string) => path.startsWith('/team') ? '/team' : '/personal')
+    it('deletes each note with its owning vault path', async () => {
+      resolveVaultPathForPath.mockImplementation((path: string) => (path.startsWith('/team') ? '/team' : '/personal'))
       const { result } = renderDeleteActions({ resolveVaultPathForPath })
 
       act(() => {
@@ -189,19 +203,19 @@ describe('useDeleteActions', () => {
       })
       await confirmCurrentDelete(result)
 
-      expect(mockInvokeFn).toHaveBeenCalledWith('batch_delete_notes', {
-        paths: ['/personal/a.md'],
+      expect(mockInvokeFn).toHaveBeenCalledWith('delete_note', {
+        path: '/personal/a.md',
         vaultPath: '/personal',
       })
-      expect(mockInvokeFn).toHaveBeenCalledWith('batch_delete_notes', {
-        paths: ['/team/b.md'],
+      expect(mockInvokeFn).toHaveBeenCalledWith('delete_note', {
+        path: '/team/b.md',
         vaultPath: '/team',
       })
       expect(setToastMessage).toHaveBeenCalledWith('2 notes permanently deleted')
     })
 
-    it('reloads the note list when a batch delete only partially succeeds', async () => {
-      await confirmDeleteAndExpectBatchCall(['/vault/a.md', '/vault/b.md'], ['/vault/a.md'])
+    it('reloads the note list when a delete only partially succeeds', async () => {
+      await confirmDeleteAndExpectServerCalls(['/vault/a.md', '/vault/b.md'], ['/vault/a.md'])
 
       expect(reloadVault).toHaveBeenCalledTimes(1)
       expect(refreshModifiedFiles).toHaveBeenCalledTimes(1)
