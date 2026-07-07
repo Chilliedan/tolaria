@@ -147,16 +147,15 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             arg_u64(&args, "skip", 0) as usize,
         )),
         "get_file_diff" => {
-            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
             serialize(tolaria_core::git::get_file_diff(
                 &vault_root.to_string_lossy(),
                 &f,
             ))
         }
         "get_file_diff_at_commit" => {
-            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
-            let c = arg_str(&args, "commitHash", "commit_hash")
-                .or_else(|_| arg_str(&args, "commit", "commit"))?;
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
+            let c = arg_str(&args, "commitHash", "commit_hash")?;
             serialize(tolaria_core::git::get_file_diff_at_commit(
                 &vault_root.to_string_lossy(),
                 &f,
@@ -164,14 +163,14 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             ))
         }
         "get_file_history" => {
-            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
             serialize(tolaria_core::git::get_file_history(
                 &vault_root.to_string_lossy(),
                 &f,
             ))
         }
         "git_file_url" => {
-            let f = vault_file_path(vault_root, &arg_str(&args, "filePath", "file_path")?);
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
             serialize(tolaria_core::git::git_file_url(
                 &vault_root.to_string_lossy(),
                 &f,
@@ -189,6 +188,13 @@ fn arg_str(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
+}
+
+/// Read the required file-path arg for git read commands. The real web
+/// client sends the vault-relative path under `path`; fall back to
+/// `file_path`/`filePath` for other callers (e.g. desktop, direct tests).
+fn file_path_arg(args: &Value) -> Result<String, RpcError> {
+    arg_str(args, "path", "file_path").or_else(|_| arg_str(args, "filePath", "filePath"))
 }
 
 /// Numeric arg with a default when absent or non-numeric.
@@ -392,11 +398,11 @@ mod tests {
         assert!(dispatch(vault, "get_modified_files", serde_json::json!({}))
             .unwrap()
             .is_array());
-        // get_file_history for note.md (snake_case arg, the web form) → non-empty array
+        // get_file_history for note.md (`path`, the real web client key) → non-empty array
         let hist = dispatch(
             vault,
             "get_file_history",
-            serde_json::json!({ "file_path": "note.md" }),
+            serde_json::json!({ "path": "note.md" }),
         )
         .unwrap();
         assert!(hist.as_array().map(|a| !a.is_empty()).unwrap_or(false));
