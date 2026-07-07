@@ -1,4 +1,4 @@
-use crate::rpc::{self, RpcError};
+use crate::rpc::{self, str_arg, RpcError};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
@@ -147,15 +147,15 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             arg_u64(&args, "skip", 0) as usize,
         )),
         "get_file_diff" => {
-            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?)?;
             serialize(tolaria_core::git::get_file_diff(
                 &vault_root.to_string_lossy(),
                 &f,
             ))
         }
         "get_file_diff_at_commit" => {
-            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
-            let c = arg_str(&args, "commitHash", "commit_hash")?;
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?)?;
+            let c = str_arg(&args, "commitHash", "commit_hash")?;
             serialize(tolaria_core::git::get_file_diff_at_commit(
                 &vault_root.to_string_lossy(),
                 &f,
@@ -163,14 +163,14 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             ))
         }
         "get_file_history" => {
-            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?)?;
             serialize(tolaria_core::git::get_file_history(
                 &vault_root.to_string_lossy(),
                 &f,
             ))
         }
         "git_file_url" => {
-            let f = vault_file_path(vault_root, &file_path_arg(&args)?);
+            let f = vault_file_path(vault_root, &file_path_arg(&args)?)?;
             serialize(tolaria_core::git::git_file_url(
                 &vault_root.to_string_lossy(),
                 &f,
@@ -180,21 +180,11 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
     }
 }
 
-/// Read a required string arg by its camelCase or snake_case key. The web mock
-/// path sends snake_case; desktop Tauri sends camelCase — accept both.
-fn arg_str(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
-    args.get(camel)
-        .or_else(|| args.get(snake))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
-}
-
 /// Read the required file-path arg for git read commands. The real web
 /// client sends the vault-relative path under `path`; fall back to
 /// `file_path`/`filePath` for other callers (e.g. desktop, direct tests).
 fn file_path_arg(args: &Value) -> Result<String, RpcError> {
-    arg_str(args, "path", "file_path").or_else(|_| arg_str(args, "filePath", "file_path"))
+    str_arg(args, "path", "file_path").or_else(|_| str_arg(args, "filePath", "file_path"))
 }
 
 /// Numeric arg with a default when absent or non-numeric.
@@ -203,15 +193,32 @@ fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
 }
 
 /// Resolve a client-supplied file path (vault-relative, as sent by the web
-/// client) into a full path string understood by `tolaria_core::git`, which
-/// expects paths already rooted at (or inside) the vault. Absolute paths are
-/// passed through unchanged so desktop-style callers keep working.
-fn vault_file_path(vault_root: &Path, file_path: &str) -> String {
-    if Path::new(file_path).is_absolute() {
-        file_path.to_string()
-    } else {
-        vault_root.join(file_path).to_string_lossy().to_string()
+/// client, or an absolute in-vault `fullPath`) into a full path string
+/// understood by `tolaria_core::git`, which expects paths rooted at (or
+/// inside) the vault.
+///
+/// Containment is enforced here rather than relying on git refusing an
+/// out-of-repo pathspec, so a future non-git reuse of this helper cannot
+/// traverse out of the vault. Absolute paths must canonicalize to a location
+/// inside the vault (via [`contained_note_path`]); relative paths must not
+/// escape via a `..` component. Escapes return `400 Bad Request`.
+fn vault_file_path(vault_root: &Path, file_path: &str) -> Result<String, RpcError> {
+    let candidate = Path::new(file_path);
+    if candidate.is_absolute() {
+        // Validate containment (canonicalize + `starts_with`) but return the
+        // ORIGINAL string: core's git relativization strips the vault_root's
+        // own — possibly non-canonical (`/var` vs `/private/var`) — prefix, so
+        // handing it the canonicalized form would break that match.
+        contained_note_path(vault_root, candidate)?;
+        return Ok(file_path.to_string());
     }
+    if candidate
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(RpcError::bad_request("path is outside the vault"));
+    }
+    Ok(vault_root.join(candidate).to_string_lossy().to_string())
 }
 
 /// Map a `Result<T: Serialize, String>` core result into an RPC JSON result:
@@ -472,13 +479,78 @@ mod tests {
         );
     }
 
+    fn git_init(vault: &std::path::Path) {
+        for a in [
+            ["init"].as_slice(),
+            ["config", "user.email", "t@t"].as_slice(),
+            ["config", "user.name", "T"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(a)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+    }
+
+    // A `../`-escaping relative path must be rejected before any filesystem or
+    // git read, so a future non-git reuse of `vault_file_path` cannot traverse
+    // out of the vault.
     #[test]
-    fn arg_str_accepts_camel_and_snake() {
+    fn get_file_diff_rejects_relative_traversal_path() {
+        let dir = tempdir().unwrap();
+        let err = dispatch(
+            dir.path(),
+            "get_file_diff",
+            json!({ "path": "../../etc/passwd" }),
+        )
+        .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    // An absolute path that resolves outside the vault must be rejected even
+    // though absolute in-vault paths (the web client's `fullPath`) are allowed.
+    #[test]
+    fn get_file_diff_rejects_absolute_path_outside_vault() {
+        let dir = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let secret = outside.path().join("secret.md");
+        fs::write(&secret, "secret\n").unwrap();
+        let err = dispatch(
+            dir.path(),
+            "get_file_diff",
+            json!({ "path": secret.to_string_lossy() }),
+        )
+        .unwrap_err();
+        assert_eq!(err.status, axum::http::StatusCode::BAD_REQUEST);
+    }
+
+    // A legitimate absolute in-vault path still dispatches successfully.
+    #[test]
+    fn get_file_diff_allows_absolute_in_vault_path() {
+        let dir = tempdir().unwrap();
+        let vault = dir.path();
+        git_init(vault);
+        fs::write(vault.join("note.md"), "# Note\n").unwrap();
+        for a in [["add", "-A"].as_slice(), ["commit", "-m", "seed"].as_slice()] {
+            std::process::Command::new("git")
+                .args(a)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+        let abs = vault.join("note.md");
+        let out = dispatch(vault, "get_file_diff", json!({ "path": abs.to_string_lossy() }));
+        assert!(out.is_ok(), "absolute in-vault path is allowed: {out:?}");
+    }
+
+    #[test]
+    fn str_arg_accepts_camel_and_snake() {
         let camel = serde_json::json!({ "filePath": "a.md" });
         let snake = serde_json::json!({ "file_path": "b.md" });
-        assert_eq!(arg_str(&camel, "filePath", "file_path").unwrap(), "a.md");
-        assert_eq!(arg_str(&snake, "filePath", "file_path").unwrap(), "b.md");
-        assert!(arg_str(&serde_json::json!({}), "filePath", "file_path").is_err());
+        assert_eq!(str_arg(&camel, "filePath", "file_path").unwrap(), "a.md");
+        assert_eq!(str_arg(&snake, "filePath", "file_path").unwrap(), "b.md");
+        assert!(str_arg(&serde_json::json!({}), "filePath", "file_path").is_err());
         assert_eq!(arg_u64(&serde_json::json!({ "limit": 5 }), "limit", 20), 5);
         assert_eq!(arg_u64(&serde_json::json!({}), "limit", 20), 20);
     }

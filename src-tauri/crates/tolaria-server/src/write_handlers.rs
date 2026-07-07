@@ -6,7 +6,7 @@
 //! a client-supplied content hash (`baseHash`).
 
 use crate::handlers::contained_note_path;
-use crate::rpc::{AppState, RpcError};
+use crate::rpc::{str_arg, AppState, RpcError};
 use crate::version::content_version;
 use axum::http::StatusCode;
 use serde::Deserialize;
@@ -72,16 +72,6 @@ pub async fn dispatch_write(
         "rename_vault_folder" => rename_vault_folder(state, identity, args).await,
         other => Err(crate::rpc::unsupported(other)),
     }
-}
-
-/// Read a required string arg, trying `camel` (desktop Tauri) then `snake`
-/// (web mock path) — same casing-tolerance contract as `handlers::arg_str`.
-fn str_arg(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
-    args.get(camel)
-        .or_else(|| args.get(snake))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
 }
 
 /// The vault-relative path used for `git add`, falling back to the absolute

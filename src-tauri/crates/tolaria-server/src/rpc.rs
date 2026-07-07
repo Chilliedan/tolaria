@@ -102,6 +102,18 @@ impl RpcError {
     }
 }
 
+/// Read a required string arg by its camelCase or snake_case key. The web mock
+/// path sends snake_case; desktop Tauri sends camelCase — accept both. Shared
+/// by every command dispatcher so the casing-tolerance contract lives in one
+/// place.
+pub(crate) fn str_arg(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
+    args.get(camel)
+        .or_else(|| args.get(snake))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
+}
+
 /// Marker for a command the read-only web server does not implement.
 pub fn unsupported(command: &str) -> RpcError {
     RpcError {

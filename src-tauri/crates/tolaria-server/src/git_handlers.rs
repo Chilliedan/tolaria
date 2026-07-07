@@ -2,7 +2,7 @@
 //! conflict resolution). Serialized by `AppState::repo_lock` so git's index is
 //! never mutated concurrently. Commits are authored by the acting user.
 
-use crate::rpc::{AppState, RpcError};
+use crate::rpc::{str_arg, AppState, RpcError};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use tolaria_core::git::{
@@ -22,17 +22,6 @@ pub fn is_git_command(command: &str) -> bool {
             | "git_discard_file"
             | "init_git_repo"
     )
-}
-
-/// Read a required string arg, accepting either a camelCase or snake_case
-/// key. Mirrors `handlers::arg_str`; kept as a small local copy so this
-/// module stays self-contained.
-fn str_arg(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
-    args.get(camel)
-        .or_else(|| args.get(snake))
-        .and_then(|v| v.as_str())
-        .map(|s| s.to_string())
-        .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
 }
 
 #[derive(Deserialize)]
