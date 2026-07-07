@@ -139,6 +139,29 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
     }
 }
 
+/// Read a required string arg by its camelCase or snake_case key. The web mock
+/// path sends snake_case; desktop Tauri sends camelCase — accept both.
+fn arg_str(args: &Value, camel: &str, snake: &str) -> Result<String, RpcError> {
+    args.get(camel)
+        .or_else(|| args.get(snake))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| RpcError::bad_request(format!("missing string arg '{camel}'/'{snake}'")))
+}
+
+/// Optional string arg by camelCase or snake_case key.
+fn arg_opt_str(args: &Value, camel: &str, snake: &str) -> Option<String> {
+    args.get(camel)
+        .or_else(|| args.get(snake))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Numeric arg with a default when absent or non-numeric.
+fn arg_u64(args: &Value, key: &str, default: u64) -> u64 {
+    args.get(key).and_then(|v| v.as_u64()).unwrap_or(default)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -278,5 +301,21 @@ mod tests {
         )
         .unwrap();
         assert_eq!(out["hasRemote"], serde_json::json!(false));
+    }
+
+    #[test]
+    fn arg_str_accepts_camel_and_snake() {
+        let camel = serde_json::json!({ "filePath": "a.md" });
+        let snake = serde_json::json!({ "file_path": "b.md" });
+        assert_eq!(arg_str(&camel, "filePath", "file_path").unwrap(), "a.md");
+        assert_eq!(arg_str(&snake, "filePath", "file_path").unwrap(), "b.md");
+        assert!(arg_str(&serde_json::json!({}), "filePath", "file_path").is_err());
+        assert_eq!(arg_u64(&serde_json::json!({ "limit": 5 }), "limit", 20), 5);
+        assert_eq!(arg_u64(&serde_json::json!({}), "limit", 20), 20);
+        // Verify arg_opt_str is available for later task usage
+        assert_eq!(
+            arg_opt_str(&camel, "filePath", "file_path"),
+            Some("a.md".to_string())
+        );
     }
 }
