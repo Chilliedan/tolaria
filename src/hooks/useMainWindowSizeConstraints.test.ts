@@ -6,12 +6,17 @@ import {
   useMainWindowSizeConstraints,
 } from './useMainWindowSizeConstraints'
 
-const { invoke } = vi.hoisted(() => ({
+const { invoke, isTauri } = vi.hoisted(() => ({
   invoke: vi.fn<(...args: unknown[]) => Promise<void>>(),
+  isTauri: vi.fn<() => boolean>(() => true),
 }))
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke,
+}))
+
+vi.mock('../mock-tauri', () => ({
+  isTauri,
 }))
 
 describe('getMainWindowMinWidth', () => {
@@ -75,6 +80,7 @@ describe('useMainWindowSizeConstraints', () => {
   beforeEach(() => {
     invoke.mockReset()
     invoke.mockResolvedValue()
+    isTauri.mockReturnValue(true)
   })
 
   const invokeCases = [
@@ -131,6 +137,14 @@ describe('useMainWindowSizeConstraints', () => {
       minHeight: 400,
       growToFit: false,
     })
+  })
+
+  it('skips the native window command on web (no Tauri)', async () => {
+    isTauri.mockReturnValue(false)
+
+    await applyMainWindowSizeConstraints(1200, { growToFit: false })
+
+    expect(invoke).not.toHaveBeenCalled()
   })
 
   it('does not request native grow-to-fit on Windows', async () => {

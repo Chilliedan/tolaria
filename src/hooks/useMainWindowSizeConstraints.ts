@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { invoke } from '@tauri-apps/api/core'
+import { isTauri } from '../mock-tauri'
 import { isWindows } from '../utils/platform'
 
 const MAIN_WINDOW_MIN_HEIGHT = 400
@@ -48,6 +49,9 @@ export async function applyMainWindowSizeConstraints(
   minWidth: number,
   options: { growToFit?: boolean } = {},
 ): Promise<void> {
+  // Native window sizing has no web equivalent; skip it on web so the build
+  // doesn't fire an unsupported command at the server (which 501s).
+  if (!isTauri()) return
   await invoke('update_current_window_min_size', {
     minWidth,
     minHeight: MAIN_WINDOW_MIN_HEIGHT,
