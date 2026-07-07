@@ -10,6 +10,13 @@ import { tryVaultApi } from './vault-api'
 
 export { addMockEntry, updateMockContent, trackMockChange }
 
+/**
+ * False in pure-mock dev: there is no HTTP server, so client-side JS mocks
+ * (with their real in-memory content store) are used. The web bridge overrides
+ * this to `true`. See `frontmatterOps.ts` for why the distinction matters.
+ */
+export const IS_WEB_SERVER_BRIDGE = false
+
 type MockHandler = (args: Record<string, unknown> | undefined) => unknown
 
 export function isTauri(): boolean {

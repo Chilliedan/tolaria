@@ -1,6 +1,19 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { VaultEntry } from '../types'
-import { frontmatterToEntryPatch, applyRelationshipPatch, contentToEntryPatch } from './frontmatterOps'
+import { frontmatterToEntryPatch, applyRelationshipPatch, contentToEntryPatch, runFrontmatterAndApply } from './frontmatterOps'
+
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn<(...a: unknown[]) => Promise<string>>() }))
+const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn<(...a: unknown[]) => Promise<unknown>>() }))
+
+vi.mock('@tauri-apps/api/core', () => ({ invoke }))
+vi.mock('../mock-tauri', () => ({
+  // Simulate the real web deployment: not Tauri, but backed by the server bridge.
+  isTauri: () => false,
+  IS_WEB_SERVER_BRIDGE: true,
+  mockInvoke,
+  updateMockContent: vi.fn(),
+  trackMockChange: vi.fn(),
+}))
 
 describe('frontmatterToEntryPatch', () => {
   it.each([
@@ -196,5 +209,59 @@ describe('contentToEntryPatch', () => {
   it('preserves order as a number', () => {
     const content = '---\ntype: Type\norder: 3\n---\n'
     expect(contentToEntryPatch(content)).toEqual({ isA: 'Type', order: 3 })
+  })
+})
+
+// Regression: on the web server bridge, property edits MUST go to the server's
+// update_frontmatter/delete_frontmatter_property commands (which preserve the
+// note body), NOT the in-browser mock path — that path reads an empty no-op
+// content store on web and would rewrite the file to just the new property,
+// destroying the body and other properties.
+describe('runFrontmatterAndApply routing on the web server bridge', () => {
+  const callbacks = {
+    updateTab: vi.fn(),
+    updateEntry: vi.fn(),
+    toast: vi.fn(),
+    getEntry: vi.fn(() => undefined),
+  }
+
+  beforeEach(() => {
+    invoke.mockReset()
+    invoke.mockResolvedValue('---\nKind: Research\nbelongs_to: [[parent]]\n---\n\nBody preserved.')
+    mockInvoke.mockReset()
+    callbacks.updateTab.mockReset()
+    callbacks.updateEntry.mockReset()
+    callbacks.toast.mockReset()
+  })
+
+  it('routes an update through the server update_frontmatter command, not the mock wipe path', async () => {
+    await runFrontmatterAndApply({
+      op: 'update',
+      path: '/vault/note.md',
+      key: 'Kind',
+      value: 'Research',
+      callbacks,
+    })
+    expect(invoke).toHaveBeenCalledWith('update_frontmatter', {
+      path: '/vault/note.md',
+      key: 'Kind',
+      value: 'Research',
+    })
+    // The destructive mock path (get_note_content + save_note_content) must not run.
+    expect(mockInvoke).not.toHaveBeenCalledWith('save_note_content', expect.anything())
+  })
+
+  it('routes a delete through the server delete_frontmatter_property command', async () => {
+    await runFrontmatterAndApply({
+      op: 'delete',
+      path: '/vault/note.md',
+      key: 'Kind',
+      callbacks,
+    })
+    expect(invoke).toHaveBeenCalledWith('delete_frontmatter_property', {
+      path: '/vault/note.md',
+      key: 'Kind',
+    })
+    expect(mockInvoke).not.toHaveBeenCalledWith('save_note_content', expect.anything())
   })
 })

@@ -113,6 +113,14 @@ export function isTauri(): boolean {
   return false
 }
 
+/**
+ * True in the real web deployment: this bridge forwards implemented commands to
+ * the HTTP server. Code that must choose between a server round-trip and an
+ * in-browser JS mock (e.g. frontmatter edits) checks this so it never runs the
+ * mock — whose content store is a no-op here — against real files.
+ */
+export const IS_WEB_SERVER_BRIDGE = true
+
 export function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (DESKTOP_ONLY.has(cmd)) {
     return Promise.resolve(undefined as T)

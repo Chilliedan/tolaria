@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import { isTauri, mockInvoke } from '../mock-tauri'
+import { isTauri, mockInvoke, IS_WEB_SERVER_BRIDGE } from '../mock-tauri'
 import type { VaultEntry, VaultPropertyValue } from '../types'
 import type { FrontmatterValue } from '../components/Inspector'
 import { updateMockFrontmatter, deleteMockFrontmatterProperty } from './mockFrontmatterHelpers'
@@ -252,12 +252,19 @@ async function executeFrontmatterOp(
   key: FrontmatterKey,
   value?: FrontmatterValue,
 ): Promise<MarkdownContent> {
+  // Desktop (Tauri IPC) and the real web deployment (HTTP transport, via the
+  // server bridge) both handle these commands server-side, reading the file and
+  // updating only the frontmatter — the note body is preserved. The in-browser
+  // JS mock path is ONLY safe in pure-mock dev, where the content store is real;
+  // on the web bridge that store is a no-op, so using it would rewrite the file
+  // from empty content and destroy the body.
+  const useServer = isTauri() || IS_WEB_SERVER_BRIDGE
   if (op === 'update') {
-    return isTauri()
+    return useServer
       ? invokeFrontmatter('update_frontmatter', { path, key, value })
       : executeMockFrontmatterOp(op, path, key, value)
   }
-  return isTauri()
+  return useServer
     ? invokeFrontmatter('delete_frontmatter_property', { path, key })
     : executeMockFrontmatterOp(op, path, key)
 }
