@@ -255,11 +255,19 @@ async fn delete_note(
     Ok(json!(removed))
 }
 
+// Accept both the camelCase (desktop Tauri) and snake_case (web mock path)
+// field names. The web client routes rename through mockInvoke, which sends
+// snake_case; without these aliases every web rename fails deserialization.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenameArgs {
+    #[serde(alias = "old_path")]
     old_path: PathBuf,
+    #[serde(alias = "new_title")]
     new_title: String,
+    // The optional title hint arrives as `oldTitle` (Tauri) or `old_title`
+    // (web) — neither matches the default `oldTitleHint`, so alias both.
+    #[serde(alias = "old_title_hint", alias = "oldTitle", alias = "old_title")]
     old_title_hint: Option<String>,
 }
 
@@ -298,7 +306,9 @@ async fn rename_note(
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct RenameFilenameArgs {
+    #[serde(alias = "old_path")]
     old_path: PathBuf,
+    #[serde(alias = "new_filename_stem")]
     new_filename_stem: String,
 }
 
@@ -633,6 +643,59 @@ mod tests {
         assert!(!p.exists());
         assert!(new_path.exists());
         assert_eq!(new_path.file_name().unwrap(), "new-stem.md");
+    }
+
+    // The web client routes rename through the mock path, which sends
+    // snake_case field names (old_path / new_filename_stem / new_title /
+    // old_title). The server must accept those, not only the camelCase Tauri
+    // form — otherwise every web rename fails with "missing field `oldPath`".
+    #[tokio::test]
+    async fn rename_note_filename_accepts_snake_case_web_args() {
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("untitled-note-1.md");
+        fs::write(&p, "# Hello\n\nbody").unwrap();
+        let state = state_for(dir.path());
+        let out = dispatch_write(
+            &state,
+            None,
+            "rename_note_filename",
+            json!({
+                "vault_path": dir.path(),
+                "old_path": p,
+                "new_filename_stem": "hello"
+            }),
+        )
+        .await
+        .expect("web snake_case rename_note_filename must succeed");
+        let new_path = PathBuf::from(out["new_path"].as_str().unwrap());
+        assert!(!p.exists());
+        assert!(new_path.exists());
+        assert_eq!(new_path.file_name().unwrap(), "hello.md");
+    }
+
+    #[tokio::test]
+    async fn rename_note_accepts_snake_case_web_args() {
+        let dir = tempdir().unwrap();
+        let p = dir.path().join("untitled-note-2.md");
+        fs::write(&p, "# Untitled\n\nbody").unwrap();
+        let state = state_for(dir.path());
+        let out = dispatch_write(
+            &state,
+            None,
+            "rename_note",
+            json!({
+                "vault_path": dir.path(),
+                "old_path": p,
+                "new_title": "My Note",
+                "old_title": "Untitled"
+            }),
+        )
+        .await
+        .expect("web snake_case rename_note must succeed");
+        let new_path = PathBuf::from(out["new_path"].as_str().unwrap());
+        assert!(!p.exists());
+        assert!(new_path.exists());
+        assert_eq!(new_path.file_name().unwrap(), "my-note.md");
     }
 
     #[tokio::test]
