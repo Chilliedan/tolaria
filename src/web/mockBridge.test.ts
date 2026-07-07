@@ -16,4 +16,16 @@ describe('mockBridge SERVER_COMMANDS', () => {
       expect(SERVER_COMMANDS.has(cmd)).toBe(true)
     }
   })
+
+  it('routes git read + folder commands to the server', () => {
+    for (const cmd of [
+      'is_git_repo', 'get_modified_files', 'get_modified_files_with_stats',
+      'get_file_diff', 'get_file_diff_at_commit', 'get_file_history',
+      'get_last_commit_info', 'get_vault_pulse', 'git_file_url',
+      'git_add_remote', 'git_discard_file', 'init_git_repo',
+      'create_vault_folder', 'delete_vault_folder', 'rename_vault_folder',
+    ]) {
+      expect(SERVER_COMMANDS.has(cmd)).toBe(true)
+    }
+  })
 })
