@@ -801,6 +801,50 @@ Phase 5 adds authenticated git commit/push/pull/status/conflict-resolution contr
 - **Repo lock**: `AppState::repo_lock` (`tokio::sync::Mutex<()>`) serializes all index-mutating operations process-wide. Lock ordering is always per-path-lock (`PathLocks`) → repo-lock, never reversed, so the two lock kinds cannot deadlock.
 - **Configuration** (environment variables): `TOLARIA_COMMITTER_NAME` / `TOLARIA_COMMITTER_EMAIL` (fixed committer identity, defaults `Tolaria Server` / `server@tolaria.local`) and `TOLARIA_AUTOGIT` (default `true`; set `false` to disable auto-commit and rely on the explicit `git_commit` control). Push/pull use a single server-side deploy credential (SSH key or HTTPS credential helper) configured at deploy time — see the commented example in `docker-compose.yml`. Real-time WebSocket sync events are deferred to a later phase; git-sync QA is native/manual against a real deployment (see ADR-0151).
 
+### Web command surface (git reads, folder ops)
+
+Completes the web client's command surface beyond git sync controls: git
+*reads* for UI panels that were previously falling back to fake mock data,
+plus vault folder mutations. See [ADR-0152](./adr/0152-web-command-surface-completion.md).
+
+- **Git reads** (`handlers::dispatch`, no lock): `is_git_repo`,
+  `get_modified_files`/`get_modified_files_with_stats`,
+  `get_file_diff`/`get_file_diff_at_commit`, `get_file_history`,
+  `get_last_commit_info`, `get_vault_pulse`, `git_file_url` — pure reads
+  against `tolaria_core::git`, joining the existing read-only dispatch table
+  since they never touch the git index.
+- **Repo mutations** (`git_handlers::dispatch_git`, under `AppState::repo_lock`):
+  `git_add_remote`, `git_discard_file`, `init_git_repo` join the existing
+  commit/push/pull/conflict arms.
+- **Folder mutations** (`write_handlers`, path lock + `autogit_commit_all`):
+  `create_vault_folder`/`delete_vault_folder`/`rename_vault_folder`, backed
+  by a new core `tolaria_core::vault::create_folder`. Like note renames,
+  folder operations commit-all rather than path-scoped, since they can
+  touch an unbounded set of files underneath the folder.
+- **The arg-shape rule:** the web client's `mockInvoke` call sites send
+  different argument shapes than native Tauri IPC for the same command —
+  snake_case keys (`commit_hash`, not `commitHash`), different key names
+  entirely (file path arrives as `path`, not `filePath`; folder create
+  sends `folderName`/`parentPath`, not `folderPath`), and envelope nesting
+  (`git_add_remote` wraps its arg under `{ request: { remoteUrl } }`).
+  Every web-routed command reads its args through a casing/shape-tolerant
+  extractor (`handlers::arg_str`, and local `str_arg` twins in
+  `git_handlers.rs`/`write_handlers.rs`) that accepts both forms, and every
+  server test for these commands sends the *real* web shape, not just the
+  desktop shape — this is the standing rule for any future web-routed
+  command.
+- **`DESKTOP_ONLY`** (`src/web/mockBridge.ts`): an explicit allowlist of
+  genuinely desktop-only commands (clipboard, PDF export/print,
+  window/menu chrome, the updater, the vault file watcher, AI streaming/
+  session/credential commands) that short-circuit to `undefined` on web
+  instead of hitting the server. Chosen over a blanket "unknown command →
+  undefined" fallback so a genuinely missing server command still surfaces
+  as a real 501 rather than being silently indistinguishable from an
+  intentional no-op. Knowingly still deferred to the mock:
+  `auto_rename_untitled`, `detect_renames`, `update_wikilinks_for_renames`,
+  `batch_delete_notes_async` (web delete uses per-path `delete_note`
+  instead), `validate_note_content`.
+
 ## Tauri IPC Commands
 
 ### Vault Operations
