@@ -15,6 +15,15 @@ services:
       # Auto-commit each write as the acting user. Set to false to disable
       # and rely solely on the explicit git_commit control.
       TOLARIA_AUTOGIT: ${TOLARIA_AUTOGIT:-true}
+      # Default git identity for commits that aren't authored per-user, e.g. the
+      # merge commit git creates during pull. Without it, git in the container
+      # (root, no ~/.gitconfig) fails merges with "Committer identity unknown".
+      # Per-user autogit commits override these via GIT_AUTHOR_* on their own
+      # subprocess, so attribution is preserved.
+      GIT_AUTHOR_NAME: ${TOLARIA_COMMITTER_NAME:-Tolaria Server}
+      GIT_AUTHOR_EMAIL: ${TOLARIA_COMMITTER_EMAIL:-server@tolaria.local}
+      GIT_COMMITTER_NAME: ${TOLARIA_COMMITTER_NAME:-Tolaria Server}
+      GIT_COMMITTER_EMAIL: ${TOLARIA_COMMITTER_EMAIL:-server@tolaria.local}
       # Credential for git push/pull to an SSH remote. The container runs as
       # root; mount the deploy key at /root/.ssh/id_ed25519 (see the volume
       # below) with host permissions 600, and this default finds it. Override
