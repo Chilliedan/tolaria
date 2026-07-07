@@ -70,11 +70,53 @@ export const SERVER_COMMANDS = new Set<string>([
   'rename_vault_folder',
 ])
 
+/**
+ * Commands that only make sense inside the native desktop shell (clipboard,
+ * PDF export/print, window/menu chrome, the updater, the vault file watcher,
+ * and AI streaming/session persistence). On web these must no-op rather than
+ * fall through to the server, which does not implement them and would 501.
+ */
+export const DESKTOP_ONLY = new Set<string>([
+  'copy_text_to_clipboard',
+  'read_text_from_clipboard',
+  'copy_image_to_vault',
+  'save_image',
+  'export_current_webview_pdf',
+  'print_current_webview',
+  'can_export_current_webview_pdf',
+  'update_current_window_min_size',
+  'perform_current_window_titlebar_double_click',
+  'trigger_menu_command',
+  'update_menu_state',
+  'check_for_app_update',
+  'download_and_install_app_update',
+  'start_vault_watcher',
+  'stop_vault_watcher',
+  'get_process_memory_snapshot',
+  'update_app_icon',
+  'open_vault_file_external',
+  'should_use_external_media_preview',
+  'sync_vault_asset_scope_for_window',
+  'get_agent_docs_path',
+  'check_claude_cli',
+  'get_ai_workspace_sessions',
+  'save_ai_workspace_sessions',
+  'save_ai_model_provider_api_key',
+  'delete_ai_model_provider_api_key',
+  'test_ai_model_provider',
+  'stream_ai_agent',
+  'stream_ai_model',
+  'stream_claude_chat',
+])
+
 export function isTauri(): boolean {
   return false
 }
 
 export function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (DESKTOP_ONLY.has(cmd)) {
+    return Promise.resolve(undefined as T)
+  }
   if (SERVER_COMMANDS.has(cmd)) {
     return invoke<T>(cmd, args)
   }

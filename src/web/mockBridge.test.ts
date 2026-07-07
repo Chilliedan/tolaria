@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { SERVER_COMMANDS } from './mockBridge'
 
 describe('mockBridge SERVER_COMMANDS', () => {
@@ -27,5 +27,15 @@ describe('mockBridge SERVER_COMMANDS', () => {
     ]) {
       expect(SERVER_COMMANDS.has(cmd)).toBe(true)
     }
+  })
+
+  it('no-ops desktop-only commands without hitting the server', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+    const { mockInvoke } = await import('./mockBridge')
+    for (const cmd of ['copy_text_to_clipboard', 'update_current_window_min_size', 'stream_ai_model', 'check_for_app_update']) {
+      await expect(mockInvoke(cmd, {})).resolves.toBeUndefined()
+    }
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
