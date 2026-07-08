@@ -19,6 +19,7 @@
  */
 import { invoke } from './transport'
 import { mockHandlers } from '../mock-tauri/mock-handlers'
+import { markWebServerBridge } from '../lib/webServerBridge'
 
 /** Commands the web server implements; these go to the real HTTP transport. */
 export const SERVER_COMMANDS = new Set<string>([
@@ -34,6 +35,7 @@ export const SERVER_COMMANDS = new Set<string>([
   'create_note_content',
   'rename_note',
   'rename_note_filename',
+  'move_note_to_folder',
   'delete_note',
   'update_frontmatter',
   'delete_frontmatter_property',
@@ -113,13 +115,10 @@ export function isTauri(): boolean {
   return false
 }
 
-/**
- * True in the real web deployment: this bridge forwards implemented commands to
- * the HTTP server. Code that must choose between a server round-trip and an
- * in-browser JS mock (e.g. frontmatter edits) checks this so it never runs the
- * mock — whose content store is a no-op here — against real files.
- */
-export const IS_WEB_SERVER_BRIDGE = true
+// Mark this as the real web server bridge so code that must pick a server
+// round-trip over an in-browser JS mock (frontmatter edits, cross-vault moves)
+// can detect it without every mock-tauri test mock having to declare a flag.
+markWebServerBridge()
 
 export function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (DESKTOP_ONLY.has(cmd)) {

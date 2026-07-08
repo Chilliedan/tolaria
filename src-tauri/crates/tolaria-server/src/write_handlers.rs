@@ -13,7 +13,9 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
 use tolaria_core::frontmatter::{self, FrontmatterValue};
-use tolaria_core::vault::{self, RenameNoteFilenameRequest, RenameNoteRequest};
+use tolaria_core::vault::{
+    self, MoveNoteToFolderRequest, RenameNoteFilenameRequest, RenameNoteRequest,
+};
 
 /// True if `command` is a write command that must go through
 /// [`dispatch_write`] instead of the read-only `handlers::dispatch`.
@@ -31,6 +33,7 @@ pub fn is_write_command(command: &str) -> bool {
             | "create_vault_folder"
             | "delete_vault_folder"
             | "rename_vault_folder"
+            | "move_note_to_folder"
     )
 }
 
@@ -70,6 +73,7 @@ pub async fn dispatch_write(
         "create_vault_folder" => create_vault_folder(state, identity, args).await,
         "delete_vault_folder" => delete_vault_folder(state, identity, args).await,
         "rename_vault_folder" => rename_vault_folder(state, identity, args).await,
+        "move_note_to_folder" => move_note_to_folder(state, identity, args).await,
         other => Err(crate::rpc::unsupported(other)),
     }
 }
@@ -453,6 +457,53 @@ async fn rename_vault_folder(
         .map_err(RpcError::internal)?;
     autogit_commit_all(state, identity, &format!("rename folder {folder}")).await;
     serde_json::to_value(result).map_err(|e| RpcError::internal(e.to_string()))
+}
+
+/// Move a note into an existing folder within the vault. The client sends the
+/// destination as a vault-relative path (`folder_path`); core wants an absolute
+/// existing directory, so resolve it under the vault and confine it.
+async fn move_note_to_folder(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
+    let old = str_arg(&args, "oldPath", "old_path")?;
+    let folder = str_arg(&args, "folderPath", "folder_path")?;
+    let safe_old = contained_note_path(&state.vault_root, std::path::Path::new(&old))?;
+    let _guard = state.locks.lock(&safe_old).await;
+    let dest = contained_existing_folder(&state.vault_root, &folder)?;
+    let vault_root = state.vault_root.to_string_lossy();
+    let result = vault::move_note_to_folder(MoveNoteToFolderRequest {
+        vault_path: &vault_root,
+        old_path: &safe_old.to_string_lossy(),
+        destination_folder_path: &dest.to_string_lossy(),
+    })
+    .map_err(RpcError::internal)?;
+    autogit_commit_all(state, identity, "move note to folder").await;
+    serde_json::to_value(result).map_err(|e| RpcError::internal(e.to_string()))
+}
+
+/// Resolve a vault-relative (or absolute-in-vault) folder path to a confined,
+/// existing directory, rejecting anything outside the vault.
+fn contained_existing_folder(
+    vault_root: &std::path::Path,
+    folder: &str,
+) -> Result<PathBuf, RpcError> {
+    let candidate = if std::path::Path::new(folder).is_absolute() {
+        PathBuf::from(folder)
+    } else {
+        vault_root.join(folder)
+    };
+    let canon = std::fs::canonicalize(&candidate)
+        .map_err(|_| RpcError::bad_request("destination folder does not exist"))?;
+    let root = std::fs::canonicalize(vault_root).map_err(|e| RpcError::internal(e.to_string()))?;
+    if !canon.starts_with(&root) {
+        return Err(RpcError::bad_request("destination folder is outside the vault"));
+    }
+    if !canon.is_dir() {
+        return Err(RpcError::bad_request("destination is not a folder"));
+    }
+    Ok(canon)
 }
 
 /// For writes the file may not exist yet (create/first save), so canonicalize
@@ -998,6 +1049,48 @@ mod tests {
 
         assert!(dir.path().join("Archive").is_dir());
         assert!(!dir.path().join("Projects").exists());
+    }
+
+    #[tokio::test]
+    async fn move_note_to_folder_moves_the_file_from_web_args() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        fs::create_dir(dir.path().join("Archive")).unwrap();
+        let note = dir.path().join("note.md");
+        fs::write(&note, "# Note\n\nbody").unwrap();
+
+        dispatch_write(
+            &state,
+            None,
+            "move_note_to_folder",
+            // Real web arg shape: snake_case, vault-relative destination folder.
+            json!({ "vault_path": dir.path(), "old_path": note, "folder_path": "Archive" }),
+        )
+        .await
+        .expect("web move_note_to_folder must succeed");
+
+        assert!(!note.exists(), "original note should be gone");
+        assert!(dir.path().join("Archive").join("note.md").exists(), "note should be in Archive");
+    }
+
+    #[tokio::test]
+    async fn move_note_to_folder_rejects_destination_outside_vault() {
+        let dir = tempdir().unwrap();
+        let outside = tempdir().unwrap();
+        let state = state_for(dir.path());
+        let note = dir.path().join("note.md");
+        fs::write(&note, "# Note\n").unwrap();
+
+        let err = dispatch_write(
+            &state,
+            None,
+            "move_note_to_folder",
+            json!({ "old_path": note, "folder_path": outside.path().to_string_lossy() }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert!(note.exists(), "note must not be moved out of the vault");
     }
 
     #[tokio::test]

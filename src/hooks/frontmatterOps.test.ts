@@ -7,12 +7,16 @@ const { mockInvoke } = vi.hoisted(() => ({ mockInvoke: vi.fn<(...a: unknown[]) =
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke }))
 vi.mock('../mock-tauri', () => ({
-  // Simulate the real web deployment: not Tauri, but backed by the server bridge.
   isTauri: () => false,
-  IS_WEB_SERVER_BRIDGE: true,
   mockInvoke,
   updateMockContent: vi.fn(),
   trackMockChange: vi.fn(),
+}))
+// Simulate the real web deployment (file-scoped, so it can't leak to other
+// test files the way mutating the real module flag would).
+vi.mock('../lib/webServerBridge', () => ({
+  isWebServerBridge: () => true,
+  markWebServerBridge: () => {},
 }))
 
 describe('frontmatterToEntryPatch', () => {

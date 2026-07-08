@@ -1,4 +1,11 @@
 import { describe, it, expect, vi } from 'vitest'
+// Importing the bridge runs its module-load `markWebServerBridge()`. Mock the
+// module to a no-op so that side effect can't leak the "web server" flag into
+// other test files running in the same worker.
+vi.mock('../lib/webServerBridge', () => ({
+  isWebServerBridge: () => false,
+  markWebServerBridge: () => {},
+}))
 import { SERVER_COMMANDS } from './mockBridge'
 
 describe('mockBridge SERVER_COMMANDS', () => {
@@ -24,6 +31,7 @@ describe('mockBridge SERVER_COMMANDS', () => {
       'get_last_commit_info', 'get_vault_pulse', 'git_file_url',
       'git_add_remote', 'git_discard_file', 'init_git_repo',
       'create_vault_folder', 'delete_vault_folder', 'rename_vault_folder',
+      'move_note_to_folder',
     ]) {
       expect(SERVER_COMMANDS.has(cmd)).toBe(true)
     }

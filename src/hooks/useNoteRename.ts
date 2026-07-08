@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { isTauri, mockInvoke } from '../mock-tauri'
+import { isWebServerBridge } from '../lib/webServerBridge'
 import type { VaultEntry, WorkspaceIdentity } from '../types'
 import { slugify } from './useNoteCreation'
 import {
@@ -210,6 +211,14 @@ export async function performMoveNoteToWorkspace({
   destinationVaultPath,
   replacementTarget,
 }: WorkspaceMoveRequest): Promise<RenameResult> {
+  // Moving a note between workspaces is a cross-vault operation; the single-vault
+  // web server has no other workspace to move into, and the command is not routed
+  // there — guard it off rather than silently no-op against the browser mock.
+  // (Gated on the web-server bridge specifically, not !isTauri(), so desktop and
+  // jsdom tests — where isTauri() is false — still exercise the real path.)
+  if (isWebServerBridge()) {
+    throw new Error('Moving notes between workspaces is not available on the web.')
+  }
   const tauriReplacementTarget = replacementTarget ?? null
   return invokeRenameCommand({
     command: 'move_note_to_workspace',

@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core'
-import { isTauri, mockInvoke, IS_WEB_SERVER_BRIDGE } from '../mock-tauri'
+import { isTauri, mockInvoke } from '../mock-tauri'
+import { isWebServerBridge } from '../lib/webServerBridge'
 import type { VaultEntry, VaultPropertyValue } from '../types'
 import type { FrontmatterValue } from '../components/Inspector'
 import { updateMockFrontmatter, deleteMockFrontmatterProperty } from './mockFrontmatterHelpers'
@@ -258,7 +259,7 @@ async function executeFrontmatterOp(
   // JS mock path is ONLY safe in pure-mock dev, where the content store is real;
   // on the web bridge that store is a no-op, so using it would rewrite the file
   // from empty content and destroy the body.
-  const useServer = isTauri() || IS_WEB_SERVER_BRIDGE
+  const useServer = isTauri() || isWebServerBridge()
   if (op === 'update') {
     return useServer
       ? invokeFrontmatter('update_frontmatter', { path, key, value })

@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useAiActivity } from './useAiActivity'
 
+// The UI-action WebSocket bridge is desktop-only (gated behind isTauri()); these
+// tests exercise that desktop behavior, so run them as if inside the Tauri shell.
+vi.mock('../mock-tauri', () => ({ isTauri: () => true }))
+
 let lastWsInstance: MockWebSocket | null = null
 
 class MockWebSocket {
