@@ -14,7 +14,7 @@ use serde_json::{json, Value};
 use std::path::PathBuf;
 use tolaria_core::frontmatter::{self, FrontmatterValue};
 use tolaria_core::vault::{
-    self, MoveNoteToFolderRequest, RenameNoteFilenameRequest, RenameNoteRequest,
+    self, MoveNoteToFolderRequest, RenameNoteFilenameRequest, RenameNoteRequest, ViewDefinition,
 };
 
 /// True if `command` is a write command that must go through
@@ -34,6 +34,8 @@ pub fn is_write_command(command: &str) -> bool {
             | "delete_vault_folder"
             | "rename_vault_folder"
             | "move_note_to_folder"
+            | "save_view_cmd"
+            | "delete_view_cmd"
     )
 }
 
@@ -74,6 +76,8 @@ pub async fn dispatch_write(
         "delete_vault_folder" => delete_vault_folder(state, identity, args).await,
         "rename_vault_folder" => rename_vault_folder(state, identity, args).await,
         "move_note_to_folder" => move_note_to_folder(state, identity, args).await,
+        "save_view_cmd" => save_view_command(state, identity, args).await,
+        "delete_view_cmd" => delete_view_command(state, identity, args).await,
         other => Err(crate::rpc::unsupported(other)),
     }
 }
@@ -481,6 +485,51 @@ async fn move_note_to_folder(
     .map_err(RpcError::internal)?;
     autogit_commit_all(state, identity, "move note to folder").await;
     serde_json::to_value(result).map_err(|e| RpcError::internal(e.to_string()))
+}
+
+#[derive(Deserialize)]
+struct SaveViewArgs {
+    filename: String,
+    definition: ViewDefinition,
+}
+
+/// Create/overwrite a saved view (`<vault>/views/<filename>.yml`).
+async fn save_view_command(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
+    let a: SaveViewArgs = parse(args)?;
+    validate_view_filename(&a.filename)?;
+    vault::save_view(&state.vault_root, &a.filename, &a.definition).map_err(RpcError::internal)?;
+    autogit_commit_all(state, identity, &format!("save view {}", a.filename)).await;
+    Ok(Value::Null)
+}
+
+/// Delete a saved view file.
+async fn delete_view_command(
+    state: &AppState,
+    identity: Option<&tolaria_core::git::CommitIdentity>,
+    args: Value,
+) -> Result<Value, RpcError> {
+    let filename = str_arg(&args, "filename", "filename")?;
+    validate_view_filename(&filename)?;
+    vault::delete_view(&state.vault_root, &filename).map_err(RpcError::internal)?;
+    autogit_commit_all(state, identity, &format!("delete view {}", filename)).await;
+    Ok(Value::Null)
+}
+
+/// A view filename must be a bare name (no directory part, no `..`) so it can't
+/// escape `<vault>/views/`. `save_view`/`delete_view` join it directly.
+fn validate_view_filename(filename: &str) -> Result<(), RpcError> {
+    let bare = std::path::Path::new(filename)
+        .file_name()
+        .map(|n| n == std::ffi::OsStr::new(filename))
+        .unwrap_or(false);
+    if !bare {
+        return Err(RpcError::bad_request("invalid view filename"));
+    }
+    Ok(())
 }
 
 /// Resolve a vault-relative (or absolute-in-vault) folder path to a confined,
@@ -1091,6 +1140,59 @@ mod tests {
         .unwrap_err();
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
         assert!(note.exists(), "note must not be moved out of the vault");
+    }
+
+    #[tokio::test]
+    async fn save_view_cmd_writes_the_view_file() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        dispatch_write(
+            &state,
+            None,
+            "save_view_cmd",
+            json!({
+                "vaultPath": dir.path(),
+                "filename": "active.yml",
+                "definition": { "name": "Active Projects", "filters": { "all": [] } }
+            }),
+        )
+        .await
+        .expect("save_view_cmd should succeed");
+        let path = dir.path().join("views").join("active.yml");
+        assert!(path.exists());
+        assert!(fs::read_to_string(&path).unwrap().contains("Active Projects"));
+    }
+
+    #[tokio::test]
+    async fn save_view_cmd_rejects_path_traversal_filename() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        let err = dispatch_write(
+            &state,
+            None,
+            "save_view_cmd",
+            json!({
+                "filename": "../evil.yml",
+                "definition": { "name": "X", "filters": { "all": [] } }
+            }),
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert!(!dir.path().parent().unwrap().join("evil.yml").exists());
+    }
+
+    #[tokio::test]
+    async fn delete_view_cmd_removes_the_view_file() {
+        let dir = tempdir().unwrap();
+        let state = state_for(dir.path());
+        fs::create_dir(dir.path().join("views")).unwrap();
+        let path = dir.path().join("views").join("gone.yml");
+        fs::write(&path, "name: G\nfilters:\n  all: []\n").unwrap();
+        dispatch_write(&state, None, "delete_view_cmd", json!({ "filename": "gone.yml" }))
+            .await
+            .expect("delete_view_cmd should succeed");
+        assert!(!path.exists());
     }
 
     #[tokio::test]

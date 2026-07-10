@@ -25,6 +25,7 @@ import { useAiAgentsOnboarding } from './hooks/useAiAgentsOnboarding'
 import { useAiAgentsStatus } from './hooks/useAiAgentsStatus'
 import { useVaultAiGuidanceStatus } from './hooks/useVaultAiGuidanceStatus'
 import { useAutoGit } from './hooks/useAutoGit'
+import { isWebServerBridge } from './lib/webServerBridge'
 import { useVaultLoader } from './hooks/useVaultLoader'
 import { useRecentVaultWrites, useVaultWatcher } from './hooks/useVaultWatcher'
 import { useSettings } from './hooks/useSettings'
@@ -941,7 +942,10 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
     remoteStatusForRepository: gitSurfaces.remoteStatusForRepository,
   })
   const autoGit = useAutoGit({
-    enabled: settings.autogit_enabled === true,
+    // The web server is a git peer whose purpose is to sync; enable the
+    // debounced auto-commit+push there by default (the server also commits each
+    // save, so this mainly drives the periodic push). Desktop keeps the setting.
+    enabled: settings.autogit_enabled === true || isWebServerBridge(),
     idleThresholdSeconds: settings.autogit_idle_threshold_seconds ?? 90,
     inactiveThresholdSeconds: settings.autogit_inactive_threshold_seconds ?? 30,
     isGitVault,

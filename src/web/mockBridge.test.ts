@@ -31,7 +31,7 @@ describe('mockBridge SERVER_COMMANDS', () => {
       'get_last_commit_info', 'get_vault_pulse', 'git_file_url',
       'git_add_remote', 'git_discard_file', 'init_git_repo',
       'create_vault_folder', 'delete_vault_folder', 'rename_vault_folder',
-      'move_note_to_folder', 'list_views',
+      'move_note_to_folder', 'list_views', 'save_view_cmd', 'delete_view_cmd',
     ]) {
       expect(SERVER_COMMANDS.has(cmd)).toBe(true)
     }
