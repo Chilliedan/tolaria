@@ -37,7 +37,6 @@ pub fn build_router(
     sessions: SessionStore,
     cookie_secure: bool,
 ) -> Router {
-    let (committer_name, committer_email) = config::committer_identity();
     let state = rpc::AppState::new(
         vault_root,
         users,
@@ -45,8 +44,6 @@ pub fn build_router(
         PathLocks::new(),
         rpc::AppStateConfig {
             cookie_secure,
-            committer_name,
-            committer_email,
             autogit: config::autogit_enabled(),
         },
     );

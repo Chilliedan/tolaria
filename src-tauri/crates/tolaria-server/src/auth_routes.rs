@@ -126,8 +126,6 @@ mod tests {
             crate::locks::PathLocks::new(),
             crate::rpc::AppStateConfig {
                 cookie_secure: false,
-                committer_name: "Tolaria Server".to_string(),
-                committer_email: "server@tolaria.local".to_string(),
                 autogit: true,
             },
         )

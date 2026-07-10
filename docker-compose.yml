@@ -8,8 +8,10 @@ services:
       TOLARIA_VAULT_PATH: /vault
       TOLARIA_USERS_DB: /app/data/users.db
       TOLARIA_COOKIE_SECURE: ${TOLARIA_COOKIE_SECURE:-true}
-      # Phase 5 git sync: fixed server committer identity for autogit/explicit
-      # commits (author is always the acting user's own git_name/git_email).
+      # Identity for git operations with no acting user — i.e. the merge commit
+      # `git pull` creates (via the GIT_*_NAME/EMAIL env below). Per-user commits
+      # (autogit, explicit commit, folder/view ops) are authored AND committed by
+      # the logged-in user's own git_name/git_email, so they don't use this.
       TOLARIA_COMMITTER_NAME: ${TOLARIA_COMMITTER_NAME:-Tolaria Server}
       TOLARIA_COMMITTER_EMAIL: ${TOLARIA_COMMITTER_EMAIL:-server@tolaria.local}
       # Auto-commit each write as the acting user. Set to false to disable

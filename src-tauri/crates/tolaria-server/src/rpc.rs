@@ -15,14 +15,11 @@ use crate::session::SessionStore;
 use crate::users::UsersDb;
 
 /// Server-wide settings that do not vary per request: cookie transport
-/// security and the fixed git committer identity/autogit toggle used for
-/// server-authored commits. Grouped so `AppState::new` stays within
+/// security and the autogit toggle. Grouped so `AppState::new` stays within
 /// clippy's argument-count limit.
 #[derive(Debug, Clone)]
 pub struct AppStateConfig {
     pub cookie_secure: bool,
-    pub committer_name: String,
-    pub committer_email: String,
     pub autogit: bool,
 }
 
@@ -36,8 +33,6 @@ pub struct AppState {
     pub locks: PathLocks,
     /// Serializes all index-mutating git operations across the vault.
     pub repo_lock: Arc<tokio::sync::Mutex<()>>,
-    pub committer_name: Arc<str>,
-    pub committer_email: Arc<str>,
     pub autogit: bool,
 }
 
@@ -56,15 +51,16 @@ impl AppState {
             cookie_secure: config.cookie_secure,
             locks,
             repo_lock: Arc::new(tokio::sync::Mutex::new(())),
-            committer_name: config.committer_name.into(),
-            committer_email: config.committer_email.into(),
             autogit: config.autogit,
         }
     }
 
     /// Resolve the acting user's commit identity from the session cookie.
-    /// Author = the user's git identity; committer = the fixed server
-    /// identity. Returns `None` if unauthenticated — should not happen
+    /// The user is both author and committer, so their commits are fully
+    /// attributed to their own git identity rather than a generic server
+    /// identity. Server-level operations with no acting user (e.g. the merge
+    /// commit `git pull` creates) fall back to the `GIT_COMMITTER_*` process
+    /// env instead. Returns `None` if unauthenticated — should not happen
     /// behind `require_auth`, but handled defensively.
     pub fn acting_user(&self, jar: &CookieJar) -> Option<CommitIdentity> {
         let session = jar
@@ -72,10 +68,10 @@ impl AppState {
             .and_then(|c| self.sessions.get(c.value()))?;
         let user = self.users.find_by_id(session.user_id)?;
         Some(CommitIdentity {
-            author_name: user.git_name,
-            author_email: user.git_email,
-            committer_name: self.committer_name.to_string(),
-            committer_email: self.committer_email.to_string(),
+            author_name: user.git_name.clone(),
+            author_email: user.git_email.clone(),
+            committer_name: user.git_name,
+            committer_email: user.git_email,
         })
     }
 }
@@ -231,8 +227,6 @@ mod tests {
             PathLocks::new(),
             AppStateConfig {
                 cookie_secure: false,
-                committer_name: "Tolaria Server".to_string(),
-                committer_email: "server@tolaria.local".to_string(),
                 autogit: true,
             },
         );
@@ -240,14 +234,15 @@ mod tests {
     }
 
     #[test]
-    fn acting_user_resolves_author_from_session() {
+    fn acting_user_is_both_author_and_committer() {
         let (state, token) = state_for_identity();
         let jar = CookieJar::new().add(Cookie::new(crate::auth_routes::SESSION_COOKIE, token));
         let id = state.acting_user(&jar).expect("resolves");
+        // The logged-in user is both author and committer of their commits.
         assert_eq!(id.author_name, "Dora D");
         assert_eq!(id.author_email, "dora@example.com");
-        assert_eq!(id.committer_name, "Tolaria Server");
-        assert_eq!(id.committer_email, "server@tolaria.local");
+        assert_eq!(id.committer_name, "Dora D");
+        assert_eq!(id.committer_email, "dora@example.com");
     }
 
     #[test]

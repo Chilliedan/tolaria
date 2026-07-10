@@ -38,16 +38,6 @@ impl ServerConfig {
     }
 }
 
-/// Fixed git committer identity for server-authored commits, from
-/// `TOLARIA_COMMITTER_NAME` / `TOLARIA_COMMITTER_EMAIL` (with sane defaults).
-pub fn committer_identity() -> (String, String) {
-    let name =
-        std::env::var("TOLARIA_COMMITTER_NAME").unwrap_or_else(|_| "Tolaria Server".to_string());
-    let email = std::env::var("TOLARIA_COMMITTER_EMAIL")
-        .unwrap_or_else(|_| "server@tolaria.local".to_string());
-    (name, email)
-}
-
 /// Whether to auto-commit each write as the acting user. Default on; set
 /// `TOLARIA_AUTOGIT=false` to disable.
 pub fn autogit_enabled() -> bool {
@@ -105,28 +95,6 @@ mod tests {
     /// Serializes tests that mutate process-global env vars so they cannot
     /// interleave and observe each other's values.
     static ENV_GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    #[test]
-    fn committer_identity_defaults_when_unset() {
-        let _guard = ENV_GUARD.lock().unwrap();
-        std::env::remove_var("TOLARIA_COMMITTER_NAME");
-        std::env::remove_var("TOLARIA_COMMITTER_EMAIL");
-        let (name, email) = committer_identity();
-        assert_eq!(name, "Tolaria Server");
-        assert_eq!(email, "server@tolaria.local");
-    }
-
-    #[test]
-    fn committer_identity_reads_env_overrides() {
-        let _guard = ENV_GUARD.lock().unwrap();
-        std::env::set_var("TOLARIA_COMMITTER_NAME", "Custom Bot");
-        std::env::set_var("TOLARIA_COMMITTER_EMAIL", "bot@example.com");
-        let (name, email) = committer_identity();
-        assert_eq!(name, "Custom Bot");
-        assert_eq!(email, "bot@example.com");
-        std::env::remove_var("TOLARIA_COMMITTER_NAME");
-        std::env::remove_var("TOLARIA_COMMITTER_EMAIL");
-    }
 
     #[test]
     fn autogit_enabled_defaults_true_when_unset() {
