@@ -136,6 +136,10 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
             Ok(serde_json::to_value(status).map_err(|e| RpcError::internal(e.to_string()))?)
         }
         "is_git_repo" => Ok(Value::Bool(vault_root.join(".git").is_dir())),
+        "list_views" => {
+            let views = tolaria_core::vault::scan_views(vault_root);
+            serde_json::to_value(views).map_err(|e| RpcError::internal(e.to_string()))
+        }
         "get_modified_files" => serialize(tolaria_core::git::get_modified_files(vault_root)),
         "get_modified_files_with_stats" => {
             serialize(tolaria_core::git::get_modified_files_with_stats(vault_root))
@@ -343,6 +347,28 @@ mod tests {
         assert!(out.is_object(), "reload_vault_entry returns a JSON object");
         let title = out.get("title").and_then(|v| v.as_str());
         assert_eq!(title, Some("My Note"), "title field matches h1 heading");
+    }
+
+    #[test]
+    fn list_views_returns_views_from_the_vault_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        // No views dir yet → empty array (not an error).
+        assert_eq!(
+            dispatch(vault, "list_views", serde_json::json!({})).unwrap(),
+            serde_json::json!([])
+        );
+        // A real view file in <vault>/views is scanned and returned.
+        std::fs::create_dir(vault.join("views")).unwrap();
+        std::fs::write(
+            vault.join("views").join("active.yml"),
+            "name: Active Projects\nfilters:\n  all:\n    - field: type\n      op: equals\n      value: Project\n",
+        )
+        .unwrap();
+        let out = dispatch(vault, "list_views", serde_json::json!({})).unwrap();
+        let arr = out.as_array().expect("array of views");
+        assert_eq!(arr.len(), 1);
+        assert!(out.to_string().contains("Active Projects"));
     }
 
     #[test]

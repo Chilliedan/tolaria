@@ -26,6 +26,7 @@ export const SERVER_COMMANDS = new Set<string>([
   'list_vault',
   'reload_vault',
   'list_vault_folders',
+  'list_views',
   'get_note_content',
   'get_all_content',
   'reload_vault_entry',
