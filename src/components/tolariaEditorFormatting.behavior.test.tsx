@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
 
+const COVERAGE_SHARD_TEST_TIMEOUT_MS = 30_000
+
 const {
   blockHasTypeMock,
   editorHasBlockWithTypeMock,
@@ -217,7 +219,7 @@ describe('tolariaEditorFormatting behavior', () => {
     }).not.toThrow()
     expect(editor.transact).not.toHaveBeenCalled()
     expect(editor.updateBlock).not.toHaveBeenCalled()
-  })
+  }, COVERAGE_SHARD_TEST_TIMEOUT_MS)
 
   it('opens selected file blocks through the active vault path', () => {
     const editor = createMockEditor('file', {
@@ -585,6 +587,27 @@ describe('tolariaEditorFormatting behavior', () => {
     editor.getTextCursorPosition = vi.fn(() => {
       throw selectionError
     })
+    useBlockNoteEditorMock.mockReturnValue(editor)
+
+    expect(() => {
+      render(
+        <>
+          <TolariaFormattingToolbar />
+          <TolariaFormattingToolbarController />
+        </>,
+      )
+    }).not.toThrow()
+  })
+
+  it('stays stable when BlockNote exposes malformed selection blocks during remount churn', () => {
+    const editor = createMockEditor('paragraph')
+
+    editor.getSelection = vi.fn(() => ({
+      blocks: [undefined, { id: 'partial-block' }],
+    }) as never)
+    editor.getTextCursorPosition = vi.fn(() => ({
+      block: undefined,
+    }) as never)
     useBlockNoteEditorMock.mockReturnValue(editor)
 
     expect(() => {

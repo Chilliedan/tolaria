@@ -15,20 +15,20 @@ import {
   useDictionary,
   type DefaultReactGridSuggestionItem,
   type LinkToolbarProps,
+  type SideMenuProps,
 } from '@blocknote/react'
 import { components } from '@blocknote/mantine'
 import { MantineContext, MantineProvider } from '@mantine/core'
 import { trackEvent } from '../lib/telemetry'
 import { useDocumentThemeMode } from '../hooks/useDocumentThemeMode'
 import { useEditorTheme } from '../hooks/useTheme'
-import { useImageDrop } from '../hooks/useImageDrop'
+import { useImageDrop, type ImageImportError } from '../hooks/useImageDrop'
 import { useImageLightbox } from '../hooks/useImageLightbox'
 import { createTranslator, type AppLocale } from '../lib/i18n'
 import { writeClipboardText } from '../utils/clipboardText'
 import { buildTypeEntryMap } from '../utils/typeColors'
 import { searchEmojis, type EmojiEntry } from '../utils/emoji'
 import { preFilterWikilinks, deduplicateByPath, MIN_QUERY_LENGTH } from '../utils/wikilinkSuggestions'
-import { filterPersonMentions, PERSON_MENTION_MIN_QUERY } from '../utils/personMentionSuggestions'
 import { attachClickHandlers, enrichSuggestionItems, hasMultipleSuggestionWorkspaces } from '../utils/suggestionEnrichment'
 import { observeNativeTextAssistanceDisabled } from '../lib/nativeTextAssistance'
 import { getRuntimeStyleNonce } from '../lib/runtimeStyleNonce'
@@ -55,6 +55,7 @@ import { findNearestTextCursorBlock } from './blockNoteCursorTarget'
 import { ImageLightbox } from './ImageLightbox'
 import { ActionTooltip } from './ui/action-tooltip'
 import { Button } from './ui/button'
+import { VaultExpressionProvider } from './VaultExpressionContext'
 import { subscribeRichEditorExternalChange } from './editorExternalChangeEvents'
 import {
   activatePlainTextPasteTarget,
@@ -129,6 +130,7 @@ type TestTableBlock = {
   content?: { type?: string; columnWidths?: Array<number | null> }
 }
 type SuggestionAction = () => void
+type WikilinkAutocompleteTrigger = '[[' | '@'
 type SuggestionItemWithClick = { onItemClick?: SuggestionAction }
 type EmojiSuggestionItem = DefaultReactGridSuggestionItem & {
   group: string
@@ -883,13 +885,15 @@ function useInsertWikilink(
   editor: ReturnType<typeof useCreateBlockNote>,
   runEditorAction: (action: SuggestionAction) => void,
 ) {
-  return useCallback((target: string) => {
+  return useCallback((target: string, triggerCharacter: WikilinkAutocompleteTrigger) => {
     runEditorAction(() => {
       editor.insertInlineContent([
         { type: 'wikilink' as const, props: { target } },
         " ",
       ], { updateSelection: true })
-      trackEvent('wikilink_inserted')
+      trackEvent('wikilink_inserted', {
+        trigger: triggerCharacter === '@' ? 'at' : 'brackets',
+      })
     })
   }, [editor, runEditorAction])
 }
@@ -897,7 +901,7 @@ function useInsertWikilink(
 function useSuggestionMenuItems(options: {
   baseItems: ReturnType<typeof buildBaseSuggestionItems>
   editor: ReturnType<typeof useCreateBlockNote>
-  insertWikilink: (target: string) => void
+  insertWikilink: (target: string, triggerCharacter: WikilinkAutocompleteTrigger) => void
   locale: AppLocale
   runEditorAction: (action: SuggestionAction) => void
   sourceEntry?: VaultEntry
@@ -916,16 +920,17 @@ function useSuggestionMenuItems(options: {
   } = options
   const t = useMemo(() => createTranslator(locale), [locale])
 
-  const buildItems = useCallback((query: string, triggerCharacter: '[[' | '@') => {
+  const buildItems = useCallback((query: string, triggerCharacter: WikilinkAutocompleteTrigger) => {
     const normalizedQuery = normalizeSuggestionQuery(query, triggerCharacter)
-    const minLength = triggerCharacter === '[[' ? MIN_QUERY_LENGTH : PERSON_MENTION_MIN_QUERY
-    if (normalizedQuery.length < minLength) return null
+    if (normalizedQuery.length < MIN_QUERY_LENGTH) return null
 
-    const candidates = triggerCharacter === '[['
-      ? preFilterWikilinks(baseItems, normalizedQuery)
-      : filterPersonMentions(baseItems, normalizedQuery)
-
-    const items = attachClickHandlers(candidates, insertWikilink, vaultPath ?? '', sourceEntry)
+    const candidates = preFilterWikilinks(baseItems, normalizedQuery)
+    const items = attachClickHandlers(
+      candidates,
+      (target) => insertWikilink(target, triggerCharacter),
+      vaultPath ?? '',
+      sourceEntry,
+    )
     return guardSuggestionMenuItems(
       enrichSuggestionItems(items, normalizedQuery, typeEntryMap, {
         showWorkspace: hasMultipleSuggestionWorkspaces(baseItems),
@@ -938,7 +943,7 @@ function useSuggestionMenuItems(options: {
     buildItems(query, '[[') ?? []
   ), [buildItems])
 
-  const getPersonMentionItems = useCallback(async (query: string): Promise<WikilinkSuggestionItem[]> => (
+  const getAtWikilinkItems = useCallback(async (query: string): Promise<WikilinkSuggestionItem[]> => (
     buildItems(query, '@') ?? []
   ), [buildItems])
 
@@ -970,6 +975,7 @@ function useSuggestionMenuItems(options: {
     try {
       return guardSuggestionMenuItems(
         await Promise.resolve(getTolariaSlashMenuItems(editor, query, {
+          htmlTitle: t('editor.slash.htmlBlock'),
           mathTitle: t('editor.slash.math'),
         })),
         runEditorAction,
@@ -982,8 +988,8 @@ function useSuggestionMenuItems(options: {
 
   return {
     getWikilinkItems,
+    getAtWikilinkItems,
     getEmojiItems,
-    getPersonMentionItems,
     getSlashMenuItems,
   }
 }
@@ -995,18 +1001,22 @@ type EditorInteractionControllersProps = ReturnType<typeof useSuggestionMenuItem
 }
 
 function EditorInteractionControllers({
+  getAtWikilinkItems,
   getEmojiItems,
-  getPersonMentionItems,
   getSlashMenuItems,
   getWikilinkItems,
   locale,
   runEditorAction,
   vaultPath,
 }: EditorInteractionControllersProps) {
+  const sideMenu = useCallback((props: SideMenuProps) => (
+    <TolariaSideMenu {...props} locale={locale} />
+  ), [locale])
+
   return (
     <>
       <TolariaCollapsedHeadingsController />
-      <SideMenuController sideMenu={TolariaSideMenu} />
+      <SideMenuController sideMenu={sideMenu} />
       <TolariaFormattingToolbarController
         formattingToolbar={(props) => (
           <TolariaFormattingToolbar {...props} locale={locale} vaultPath={vaultPath} />
@@ -1045,7 +1055,7 @@ function EditorInteractionControllers({
       />
       <SuggestionMenuController
         triggerCharacter="@"
-        getItems={getPersonMentionItems}
+        getItems={getAtWikilinkItems}
         suggestionMenuComponent={WikilinkSuggestionMenu}
         onItemClick={(item: WikilinkSuggestionItem) => runEditorAction(item.onItemClick)}
       />
@@ -1161,11 +1171,13 @@ function refreshCodeBlockSyntaxHighlighting(editor: ReturnType<typeof useCreateB
 }
 
 /** Single BlockNote editor view — content is swapped via replaceBlocks */
-export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange, sourceEntry, vaultPath, editable = true, locale = 'en' }: {
+export function SingleEditorView({ currentContent = '', editor, entries, onNavigateWikilink, onChange, onImageImportError, sourceEntry, vaultPath, editable = true, locale = 'en' }: {
+  currentContent?: string
   editor: ReturnType<typeof useCreateBlockNote>
   entries: VaultEntry[]
   onNavigateWikilink: (target: string) => void
   onChange?: () => void
+  onImageImportError?: (error: ImageImportError) => void
   sourceEntry?: VaultEntry | null
   vaultPath?: string
   editable?: boolean
@@ -1190,7 +1202,7 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
   })
   const handleEditorChange = useCompositionAwareEditorChange({ containerRef, onChange })
   const onImageUrl = useInsertImageCallback(editor)
-  const { isDragOver } = useImageDrop({ containerRef, onImageUrl, vaultPath })
+  const { isDragOver } = useImageDrop({ containerRef, onImageImportError, onImageUrl, vaultPath })
   const lightbox = useImageLightbox({ containerRef })
   const {
     clearCopyTarget,
@@ -1299,25 +1311,33 @@ export function SingleEditorView({ editor, entries, onNavigateWikilink, onChange
       )}
       <BlockNoteRenderRecoveryBoundary onRecover={(_, reason) => repairEditorDocumentForRenderRecovery(editor, reason)}>
         {(recoveryKey) => (
-          <SharedContextBlockNoteView
-            key={recoveryKey}
-            editor={editor}
-            theme={themeMode}
-            onChange={handleEditorChange}
-            editable={editable}
-            emojiPicker={false}
-            formattingToolbar={false}
-            linkToolbar={false}
-            slashMenu={false}
-            sideMenu={false}
+          <VaultExpressionProvider
+            currentContent={currentContent}
+            entries={entries}
+            locale={locale}
+            sourceEntry={sourceEntry ?? null}
+            vaultPath={vaultPath ?? ''}
           >
-            <EditorInteractionControllers
-              {...suggestionMenuItems}
-              locale={locale}
-              runEditorAction={runEditorAction}
-              vaultPath={vaultPath}
-            />
-          </SharedContextBlockNoteView>
+            <SharedContextBlockNoteView
+              key={recoveryKey}
+              editor={editor}
+              theme={themeMode}
+              onChange={handleEditorChange}
+              editable={editable}
+              emojiPicker={false}
+              formattingToolbar={false}
+              linkToolbar={false}
+              slashMenu={false}
+              sideMenu={false}
+            >
+              <EditorInteractionControllers
+                {...suggestionMenuItems}
+                locale={locale}
+                runEditorAction={runEditorAction}
+                vaultPath={vaultPath}
+              />
+            </SharedContextBlockNoteView>
+          </VaultExpressionProvider>
         )}
       </BlockNoteRenderRecoveryBoundary>
       {copyTarget && <CodeBlockCopyButton copyTarget={copyTarget} locale={locale} />}

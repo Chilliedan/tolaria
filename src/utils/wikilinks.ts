@@ -5,7 +5,7 @@ const WL_START = '\u2039WIKILINK:'
 const WL_END = '\u203A'
 const WL_RE = /\u2039WIKILINK:([^\u203A]+)\u203A/g
 const WIKILINK_RE = /\[\[([^\]]+)\]\]/g
-const TABLE_PLACEHOLDER_PREFIX = 'ENC:'
+const ENCODED_PLACEHOLDER_PREFIX = 'ENC:'
 const FORMAT_MARKERS = new Set(['*', '_', '`', '~'])
 
 type MarkdownSource = string
@@ -99,21 +99,33 @@ function wikilinkPlaceholder(
   target: WikilinkTarget,
   options: WikilinkReplacementOptions,
 ): string {
-  const payload = options.encodePayload
-    ? `${TABLE_PLACEHOLDER_PREFIX}${encodeURIComponent(target)}`
+  const payload = shouldEncodePlaceholderPayload(target, options)
+    ? `${ENCODED_PLACEHOLDER_PREFIX}${encodeURIComponent(target)}`
     : target
   return `${WL_START}${payload}${WL_END}`
 }
 
 function decodePlaceholderPayload(payload: PlaceholderPayload): WikilinkTarget {
-  if (!payload.startsWith(TABLE_PLACEHOLDER_PREFIX)) return payload
+  if (!payload.startsWith(ENCODED_PLACEHOLDER_PREFIX)) return payload
 
-  const encoded = payload.slice(TABLE_PLACEHOLDER_PREFIX.length)
+  const encoded = payload.slice(ENCODED_PLACEHOLDER_PREFIX.length)
   try {
     return decodeURIComponent(encoded)
   } catch {
     return encoded
   }
+}
+
+function shouldEncodePlaceholderPayload(
+  target: WikilinkTarget,
+  options: WikilinkReplacementOptions,
+): boolean {
+  if (options.encodePayload) return true
+
+  for (const marker of FORMAT_MARKERS) {
+    if (target.includes(marker)) return true
+  }
+  return false
 }
 
 function nextMarkdownFenceMarker(line: MarkdownLine, currentMarker: FenceMarker): FenceMarker {
@@ -193,14 +205,32 @@ function isMarkdownTableSeparatorCell(cell: MarkdownLine): boolean {
 
 /** Walk blocks recursively, applying a transform to each block's inline content */
 function walkBlocks(blocks: unknown[], transform: ContentTransform, clone = false): unknown[] {
-  return (blocks as BlockLike[]).map(block => {
-    const b = clone ? { ...block } : block
-    b.content = transformBlockContent(b.content, transform)
-    if (b.children && Array.isArray(b.children)) {
-      b.children = walkBlocks(b.children, transform, clone) as BlockLike[]
-    }
-    return b
+  let changed = false
+  const nextBlocks = (blocks as BlockLike[]).map(block => {
+    const result = walkBlock(block, transform, clone)
+    if (result.changed) changed = true
+    return result.block
   })
+
+  return changed ? nextBlocks : blocks
+}
+
+function walkBlock(block: BlockLike, transform: ContentTransform, clone: boolean): { block: BlockLike; changed: boolean } {
+  const content = transformBlockContent(block.content, transform)
+  const children = transformedBlockChildren(block, transform, clone)
+  const changed = content !== block.content || children !== block.children
+  if (!changed) return { block, changed: false }
+  if (clone) return { block: { ...block, content, children }, changed: true }
+
+  block.content = content
+  block.children = children
+  return { block, changed: true }
+}
+
+function transformedBlockChildren(block: BlockLike, transform: ContentTransform, clone: boolean): BlockLike[] | undefined {
+  return Array.isArray(block.children)
+    ? walkBlocks(block.children, transform, clone) as BlockLike[]
+    : block.children
 }
 
 function transformBlockContent(content: BlockContent, transform: ContentTransform): BlockContent {
@@ -223,18 +253,30 @@ function transformTableContent(
   content: TableContentLike,
   transform: ContentTransform,
 ): TableContentLike {
+  let changed = false
+  const rows = content.rows?.map((row) => {
+    let rowChanged = false
+    const cells = row.cells?.map((cell) => {
+      const nextCell = transformTableCell(cell, transform)
+      if (nextCell !== cell) rowChanged = true
+      return nextCell
+    })
+    if (!rowChanged) return row
+    changed = true
+    return { ...row, cells }
+  })
+
+  if (!changed) return content
   return {
     ...content,
-    rows: content.rows?.map((row) => ({
-      ...row,
-      cells: row.cells?.map((cell) => transformTableCell(cell, transform)),
-    })),
+    rows,
   }
 }
 
 function transformTableCell(cell: TableCellLike, transform: ContentTransform): TableCellLike {
   if (typeof cell === 'string' || !Array.isArray(cell.content)) return cell
-  return { ...cell, content: transform(cell.content) }
+  const content = transform(cell.content)
+  return content === cell.content ? cell : { ...cell, content }
 }
 
 function textSegment(item: InlineItem, text: MarkdownSource): InlineItem {
@@ -290,14 +332,16 @@ function expandWikilinksInItem(item: InlineItem): InlineItem[] {
 
 function collapseWikilinksInContent(content: InlineItem[]): InlineItem[] {
   const result: InlineItem[] = []
+  let changed = false
   for (const item of content) {
     if (item.type === 'wikilink' && item.props?.target) {
       result.push({ type: 'text', text: `[[${item.props.target}]]` })
+      changed = true
     } else {
       result.push(item)
     }
   }
-  return result
+  return changed ? result : content
 }
 
 function frontmatterOpeningLength(content: MarkdownSource): CharacterCount | null {

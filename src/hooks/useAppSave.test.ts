@@ -370,6 +370,8 @@ describe('useAppSave', () => {
     await act(async () => {
       result.current.handleContentChange(entry.path, '# Note\n\nAfter')
       await result.current.handleSave()
+      vi.advanceTimersByTime(200)
+      await Promise.resolve()
     })
 
     expect(deps.updateEntry).toHaveBeenCalledWith(
@@ -430,6 +432,53 @@ describe('useAppSave', () => {
       entry.path,
       expect.objectContaining({ path: '/vault/fresh-title.md', filename: 'fresh-title.md' }),
       '# Fresh Title\n\nBody',
+    )
+  })
+
+  it('auto-renames untitled notes whose active vault path uses Windows separators', async () => {
+    vi.useFakeTimers()
+    vi.mocked(isTauri).mockReturnValue(true)
+
+    const oldPath = 'D:\\DEV\\sakuhinn\\untitled-note-1783087381.md'
+    const newPath = 'D:\\DEV\\sakuhinn\\test.md'
+    const vaultPath = 'D:\\DEV\\sakuhinn'
+    const content = '# test\n\nBody'
+    const entry = makeEntry(oldPath, 'Untitled Note 1783087381', 'untitled-note-1783087381.md')
+
+    vi.mocked(invoke).mockImplementation(async (command: string, args?: Record<string, unknown>) => {
+      if (command === 'save_note_content') return undefined
+      if (command === 'auto_rename_untitled') return { new_path: newPath, updated_files: 0 }
+      if (command === 'reload_vault_entry') return makeEntry(newPath, 'test', 'test.md')
+      if (command === 'get_note_content' && args?.path === newPath) return content
+      return undefined
+    })
+
+    const { result } = renderSave({
+      resolvedPath: vaultPath,
+      tabs: [{ entry, content }],
+      activeTabPath: oldPath,
+      unsavedPaths: new Set([oldPath]),
+    })
+
+    act(() => {
+      result.current.handleContentChange(oldPath, content)
+    })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(AUTO_SAVE_DEBOUNCE_MS + 2_500)
+      await vi.advanceTimersByTimeAsync(0)
+    })
+
+    expect(vi.mocked(invoke)).toHaveBeenCalledWith('auto_rename_untitled', {
+      args: {
+        vaultPath,
+        notePath: oldPath,
+      },
+    })
+    expect(deps.replaceEntry).toHaveBeenCalledWith(
+      oldPath,
+      expect.objectContaining({ path: newPath, filename: 'test.md' }),
+      content,
     )
   })
 

@@ -17,16 +17,20 @@ describe('richEditorRecoveryClassifier', () => {
     return error
   }
 
-  it('normalizes paragraph and table index failures across render and transform recovery', () => {
+  it('normalizes ProseMirror index failures across render and transform recovery', () => {
     const tableError = new RangeError(
       'Index 1 out of range for <tableRow(tableCell(tableParagraph("A")))>',
     )
     const paragraphError = new Error('Index 1 out of range for <paragraph("/")>')
+    const emptyFragmentError = new RangeError('Index 0 out of range for <>')
 
     expect(classifyRichEditorRecoveryError(tableError, 'render')).toBe('table_row_index_out_of_range')
     expect(classifyRichEditorRecoveryError(tableError, 'transform')).toBe('table_row_index_out_of_range')
     expect(classifyRichEditorRecoveryError(paragraphError, 'render')).toBe('paragraph_index_out_of_range')
     expect(classifyRichEditorRecoveryError(paragraphError, 'transform')).toBe('paragraph_index_out_of_range')
+    expect(classifyRichEditorRecoveryError(emptyFragmentError, 'render')).toBe('empty_fragment_index_out_of_range')
+    expect(classifyRichEditorRecoveryError(emptyFragmentError, 'transform')).toBe('empty_fragment_index_out_of_range')
+    expect(richEditorRecoveryErrorNeedsDocumentRepair(emptyFragmentError)).toBe(true)
   })
 
   it('classifies missing-id failures across render and transform recovery', () => {
@@ -40,6 +44,14 @@ describe('richEditorRecoveryClassifier', () => {
     expect(classifyRichEditorRecoveryError(webkitNotFoundError(), 'render')).toBe('dom_not_found')
     expect(classifyRichEditorRecoveryError(transformError(), 'transform')).toBe('transform_error')
     expect(classifyRichEditorRecoveryError(transformError(), 'render')).toBeNull()
+  })
+
+  it('classifies null firstChild editor DOM races across recovery surfaces', () => {
+    const error = new TypeError("Cannot read properties of null (reading 'firstChild')")
+
+    expect(classifyRichEditorRecoveryError(error, 'transform')).toBe('dom_not_found')
+    expect(classifyRichEditorRecoveryError(error, 'render')).toBe('dom_not_found')
+    expect(richEditorRecoveryErrorNeedsDocumentRepair(error)).toBe(false)
   })
 
   it('classifies the WebKit filesystem NotFoundError message from production', () => {

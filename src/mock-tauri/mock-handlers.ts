@@ -7,6 +7,8 @@ import type {
   VaultEntry,
   ModifiedFile,
   Settings,
+  GitProviderProbe,
+  GitProviderStatus,
   GitAddRemoteResult,
   GitPullResult,
   GitPushResult,
@@ -120,7 +122,11 @@ const mockSavedSinceCommit = new Set<string>()
 let mockSettings: Settings = {
   auto_pull_interval_minutes: 5,
   git_enabled: null,
+  git_path: null,
+  git_provider: null,
+  git_wsl_distro: null,
   autogit_enabled: false,
+  autogit_use_ai_commit_messages: false,
   autogit_idle_threshold_seconds: 90,
   autogit_inactive_threshold_seconds: 30,
   auto_advance_inbox_after_organize: false,
@@ -473,6 +479,50 @@ export const mockHandlers: Record<string, (args: any) => any> = {
     const path = args?.path?.replace(/^.*?\/Laputa\//, '') ?? 'note.md'
     return `https://github.com/lucaong/laputa-vault/blob/main/${encodeURI(path)}`
   },
+  git_provider_status: (): GitProviderStatus => ({
+    selected_provider: mockSettings.git_provider ?? 'native',
+    selected_wsl_distro: mockSettings.git_wsl_distro ?? null,
+    native: {
+      provider: 'native',
+      label: 'Native Git',
+      available: true,
+      version: 'git version 2.45.0',
+      distro: null,
+      path: null,
+      message: 'Native Git is available: git version 2.45.0',
+    },
+    wsl_distributions: [{
+      provider: 'wsl',
+      label: 'WSL2 Git',
+      available: true,
+      version: 'git version 2.43.0',
+      distro: 'Ubuntu',
+      path: null,
+      message: 'WSL2 Git is available: git version 2.43.0',
+    }],
+  }),
+  test_git_provider: (args?: { provider?: string; distro?: string | null }): GitProviderProbe => {
+    const provider = args?.provider === 'wsl' ? 'wsl' : 'native'
+    return provider === 'wsl'
+      ? {
+          provider,
+          label: 'WSL2 Git',
+          available: true,
+          version: 'git version 2.43.0',
+          distro: args?.distro ?? 'Ubuntu',
+          path: null,
+          message: 'WSL2 Git is available: git version 2.43.0',
+        }
+      : {
+          provider,
+          label: 'Native Git',
+          available: true,
+          version: 'git version 2.45.0',
+          distro: null,
+          path: null,
+          message: 'Native Git is available: git version 2.45.0',
+        }
+  },
   git_add_remote: (args?: {
     request?: { vaultPath?: string; vault_path?: string; remoteUrl?: string }
     vaultPath?: string
@@ -503,10 +553,12 @@ export const mockHandlers: Record<string, (args: any) => any> = {
   get_ai_agents_status: () => ({
     claude_code: { installed: false, version: null },
     codex: { installed: false, version: null },
+    copilot: { installed: false, version: null },
     opencode: { installed: false, version: null },
     pi: { installed: false, version: null },
-    gemini: { installed: false, version: null },
+    antigravity: { installed: false, version: null },
     kiro: { installed: false, version: null },
+    hermes: { installed: false, version: null },
   }),
   get_agent_docs_path: () => '/mock/Tolaria/resources/agent-docs',
   get_vault_ai_guidance_status: () => ({ ...mockVaultAiGuidanceStatus }),
@@ -521,6 +573,7 @@ export const mockHandlers: Record<string, (args: any) => any> = {
   },
   stream_claude_chat: () => 'mock-session',
   stream_ai_agent: () => null,
+  abort_ai_agent_stream: () => false,
   save_note_content: (args: { path: string; content: string }) => {
     MOCK_CONTENT[args.path] = args.content
     mockSavedSinceCommit.add(args.path)
@@ -542,7 +595,11 @@ export const mockHandlers: Record<string, (args: any) => any> = {
     mockSettings = {
       auto_pull_interval_minutes: s.auto_pull_interval_minutes ?? 5,
       git_enabled: s.git_enabled ?? null,
+      git_path: s.git_path ?? null,
+      git_provider: s.git_provider ?? null,
+      git_wsl_distro: s.git_wsl_distro ?? null,
       autogit_enabled: s.autogit_enabled ?? false,
+      autogit_use_ai_commit_messages: s.autogit_use_ai_commit_messages ?? false,
       autogit_idle_threshold_seconds: s.autogit_idle_threshold_seconds ?? 90,
       autogit_inactive_threshold_seconds: s.autogit_inactive_threshold_seconds ?? 30,
       auto_advance_inbox_after_organize: s.auto_advance_inbox_after_organize ?? false,

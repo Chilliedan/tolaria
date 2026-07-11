@@ -10,3 +10,7 @@ export function supportsModernRegexFeatures(): boolean {
     return false
   }
 }
+
+export function supportsShikiRegexFeatures(): boolean {
+  return supportsModernRegexFeatures()
+}

@@ -685,6 +685,33 @@ describe('useEditorTabSwap raw mode sync', () => {
     )
   })
 
+  it('flushes pending rich-text edits before entering raw mode', async () => {
+    const tabA = makeTab('a.md', 'Note A')
+    const onContentChange = vi.fn()
+    const { docRef, mockEditor, rerender, result } = await createSwapHarness({
+      initialProps: { tabs: [tabA], activeTabPath: 'a.md', rawMode: false },
+      onContentChange,
+    })
+
+    docRef.current = [makeTextParagraphBlock('Typed draft before raw mode')]
+    mockEditor.blocksToMarkdownLossy.mockReturnValue('Typed draft before raw mode\n')
+
+    act(() => {
+      result.current.handleEditorChange()
+    })
+    expect(onContentChange).not.toHaveBeenCalled()
+
+    act(() => {
+      rerender({ tabs: [tabA], activeTabPath: 'a.md', rawMode: true })
+    })
+    await act(async () => { await Promise.resolve() })
+
+    expect(onContentChange).toHaveBeenCalledWith(
+      'a.md',
+      '---\ntitle: Note A\n---\nTyped draft before raw mode\n',
+    )
+  })
+
   it('flushes unsaved file attachment blocks as portable links before switching notes', async () => {
     const tabA = makeTab('a.md', 'Note A')
     const tabB = makeTab('b.md', 'Note B')
@@ -1154,6 +1181,39 @@ describe('useEditorTabSwap raw mode sync', () => {
 describe('useEditorTabSwap scroll position', () => {
 
   afterEach(() => { vi.restoreAllMocks() })
+
+  it('restores each note scroll position when switching tabs', async () => {
+    const { scrollEl } = installEditorDomSpies()
+    const docRef = { current: blocksA as unknown[] }
+    const mockEditor = makeMockEditor(docRef)
+
+    const tabA = makeTab('a.md', 'Note A')
+    const tabB = makeTab('b.md', 'Note B')
+
+    const rendered = renderHook(
+      ({ tabs, activeTabPath }) => useEditorTabSwap({
+        tabs,
+        activeTabPath,
+        editor: mockEditor as never,
+      }),
+      { initialProps: { tabs: [tabA, tabB], activeTabPath: 'a.md' } },
+    )
+    await flushEditorTick()
+
+    scrollEl.scrollTop = 240
+    rendered.rerender({ tabs: [tabA, tabB], activeTabPath: 'b.md' })
+    await flushEditorTick()
+    expect(scrollEl.scrollTop).toBe(0)
+
+    scrollEl.scrollTop = 75
+    rendered.rerender({ tabs: [tabA, tabB], activeTabPath: 'a.md' })
+    await flushEditorTick()
+    expect(scrollEl.scrollTop).toBe(240)
+
+    rendered.rerender({ tabs: [tabA, tabB], activeTabPath: 'b.md' })
+    await flushEditorTick()
+    expect(scrollEl.scrollTop).toBe(75)
+  })
 
   it('defaults to scroll top 0 for newly opened note', async () => {
     const scrollEl = { scrollTop: 0 }

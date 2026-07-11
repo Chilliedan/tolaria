@@ -1,4 +1,9 @@
-import { getIronCalcMock, markWorkbookDirtyForTest, resetSheetEditorTestState } from './SheetEditor.testUtils'
+import {
+  activateWorkbookRoot,
+  getIronCalcMock,
+  markWorkbookDirtyForTest,
+  resetSheetEditorTestState,
+} from './SheetEditor.testUtils'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -106,6 +111,64 @@ describe('SheetEditor serialization', () => {
     await expectNoSaveOnUnmount('---\n_display: sheet\n---\nMetric,January,,\nRevenue,1200,,')
   })
 
+  it('keeps a replaced workbook model alive until the replacement can commit', async () => {
+    const rendered = await renderLoadedSheet('---\n_display: sheet\n---\nMetric,January')
+    const firstModel = ironCalcMock.state.lastModel
+    expect(firstModel).not.toBeNull()
+
+    vi.useFakeTimers()
+    rendered.rerender(
+      <SheetEditor
+        content={'---\n_display: sheet\n---\nMetric,February'}
+        path={rendered.path}
+        onContentChange={rendered.onContentChange}
+      />,
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(ironCalcMock.state.modelConstructs).toBe(2)
+    expect(firstModel?.getSelectedSheet()).toBe(0)
+    expect(ironCalcMock.state.freedModels.has(firstModel!)).toBe(false)
+
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
+
+    expect(ironCalcMock.state.freedModels.has(firstModel!)).toBe(true)
+    expect(() => firstModel?.getSelectedSheet()).toThrow('null pointer passed to rust')
+  })
+
+  it('does not surface workbook release failures when a stale model is already freed', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { unmount } = await renderLoadedSheet('---\n_display: sheet\n---\nMetric,January')
+    const model = ironCalcMock.state.lastModel
+    expect(model).not.toBeNull()
+    vi.spyOn(model!, 'free').mockImplementation(() => {
+      throw new Error('null pointer passed to rust')
+    })
+
+    vi.useFakeTimers()
+    try {
+      unmount()
+
+      expect(() => {
+        act(() => {
+          vi.runOnlyPendingTimers()
+        })
+      }).not.toThrow()
+      expect(warn).toHaveBeenCalledWith(
+        '[sheet-editor] Failed to release workbook model:',
+        expect.any(Error),
+      )
+    } finally {
+      vi.useRealTimers()
+      warn.mockRestore()
+    }
+  })
+
   it('preserves trailing empty cells when saving an edited row', async () => {
     await expectSaveAfterDirtyEdit({
       content: '---\n_display: sheet\n---\nMetric,January,,\nRevenue,1200,,',
@@ -164,6 +227,31 @@ describe('SheetEditor serialization', () => {
     expect(onContentChange).toHaveBeenCalledWith(
       '/vault/budget.md',
       '---\ntype: Sheet\n---\nUpdated Metric,January',
+    )
+    unmount()
+  })
+
+  it('commits active cell editor formulas when Escape precedes note-switch flush', async () => {
+    const flushContentRef = { current: null as ((path: string) => void) | null }
+    const { onContentChange, unmount } = await renderLoadedSheet(
+      '---\n_display: sheet\n---\nMetric,January\nRevenue,1200,1300,1400',
+      { props: { flushContentRef } },
+    )
+    await activateWorkbookRoot()
+    const cellEditor = screen.getByLabelText<HTMLTextAreaElement>('Cell editor')
+    cellEditor.focus()
+
+    fireEvent.input(cellEditor, { target: { value: '=SUM(B2:D2)' } })
+    fireEvent.keyDown(cellEditor, { key: 'Escape', code: 'Escape' })
+
+    expect(ironCalcMock.state.lastModel?.getRawCellContent(0, 1, 1)).toBe('=SUM(B2:D2)')
+
+    act(() => {
+      flushContentRef.current?.('/vault/budget.md')
+    })
+    expect(onContentChange).toHaveBeenCalledWith(
+      '/vault/budget.md',
+      '---\n_display: sheet\n---\n=SUM(B2:D2),January\nRevenue,1200,1300,1400',
     )
     unmount()
   })

@@ -7,9 +7,10 @@ use crate::ai_models::{normalize_ai_model_providers, AiModelProvider};
 const SUPPORTED_DEFAULT_AI_AGENTS: &[&str] = &[
     "claude_code",
     "codex",
+    "copilot",
     "opencode",
     "pi",
-    "gemini",
+    "antigravity",
     "kiro",
     "hermes",
 ];
@@ -75,6 +76,8 @@ const SUPPORTED_UI_LANGUAGE_ALIASES: &[(&str, &str)] = &[
     ("be-latn", "be-Latn"),
     ("id", "id-ID"),
     ("id-id", "id-ID"),
+    ("sk", "sk-SK"),
+    ("sk-sk", "sk-SK"),
 ];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
@@ -89,7 +92,11 @@ pub struct AiWorkspaceConversationSetting {
 pub struct Settings {
     pub auto_pull_interval_minutes: Option<u32>,
     pub git_enabled: Option<bool>,
+    pub git_path: Option<String>,
+    pub git_provider: Option<String>,
+    pub git_wsl_distro: Option<String>,
     pub autogit_enabled: Option<bool>,
+    pub autogit_use_ai_commit_messages: Option<bool>,
     pub autogit_idle_threshold_seconds: Option<u32>,
     pub autogit_inactive_threshold_seconds: Option<u32>,
     pub auto_advance_inbox_after_organize: Option<bool>,
@@ -144,6 +151,7 @@ pub fn effective_release_channel(value: Option<&str>) -> &'static str {
 
 pub fn normalize_default_ai_agent(value: Option<&str>) -> Option<String> {
     match value.map(|candidate| candidate.trim().to_ascii_lowercase()) {
+        Some(agent) if agent == "gemini" => Some("antigravity".to_string()),
         Some(agent) if SUPPORTED_DEFAULT_AI_AGENTS.contains(&agent.as_str()) => Some(agent),
         _ => None,
     }
@@ -176,6 +184,13 @@ pub fn should_hide_gitignored_files(settings: &Settings) -> bool {
         .unwrap_or(DEFAULT_HIDE_GITIGNORED_FILES)
 }
 
+pub fn normalize_git_provider(value: Option<&str>) -> Option<String> {
+    match value.map(|candidate| candidate.trim().to_ascii_lowercase()) {
+        Some(provider) if provider == "native" || provider == "wsl" => Some(provider),
+        _ => None,
+    }
+}
+
 pub fn hide_gitignored_files_enabled() -> bool {
     get_settings()
         .map(|settings| should_hide_gitignored_files(&settings))
@@ -202,7 +217,11 @@ fn normalize_settings(settings: Settings) -> Settings {
     Settings {
         auto_pull_interval_minutes: settings.auto_pull_interval_minutes,
         git_enabled: settings.git_enabled,
+        git_path: normalize_optional_string(settings.git_path),
+        git_provider: normalize_git_provider(settings.git_provider.as_deref()),
+        git_wsl_distro: normalize_optional_string(settings.git_wsl_distro),
         autogit_enabled: settings.autogit_enabled,
+        autogit_use_ai_commit_messages: settings.autogit_use_ai_commit_messages,
         autogit_idle_threshold_seconds: normalize_optional_positive_u32(
             settings.autogit_idle_threshold_seconds,
         ),
@@ -427,7 +446,11 @@ mod tests {
         let settings = Settings {
             auto_pull_interval_minutes: Some(10),
             git_enabled: Some(false),
+            git_path: Some("/opt/homebrew/bin/git".to_string()),
+            git_provider: Some("wsl".to_string()),
+            git_wsl_distro: Some("Ubuntu".to_string()),
             autogit_enabled: Some(true),
+            autogit_use_ai_commit_messages: Some(true),
             autogit_idle_threshold_seconds: Some(90),
             autogit_inactive_threshold_seconds: Some(30),
             auto_advance_inbox_after_organize: Some(true),
@@ -473,6 +496,7 @@ mod tests {
             auto_pull_interval_minutes: Some(10),
             git_enabled: Some(false),
             autogit_enabled: Some(true),
+            autogit_use_ai_commit_messages: Some(true),
             autogit_idle_threshold_seconds: Some(90),
             autogit_inactive_threshold_seconds: Some(30),
             auto_advance_inbox_after_organize: Some(true),
@@ -496,6 +520,7 @@ mod tests {
         assert_eq!(loaded.auto_pull_interval_minutes, Some(10));
         assert_eq!(loaded.git_enabled, Some(false));
         assert_eq!(loaded.autogit_enabled, Some(true));
+        assert_eq!(loaded.autogit_use_ai_commit_messages, Some(true));
         assert_eq!(loaded.autogit_idle_threshold_seconds, Some(90));
         assert_eq!(loaded.autogit_inactive_threshold_seconds, Some(30));
         assert_eq!(loaded.auto_advance_inbox_after_organize, Some(true));
@@ -530,9 +555,31 @@ mod tests {
     }
 
     #[test]
+    fn test_git_provider_settings_are_normalized() {
+        let loaded = save_and_reload(Settings {
+            git_provider: Some(" WSL ".to_string()),
+            git_wsl_distro: Some(" Ubuntu-24.04 ".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(loaded.git_provider.as_deref(), Some("wsl"));
+        assert_eq!(loaded.git_wsl_distro.as_deref(), Some("Ubuntu-24.04"));
+
+        let invalid = save_and_reload(Settings {
+            git_provider: Some("portable".to_string()),
+            git_wsl_distro: Some("   ".to_string()),
+            ..Default::default()
+        });
+        assert!(invalid.git_provider.is_none());
+        assert!(invalid.git_wsl_distro.is_none());
+    }
+
+    #[test]
     fn test_save_trims_whitespace() {
         let loaded = save_and_reload(Settings {
             anonymous_id: Some("  test-uuid  ".to_string()),
+            git_path: Some("  /opt/homebrew/bin/git  ".to_string()),
+            git_provider: Some("  native  ".to_string()),
+            git_wsl_distro: Some("  Ubuntu  ".to_string()),
             release_channel: Some("  alpha  ".to_string()),
             theme_mode: Some("  dark  ".to_string()),
             ui_language: Some("  zh-cn  ".to_string()),
@@ -542,6 +589,9 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(loaded.anonymous_id.as_deref(), Some("test-uuid"));
+        assert_eq!(loaded.git_path.as_deref(), Some("/opt/homebrew/bin/git"));
+        assert_eq!(loaded.git_provider.as_deref(), Some("native"));
+        assert_eq!(loaded.git_wsl_distro.as_deref(), Some("Ubuntu"));
         assert_eq!(loaded.release_channel.as_deref(), Some("alpha"));
         assert_eq!(loaded.theme_mode.as_deref(), Some("dark"));
         assert_eq!(loaded.ui_language.as_deref(), Some("zh-CN"));
@@ -598,6 +648,15 @@ mod tests {
     }
 
     #[test]
+    fn test_copilot_default_ai_agent_is_preserved() {
+        let loaded = normalize_settings(Settings {
+            default_ai_agent: Some("copilot".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(loaded.default_ai_agent.as_deref(), Some("copilot"));
+    }
+
+    #[test]
     fn test_pi_default_ai_agent_is_preserved() {
         let loaded = save_and_reload(Settings {
             default_ai_agent: Some("pi".to_string()),
@@ -607,12 +666,21 @@ mod tests {
     }
 
     #[test]
-    fn test_gemini_default_ai_agent_is_preserved() {
+    fn test_antigravity_default_ai_agent_is_preserved() {
+        let loaded = save_and_reload(Settings {
+            default_ai_agent: Some("antigravity".to_string()),
+            ..Default::default()
+        });
+        assert_eq!(loaded.default_ai_agent.as_deref(), Some("antigravity"));
+    }
+
+    #[test]
+    fn test_legacy_gemini_default_ai_agent_migrates_to_antigravity() {
         let loaded = save_and_reload(Settings {
             default_ai_agent: Some("gemini".to_string()),
             ..Default::default()
         });
-        assert_eq!(loaded.default_ai_agent.as_deref(), Some("gemini"));
+        assert_eq!(loaded.default_ai_agent.as_deref(), Some("antigravity"));
     }
 
     #[test]
@@ -689,6 +757,7 @@ mod tests {
             ("be-BY", "be-BY"),
             ("be-Latn", "be-Latn"),
             ("id-ID", "id-ID"),
+            ("sk-SK", "sk-SK"),
         ];
 
         for (input, expected) in expected_languages {
@@ -718,6 +787,7 @@ mod tests {
             Some("be-Latn")
         );
         assert_eq!(normalize_ui_language(Some("id")).as_deref(), Some("id-ID"));
+        assert_eq!(normalize_ui_language(Some("sk")).as_deref(), Some("sk-SK"));
     }
 
     #[test]

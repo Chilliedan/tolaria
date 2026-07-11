@@ -1,311 +1,30 @@
-import { render as rtlRender, screen, fireEvent, act, within } from '@testing-library/react'
-import type { ComponentProps, PropsWithChildren, ReactElement } from 'react'
+import { screen, fireEvent, act, within } from '@testing-library/react'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { formatShortcutDisplay } from '../hooks/appCommandCatalog'
 import { RUNTIME_STYLE_NONCE } from '../lib/runtimeStyleNonce'
-
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: vi.fn().mockImplementation(() => ({
-    matches: false,
-    media: '',
-    onchange: null,
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-  })),
-})
-
-vi.mock('@tauri-apps/api/core', () => ({
-  convertFileSrc: vi.fn((path: string) => `asset://localhost/${encodeURIComponent(path)}`),
-  invoke: vi.fn(),
-}))
-
-// Hoisted mock editor — available before vi.mock factory runs.
-// Tests can reconfigure spies (e.g. mockTryParse.mockResolvedValue) before rendering.
-const mockEditor = vi.hoisted(() => ({
-  tryParseMarkdownToBlocks: vi.fn(async () => [] as unknown[]),
-  replaceBlocks: vi.fn(),
-  insertBlocks: vi.fn(),
-  document: [{ id: '1', type: 'paragraph', content: [], props: {}, children: [] }],
-  insertInlineContent: vi.fn(),
-  headless: false,
-  onMount: vi.fn((cb: () => void) => { cb(); return () => {} }),
-  prosemirrorView: {} as Record<string, unknown>,
-  blocksToHTMLLossy: vi.fn(() => ''),
-  blocksToMarkdownLossy: vi.fn(() => '# Test Project\n\nThis is a test note with some words to count.\n'),
-  _tiptapEditor: { commands: { setContent: vi.fn() } },
-  focus: vi.fn(),
-  setTextCursorPosition: vi.fn(),
-}))
-const blockNoteCreation = vi.hoisted(() => ({
-  options: [] as unknown[],
-}))
-const blockNoteViewState = vi.hoisted(() => ({
-  onChange: null as (() => void) | null,
-}))
-
-// Mock BlockNote components
-vi.mock('@blocknote/core', () => ({
-  audioParse: vi.fn(() => undefined),
-  BlockNoteSchema: { create: () => ({ extend: () => ({}) }) },
-  createAudioBlockConfig: vi.fn(() => ({})),
-  createCodeBlockSpec: vi.fn(() => ({})),
-  createExtension: (factory: unknown) => () => factory,
-  createStyleSpec: vi.fn(() => ({})),
-  createVideoBlockConfig: vi.fn(() => ({})),
-  defaultInlineContentSpecs: {},
-  filterSuggestionItems: vi.fn(() => []),
-  videoParse: vi.fn(() => undefined),
-}))
-
-vi.mock('@blocknote/code-block', () => ({
-  codeBlockOptions: {},
-}))
-
-const mockFilterSuggestionItems = vi.fn((...args: unknown[]) => args[0] ?? [])
-vi.mock('@blocknote/core/extensions', () => ({
-  filterSuggestionItems: (...args: unknown[]) => mockFilterSuggestionItems(...args),
-}))
-
-type SuggestionControllerProps = {
-  triggerCharacter: string
-  getItems: (query: string) => Promise<unknown[]>
-}
-const capturedGetItemsByTrigger: Record<string, (query: string) => Promise<unknown[]>> = {}
-let capturedGetItems: ((query: string) => Promise<unknown[]>) | null = null
-vi.mock('@blocknote/react', () => ({
-  AudioBlock: () => null,
-  AudioToExternalHTML: () => null,
-  createReactBlockSpec: () => () => ({}),
-  createReactInlineContentSpec: () => ({ render: () => null }),
-  VideoBlock: () => null,
-  VideoToExternalHTML: () => null,
-  useCreateBlockNote: (options: unknown) => {
-    blockNoteCreation.options.push(options)
-    return mockEditor
-  },
-  useBlockNoteEditor: () => mockEditor,
-  FormattingToolbar: ({ children }: PropsWithChildren) => <>{children}</>,
-  LinkToolbar: ({ children }: PropsWithChildren) => <>{children}</>,
-  getFormattingToolbarItems: () => [],
-  getDefaultReactSlashMenuItems: () => [],
-  ComponentsContext: {
-    Provider: ({ children }: PropsWithChildren) => <>{children}</>,
-  },
-  BlockNoteViewRaw: ({
-    children,
-    editable,
-    onChange,
-  }: PropsWithChildren<{ editable?: boolean; onChange?: () => void }>) => {
-    blockNoteViewState.onChange = onChange ?? null
-    return (
-      <div data-testid="blocknote-view" data-editable={editable !== false ? 'true' : 'false'}>
-        <div
-          contentEditable={editable !== false}
-          data-testid="blocknote-editable"
-          suppressContentEditableWarning
-        />
-        {children}
-      </div>
-    )
-  },
-  FormattingToolbarController: () => null,
-  LinkToolbarController: () => null,
-  EditLinkButton: () => null,
-  DeleteLinkButton: () => null,
-  SideMenuController: () => null,
-  SuggestionMenuController: (props: SuggestionControllerProps) => {
-    capturedGetItemsByTrigger[props.triggerCharacter] = props.getItems
-    if (props.triggerCharacter === '[[') capturedGetItems = props.getItems
-    return null
-  },
-  GridSuggestionMenuController: (props: SuggestionControllerProps) => {
-    capturedGetItemsByTrigger[props.triggerCharacter] = props.getItems
-    return null
-  },
-  useComponentsContext: () => ({
-    LinkToolbar: {
-      Button: ({
-        children,
-        label,
-        onClick,
-      }: PropsWithChildren<{ label?: string; onClick?: () => void }>) => (
-        <button onClick={onClick} type="button">
-          {label}
-          {children}
-        </button>
-      ),
-    },
-  }),
-  useDictionary: () => ({
-    link_toolbar: {
-      open: { tooltip: 'Open in a new tab' },
-    },
-  }),
-}))
-
-vi.mock('@blocknote/mantine', () => ({
-  components: {},
-}))
-
-vi.mock('@blocknote/mantine/style.css', () => ({}))
-
-vi.mock('./tolariaEditorFormatting', () => ({
-  TolariaFormattingToolbar: ({ children }: PropsWithChildren) => <>{children}</>,
-  TolariaFormattingToolbarController: () => null,
-}))
-
-vi.mock('./SheetEditor', () => ({
-  SheetEditor: ({ path }: { path: string }) => <div data-testid="sheet-editor" data-path={path} />,
-}))
-
-import { Editor } from './Editor'
 import type { VaultEntry } from '../types'
 import { bindVaultConfigStore, resetVaultConfigStore } from '../utils/vaultConfigStore'
-import { TooltipProvider } from '@/components/ui/tooltip'
-import { clearParsedNoteBlockCache } from '../hooks/editorParsedBlockCache'
-
-type EditorComponentProps = ComponentProps<typeof Editor>
-type BlockNotePasteHandlerOptions = {
-  plainTextAsMarkdown?: boolean
-  prioritizeMarkdownOverHTML?: boolean
-}
-type BlockNotePasteHandlerContext = {
-  defaultPasteHandler: (options?: BlockNotePasteHandlerOptions) => boolean | undefined
-  editor: { pasteText: (text: string) => boolean | undefined }
-  event: ClipboardEvent
-}
-type BlockNoteCreationOptions = {
-  pasteHandler?: (context: BlockNotePasteHandlerContext) => boolean | undefined
-}
-
-function render(ui: ReactElement) {
-  return rtlRender(ui, { wrapper: TooltipProvider })
-}
-
-const mockEntry: VaultEntry = {
-  path: '/vault/project/test.md',
-  filename: 'test.md',
-  title: 'Test Project',
-  isA: 'Project',
-  aliases: [],
-  belongsTo: [],
-  relatedTo: [],
-  status: 'Active',
-  archived: false,
-  modifiedAt: 1700000000,
-  createdAt: null,
-  fileSize: 1024,
-  snippet: '',
-  wordCount: 0,
-  relationships: {},
-  icon: null,
-  color: null,
-  order: null,
-  template: null, sort: null,
-  outgoingLinks: [],
-  sidebarLabel: null,
-  view: null,
-  visible: null,
-  properties: {},
-  organized: false,
-  favorite: false,
-  favoriteIndex: null,
-  listPropertiesDisplay: [],
-  hasH1: false,
-}
-
-const mockContent = `---
-title: Test Project
-is_a: Project
-Status: Active
----
-
-# Test Project
-
-This is a test note with some words to count.
-`
-
-const mockTab = { entry: mockEntry, content: mockContent }
-
-const defaultProps = {
-  tabs: [] as { entry: VaultEntry; content: string }[],
-  activeTabPath: null as string | null,
-  entries: [mockEntry],
-  onNavigateWikilink: vi.fn(),
-  inspectorCollapsed: true,
-  onToggleInspector: vi.fn(),
-  inspectorWidth: 280,
-  onInspectorResize: vi.fn(),
-  inspectorEntry: null as VaultEntry | null,
-  inspectorContent: null as string | null,
-  gitHistory: [],
-  onCreateNote: vi.fn(),
-}
-
-function renderEditor(overrides: Partial<EditorComponentProps> = {}) {
-  return render(<Editor {...defaultProps} {...overrides} />)
-}
-
-function latestBlockNoteOptions(): BlockNoteCreationOptions {
-  const options = blockNoteCreation.options.at(-1)
-  if (!options || typeof options !== 'object') {
-    throw new Error('BlockNote editor was not created')
-  }
-  return options as BlockNoteCreationOptions
-}
-
-function clipboardEventForPlainText(text: string): ClipboardEvent {
-  const clipboardData = {
-    getData: vi.fn((type: string) => type === 'text/plain' ? text : ''),
-    types: ['text/plain'],
-  }
-
-  return { clipboardData } as unknown as ClipboardEvent
-}
-
-function runConfiguredPlainTextPaste(text: string) {
-  renderEditor()
-
-  const pasteHandler = latestBlockNoteOptions().pasteHandler
-  if (!pasteHandler) {
-    throw new Error('BlockNote paste handler was not configured')
-  }
-
-  const pasteText = vi.fn(() => true)
-  const defaultPasteHandler = vi.fn(() => true)
-  const handled = pasteHandler({
-    defaultPasteHandler,
-    editor: { pasteText },
-    event: clipboardEventForPlainText(text),
-  })
-
-  return { defaultPasteHandler, handled, pasteText }
-}
-
-async function flushEditorSwapWork() {
-  for (let i = 0; i < 4; i += 1) {
-    await act(async () => {
-      if (typeof window.requestAnimationFrame === 'function') {
-        await new Promise<void>((resolve) => {
-          window.requestAnimationFrame(() => resolve())
-        })
-      }
-      await new Promise(resolve => setTimeout(resolve, 0))
-      await Promise.resolve()
-    })
-  }
-}
+import {
+  EditorTestHarness as Editor,
+  blockNoteCreation,
+  blockNoteViewState,
+  capturedSuggestionState,
+  defaultProps,
+  flushEditorSwapWork,
+  mockContent,
+  mockEditor,
+  mockEntry,
+  mockFilterSuggestionItems,
+  mockTab,
+  render,
+  renderEditor,
+  resetEditorTestState,
+  runConfiguredPlainTextPaste,
+} from './Editor.helpers.test'
 
 describe('Editor', () => {
   beforeEach(() => {
-    blockNoteCreation.options = []
-    blockNoteViewState.onChange = null
-    mockEditor.document = [{ id: '1', type: 'paragraph', content: [], props: {}, children: [] }]
-    clearParsedNoteBlockCache()
+    resetEditorTestState()
   })
 
   it('shows empty state when no tabs are open', () => {
@@ -484,6 +203,17 @@ describe('Editor', () => {
     })
   })
 
+  it('keeps Tab reserved for rich-editor indentation instead of UI focus navigation', () => {
+    renderEditor({
+      tabs: [mockTab],
+      activeTabPath: mockEntry.path,
+    })
+
+    expect(blockNoteCreation.options.at(-1)).toMatchObject({
+      tabBehavior: 'prefer-indent',
+    })
+  })
+
   it('registers a rich-editor flush hook for pending BlockNote changes', async () => {
     const onContentChange = vi.fn()
     const flushPendingEditorContentRef = { current: null as ((path: string) => void) | null }
@@ -589,10 +319,7 @@ describe('Editor', () => {
     expect(screen.getAllByText('Properties').length).toBeGreaterThan(0)
     expect(screen.queryByText('Select a note to start editing')).not.toBeInTheDocument()
     expect(screen.queryByTestId('blocknote-view')).not.toBeInTheDocument()
-
-    const skeleton = screen.getByTestId('editor-content-skeleton')
-    expect(skeleton.closest('.editor-content-wrapper')).not.toBeNull()
-    expect(skeleton.closest('.editor-scroll-area')).not.toBeNull()
+    expect(screen.queryByTestId('editor-content-skeleton')).not.toBeInTheDocument()
   })
 
   it('hides the legacy title field for untitled draft notes', () => {
@@ -911,6 +638,7 @@ describe('Editor', () => {
       resetVaultConfigStore()
     }
   })
+
 })
 
 describe('click empty editor space', () => {
@@ -1026,7 +754,7 @@ describe('wikilink autocomplete', () => {
   ]
 
   function renderWithEntries() {
-    capturedGetItems = null
+    capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockClear()
     render(
       <Editor
@@ -1040,23 +768,23 @@ describe('wikilink autocomplete', () => {
 
   it('returns empty array for query shorter than 2 characters', async () => {
     renderWithEntries()
-    expect(capturedGetItems).toBeTruthy()
-    expect(await capturedGetItems!('')).toEqual([])
-    expect(await capturedGetItems!('a')).toEqual([])
+    expect(capturedSuggestionState.getItems).toBeTruthy()
+    expect(await capturedSuggestionState.getItems!('')).toEqual([])
+    expect(await capturedSuggestionState.getItems!('a')).toEqual([])
     // filterSuggestionItems should NOT be called for short queries
     expect(mockFilterSuggestionItems).not.toHaveBeenCalled()
   })
 
   it('returns items for query of 2+ characters', async () => {
     renderWithEntries()
-    const items = await capturedGetItems!('Al')
+    const items = await capturedSuggestionState.getItems!('Al')
     expect(items.length).toBeGreaterThan(0)
     expect(mockFilterSuggestionItems).toHaveBeenCalled()
   })
 
   it('normalizes BlockNote trigger-prefixed wikilink queries before filtering', async () => {
     renderWithEntries()
-    const items = await capturedGetItems!('[[Al')
+    const items = await capturedSuggestionState.getItems!('[[Al')
     expect(items.length).toBeGreaterThan(0)
   })
 
@@ -1070,7 +798,7 @@ describe('wikilink autocomplete', () => {
       aliases: [],
     }))
 
-    capturedGetItems = null
+    capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
     render(
       <Editor
@@ -1081,7 +809,7 @@ describe('wikilink autocomplete', () => {
       />
     )
 
-    const items = await capturedGetItems!('Match')
+    const items = await capturedSuggestionState.getItems!('Match')
     expect(items.length).toBeLessThanOrEqual(20)
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
   })
@@ -1089,7 +817,7 @@ describe('wikilink autocomplete', () => {
   it('each item has onItemClick that inserts wikilink', async () => {
     renderWithEntries()
     mockEditor.insertInlineContent.mockClear()
-    const items = await capturedGetItems!('Alpha')
+    const items = await capturedSuggestionState.getItems!('Alpha')
     expect(items.length).toBeGreaterThan(0)
     items[0].onItemClick()
     expect(mockEditor.insertInlineContent).toHaveBeenCalledWith([
@@ -1137,7 +865,7 @@ describe('wikilink autocomplete', () => {
       title: 'Alpha',
       workspace: teamWorkspace,
     }
-    capturedGetItems = null
+    capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
     render(
       <Editor
@@ -1150,7 +878,7 @@ describe('wikilink autocomplete', () => {
     )
 
     mockEditor.insertInlineContent.mockClear()
-    const items = await capturedGetItems!('Alpha')
+    const items = await capturedSuggestionState.getItems!('Alpha')
     expect(items[0].workspace).toBe(teamWorkspace)
     items[0].onItemClick()
 
@@ -1167,7 +895,7 @@ describe('wikilink autocomplete', () => {
       { ...mockEntry, title: 'Dup Note Copy', filename: 'dup.md', path: '/vault/dup.md', aliases: [] },
       { ...mockEntry, title: 'Other Note', filename: 'other.md', path: '/vault/other.md', aliases: [] },
     ]
-    capturedGetItems = null
+    capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
     render(
       <Editor
@@ -1177,7 +905,7 @@ describe('wikilink autocomplete', () => {
         entries={dupEntries}
       />
     )
-    const items = await capturedGetItems!('Note')
+    const items = await capturedSuggestionState.getItems!('Note')
     const paths = items.map((i: { path: string }) => i.path)
     expect(new Set(paths).size).toBe(paths.length)
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
@@ -1189,7 +917,7 @@ describe('wikilink autocomplete', () => {
       { ...mockEntry, title: 'Test Plain', filename: 'plain.md', path: '/vault/plain.md', isA: null, aliases: [] },
       { ...mockEntry, title: 'Test Explicit', filename: 'explicit.md', path: '/vault/explicit.md', isA: 'Note', aliases: [] },
     ]
-    capturedGetItems = null
+    capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
     render(
       <Editor
@@ -1199,7 +927,7 @@ describe('wikilink autocomplete', () => {
         entries={mixedEntries}
       />
     )
-    const items = await capturedGetItems!('Test')
+    const items = await capturedSuggestionState.getItems!('Test')
     // Typed entries should have noteType, color, and a left-side icon
     const project = items.find((i: { title: string }) => i.title === 'Test Project')
     expect(project).toBeDefined()
@@ -1226,7 +954,7 @@ describe('wikilink autocomplete', () => {
       { ...mockEntry, title: 'Standup', filename: 'standup.md', path: '/vault/work/standup.md', aliases: [] },
       { ...mockEntry, title: 'Standup', filename: 'standup.md', path: '/vault/personal/standup.md', aliases: [] },
     ]
-    capturedGetItems = null
+    capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
     render(
       <Editor
@@ -1236,7 +964,7 @@ describe('wikilink autocomplete', () => {
         entries={sameTitle}
       />
     )
-    const items = await capturedGetItems!('Standup')
+    const items = await capturedSuggestionState.getItems!('Standup')
     expect(items).toHaveLength(2)
     const titles = items.map((i: { title: string }) => i.title)
     expect(new Set(titles).size).toBe(2)
@@ -1246,7 +974,7 @@ describe('wikilink autocomplete', () => {
   })
 })
 
-describe('person @mention autocomplete', () => {
+describe('@ wikilink autocomplete', () => {
   const personEntry: VaultEntry = {
     ...mockEntry,
     title: 'Matteo Cellini',
@@ -1266,9 +994,11 @@ describe('person @mention autocomplete', () => {
   const entries = [personEntry, nonPersonEntry]
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock
-  let getPersonItems: ((query: string) => Promise<any[]>) | null = null
+  let getAtItems: ((query: string) => Promise<any[]>) | null = null
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock
+  let getBracketItems: ((query: string) => Promise<any[]>) | null = null
 
-  function renderForMention() {
+  function renderForAtAutocomplete() {
     mockFilterSuggestionItems.mockClear()
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
     render(
@@ -1279,49 +1009,108 @@ describe('person @mention autocomplete', () => {
         entries={entries}
       />
     )
-    getPersonItems = capturedGetItemsByTrigger['@'] ?? null
+    getAtItems = capturedSuggestionState.getItemsByTrigger['@'] ?? null
+    getBracketItems = capturedSuggestionState.getItemsByTrigger['[['] ?? null
   }
 
-  it('registers a SuggestionMenuController with @ trigger', () => {
-    renderForMention()
-    expect(getPersonItems).toBeTruthy()
+  it('returns the same generic note suggestions as [[ without limiting @ to people', async () => {
+    renderForAtAutocomplete()
+    const atItems = await getAtItems!('Lap')
+    const bracketItems = await getBracketItems!('Lap')
+
+    expect(getAtItems).toBeTruthy()
+    expect(atItems.map(item => item.title)).toEqual(bracketItems.map(item => item.title))
+    expect(atItems).toHaveLength(1)
+    expect(atItems[0].title).toBe('Build Laputa App')
+    expect(await getAtItems!('Mat')).toEqual([
+      expect.objectContaining({ title: 'Matteo Cellini' }),
+    ])
   })
 
-  it('returns only Person entries for matching query', async () => {
-    renderForMention()
-    const items = await getPersonItems!('Mat')
-    expect(items.length).toBe(1)
-    expect(items[0].title).toBe('Matteo Cellini')
-  })
+  it('uses the same minimum query length and trigger-prefix normalization as [[ autocomplete', async () => {
+    renderForAtAutocomplete()
 
-  it('excludes non-Person entries', async () => {
-    renderForMention()
-    const items = await getPersonItems!('Lap')
-    expect(items).toHaveLength(0)
-  })
-
-  it('works with single-character query', async () => {
-    renderForMention()
-    const items = await getPersonItems!('M')
+    expect(await getAtItems!('M')).toHaveLength(0)
+    const items = await getAtItems!('@Lap')
     expect(items.length).toBeGreaterThan(0)
+    expect(items[0].title).toBe('Build Laputa App')
   })
 
-  it('inserts a wikilink when person item is clicked', async () => {
-    renderForMention()
+  it('inserts a normal wikilink when an @ item is clicked', async () => {
+    renderForAtAutocomplete()
     mockEditor.insertInlineContent.mockClear()
-    const items = await getPersonItems!('Matteo')
+    const items = await getAtItems!('Laputa')
     expect(items.length).toBeGreaterThan(0)
     items[0].onItemClick()
     expect(mockEditor.insertInlineContent).toHaveBeenCalledWith([
-      { type: 'wikilink', props: { target: 'vault/person/matteo-cellini' } },
+      { type: 'wikilink', props: { target: 'vault/project/laputa-app' } },
       ' ',
     ], { updateSelection: true })
+    expect(items[0].noteType).toBe('Project')
   })
 
-  it('shows Person type badge on results', async () => {
-    renderForMention()
-    const items = await getPersonItems!('Matteo')
-    expect(items[0].noteType).toBe('Person')
-    expect(items[0].typeColor).toBeTruthy()
+  it('preserves cross-workspace wikilink targets when an @ item is clicked', async () => {
+    const personalWorkspace = {
+      id: 'personal',
+      label: 'Personal',
+      alias: 'personal',
+      path: '/personal',
+      shortLabel: 'PE',
+      color: null,
+      icon: null,
+      mounted: true,
+      available: true,
+      defaultForNewNotes: true,
+    }
+    const teamWorkspace = {
+      id: 'team',
+      label: 'Team',
+      alias: 'team',
+      path: '/team',
+      shortLabel: 'TE',
+      color: null,
+      icon: null,
+      mounted: true,
+      available: true,
+      defaultForNewNotes: false,
+    }
+    const source = {
+      ...mockEntry,
+      path: '/personal/source.md',
+      filename: 'source.md',
+      title: 'Source',
+      workspace: personalWorkspace,
+    }
+    const target = {
+      ...mockEntry,
+      path: '/team/projects/laputa-app.md',
+      filename: 'laputa-app.md',
+      title: 'Build Laputa App',
+      isA: 'Project',
+      aliases: [],
+      workspace: teamWorkspace,
+    }
+    mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
+    render(
+      <Editor
+        {...defaultProps}
+        tabs={[{ entry: source, content: '# Source\n' }]}
+        activeTabPath={source.path}
+        entries={[source, target]}
+        vaultPath="/personal"
+      />,
+    )
+
+    getAtItems = capturedSuggestionState.getItemsByTrigger['@'] ?? null
+    mockEditor.insertInlineContent.mockClear()
+    const items = await getAtItems!('Laputa')
+    expect(items[0].workspace).toBe(teamWorkspace)
+    items[0].onItemClick()
+
+    expect(mockEditor.insertInlineContent).toHaveBeenCalledWith([
+      { type: 'wikilink', props: { target: 'team/projects/laputa-app' } },
+      ' ',
+    ], { updateSelection: true })
+    mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
   })
 })

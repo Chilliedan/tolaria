@@ -18,6 +18,7 @@ import { localizeCommandActions } from './commands/localizeCommands'
 import { extractVaultTypes } from '../utils/vaultTypes'
 import type { GitRepositoryOption } from '../utils/gitRepositories'
 import type { ImmediateCreateOptions } from './useNoteCreation'
+import type { RichEditorBlockTypeDefinition } from '../utils/richEditorBlockTypes'
 
 // Re-export types and helpers for backward compatibility
 export type { CommandAction, CommandGroup } from './commands/types'
@@ -54,6 +55,7 @@ interface CommandRegistryConfig {
   onChangeNoteType?: () => void
   onMoveNoteToFolder?: () => void
   canMoveNoteToFolder?: boolean
+  onTurnCurrentBlockInto?: (target: RichEditorBlockTypeDefinition) => void
   onOpenInNewWindow?: () => void
   onRevealActiveFile?: (path: string) => void
   onCopyActiveFilePath?: (path: string) => void
@@ -93,6 +95,7 @@ interface CommandRegistryConfig {
   onArchiveNote: (path: string) => void
   onUnarchiveNote: (path: string) => void
   onCommitPush: () => void
+  onGenerateCommitMessage?: () => void
   onPull?: () => void
   onPullRepository?: (path: string) => void
   onResolveConflicts?: () => void
@@ -153,7 +156,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onQuickOpen, onCreateNote, onCreateNoteOfType, onSave, onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
     onPastePlainText, onOpenSettings, onOpenFeedback,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
-    onCommitPush, onPull, onResolveConflicts, onSetViewMode, onToggleInspector, onToggleDiff, onToggleRawEditor, onFindInNote, onReplaceInNote,
+    onCommitPush, onGenerateCommitMessage, onPull, onResolveConflicts, onSetViewMode, onToggleInspector, onToggleDiff, onToggleRawEditor, onFindInNote, onReplaceInNote,
     noteWidth, defaultNoteWidth, onSetNoteWidth, onSetDefaultNoteWidth, onToggleAIChat, onToggleTableOfContents, onOpenVault, onCreateEmptyVault,
     selectedViewName, onMoveSelectedViewUp, onMoveSelectedViewDown, canMoveSelectedViewUp, canMoveSelectedViewDown,
     activeNoteModified,
@@ -168,7 +171,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onOpenAiAgents, onRestoreVaultAiGuidance, onSetDefaultAiAgent, selectedAiAgent, onCycleDefaultAiAgent, selectedAiAgentLabel,
     onReloadVault, onRepairVault,
     locale, systemLocale, selectedUiLanguage, onSetUiLanguage, onSetThemeMode,
-    onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder,
+    onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder, onTurnCurrentBlockInto,
     onOpenInNewWindow, onRevealActiveFile, onCopyActiveFilePath, onCopyActiveDeepLink, onOpenActiveFileExternal, onExportNoteAsPdf, onToggleFavorite, onToggleOrganized,
     onCustomizeNoteListColumns, canCustomizeNoteListColumns,
     onRestoreDeletedNote, canRestoreDeletedNote,
@@ -220,6 +223,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onFindInNote, onReplaceInNote, onPastePlainText,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
     onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder,
+    onTurnCurrentBlockInto,
     onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onOpenInNewWindow,
     onRevealActiveFile, onCopyActiveFilePath, onOpenActiveFileExternal,
     onCopyActiveDeepLink, onExportNoteAsPdf,
@@ -230,7 +234,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     hasActiveNote, activeTabPath, activeEntry?.fileKind, isArchived, locale,
     folderCreateOptions, onCreateNote, onCreateType, onSave, onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
     onFindInNote, onReplaceInNote, onPastePlainText, onDeleteNote, onArchiveNote, onUnarchiveNote,
-    onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder,
+    onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder, onTurnCurrentBlockInto,
     onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onOpenInNewWindow,
     onRevealActiveFile, onCopyActiveFilePath, onOpenActiveFileExternal,
     onCopyActiveDeepLink, onExportNoteAsPdf,
@@ -246,6 +250,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     canAddRemote: config.canAddRemote ?? false,
     onAddRemote: config.onAddRemote,
     onCommitPush,
+    onGenerateCommitMessage,
     onInitializeGit,
     onPull,
     onPullRepository,
@@ -253,7 +258,7 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onSelect,
   }), [
     modifiedCount, gitFeaturesEnabled, isGitVault, gitRepositories, config.canAddRemote, config.onAddRemote,
-    onCommitPush, onInitializeGit, onPull, onPullRepository, onResolveConflicts, onSelect,
+    onCommitPush, onGenerateCommitMessage, onInitializeGit, onPull, onPullRepository, onResolveConflicts, onSelect,
   ])
 
   const viewCommands = useMemo(() => buildViewCommands({

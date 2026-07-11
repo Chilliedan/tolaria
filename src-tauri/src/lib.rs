@@ -1,6 +1,10 @@
+mod ai_agent_processes;
 pub mod ai_agents;
 mod ai_model_tools;
 pub mod ai_models;
+pub mod antigravity_cli;
+mod antigravity_config;
+mod antigravity_discovery;
 mod app_config;
 mod app_icon;
 pub mod app_updater;
@@ -9,10 +13,9 @@ mod claude_invocation;
 mod cli_agent_runtime;
 pub mod codex_cli;
 mod commands;
+pub mod copilot_cli;
+mod copilot_discovery;
 pub use tolaria_core::frontmatter;
-pub mod gemini_cli;
-mod gemini_config;
-mod gemini_discovery;
 pub use tolaria_core::git;
 pub mod hermes_cli;
 mod hermes_discovery;
@@ -487,6 +490,8 @@ macro_rules! app_invoke_handler {
             commands::git_push,
             commands::git_remote_status,
             commands::git_file_url,
+            commands::git_provider_status,
+            commands::test_git_provider,
             commands::git_add_remote,
             commands::get_conflict_files,
             commands::get_conflict_mode,
@@ -502,6 +507,7 @@ macro_rules! app_invoke_handler {
             commands::restore_vault_ai_guidance,
             commands::stream_claude_chat,
             commands::stream_ai_agent,
+            commands::abort_ai_agent_stream,
             commands::stream_ai_model,
             commands::save_ai_model_provider_api_key,
             commands::delete_ai_model_provider_api_key,

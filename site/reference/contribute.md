@@ -2,9 +2,18 @@
 
 Tolaria is free and open source, and any kind of help is useful. Pick the path that matches what you want to do.
 
-## Sponsor Or Support
+## Newsletter
 
-The best way to support Tolaria is to subscribe to [Refactoring](https://refactoring.fm/), Luca's newsletter and community about running good teams and shipping software with AI.
+[Refactoring](https://refactoring.fm/) is Luca's newsletter and community for engineers building better teams and software with AI. Subscribing is the best way to support Tolaria.
+
+## Sponsors
+
+Tolaria is supported by a panel of tools Luca uses every day to keep the project healthy, tested, and ready for AI-assisted development:
+
+- [Codacy](https://www.codacy.com/?utm_source=tolaria&utm_medium=website&utm_campaign=refactoring)
+- [CodeScene](https://codescene.com/?utm_source=tolaria&utm_medium=website&utm_campaign=refactoring)
+- [CircleCI](https://circleci.com/?utm_source=tolaria&utm_medium=website&utm_campaign=refactoring)
+- [Unblocked](https://getunblocked.com/?utm_source=tolaria&utm_medium=website&utm_campaign=refactoring)
 
 ## Feature Requests
 

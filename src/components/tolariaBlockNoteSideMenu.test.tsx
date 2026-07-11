@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type {
   DragEventHandler,
   MouseEvent as ReactMouseEvent,
@@ -31,8 +31,26 @@ type SideMenuButtonProps = {
 type MenuItemProps = PropsWithChildren<{
   checked?: boolean
   className?: string
+  icon?: ReactNode
   onClick?: () => void
+  subTrigger?: boolean
 }>
+
+type MenuDropdownProps = PropsWithChildren<{
+  className?: string
+  sub?: boolean
+}>
+
+type RenderSideMenuOptions = {
+  locale?: 'en' | 'it-IT'
+}
+
+type TestRect = {
+  height: number
+  left: number
+  top: number
+  width: number
+}
 
 type MockEditor = {
   document: MockBlock[]
@@ -58,6 +76,20 @@ let mockSideMenu: {
 let mockSuggestionMenu: { openSuggestionMenu: ReturnType<typeof vi.fn> }
 let sideMenuBlock: MockBlock | undefined
 const originalElementsFromPoint = document.elementsFromPoint
+const turnIntoButtonLabels = [
+  'Paragraph',
+  'Heading 1',
+  'Heading 2',
+  'Heading 3',
+  'Heading 4',
+  'Heading 5',
+  'Heading 6',
+  'Quote',
+  'Bullet List',
+  'Numbered List',
+  'Checklist',
+  'Code Block',
+]
 
 beforeAll(() => {
   if (typeof globalThis.PointerEvent !== 'undefined') return
@@ -151,19 +183,33 @@ vi.mock('@blocknote/react', () => ({
   useComponentsContext: () => ({
     Generic: {
       Menu: {
-        Item: ({ children, onClick }: MenuItemProps) => (
-          <button type="button" onClick={onClick}>{children}</button>
+        Dropdown: ({ children, className, sub }: MenuDropdownProps) => (
+          <div className={className} data-testid={sub ? 'menu-sub-dropdown' : 'menu-dropdown'}>
+            {children}
+          </div>
         ),
-        Root: ({ children, onOpenChange }: PropsWithChildren<{ onOpenChange?: (open: boolean) => void }>) => (
+        Item: ({ children, icon, onClick, subTrigger }: MenuItemProps) => (
           <button
+            aria-haspopup={subTrigger ? 'menu' : undefined}
+            data-sub-trigger={subTrigger ? 'true' : undefined}
             type="button"
-            data-testid="menu-root"
-            onClick={() => onOpenChange?.(true)}
+            onClick={onClick}
           >
+            {icon ? <span data-testid={`menu-item-icon-${String(children)}`}>{icon}</span> : null}
             {children}
           </button>
         ),
-        Trigger: ({ children }: PropsWithChildren) => <div>{children}</div>,
+        Root: ({ children, onOpenChange, sub }: PropsWithChildren<{ onOpenChange?: (open: boolean) => void; sub?: boolean }>) => (
+          <div
+            data-testid={sub ? 'menu-sub-root' : 'menu-root'}
+            onClick={() => onOpenChange?.(true)}
+          >
+            {children}
+          </div>
+        ),
+        Trigger: ({ children, sub }: PropsWithChildren<{ sub?: boolean }>) => (
+          <div data-testid={sub ? 'menu-sub-trigger' : 'menu-trigger'}>{children}</div>
+        ),
       },
     },
     SideMenu: {
@@ -200,22 +246,24 @@ vi.mock('@blocknote/react', () => ({
   ),
 }))
 
-function renderSideMenuWithBlock(block: MockBlock | undefined) {
+function renderSideMenuWithBlock(block: MockBlock | undefined, options: RenderSideMenuOptions = {}) {
   sideMenuBlock = block
-  render(<TolariaSideMenu />)
+  const locale = options.locale ?? 'en'
+  render(<TolariaSideMenu locale={locale} />)
 }
 
-function renderSideMenuAndCollapseControllerWithBlock(block: MockBlock | undefined) {
+function renderSideMenuAndCollapseControllerWithBlock(block: MockBlock | undefined, options: RenderSideMenuOptions = {}) {
   sideMenuBlock = block
+  const locale = options.locale ?? 'en'
   render(
     <>
       <TolariaCollapsedHeadingsController />
-      <TolariaSideMenu />
+      <TolariaSideMenu locale={locale} />
     </>,
   )
 }
 
-function rect(left: number, top: number, width: number, height: number) {
+function rect({ height, left, top, width }: TestRect) {
   return DOMRect.fromRect({ x: left, y: top, width, height })
 }
 
@@ -271,6 +319,15 @@ function appendBlockOuters(blocks: MockBlock[]) {
   }
 }
 
+function placeEditorInScrollArea(scrollTop: number) {
+  const scrollArea = document.createElement('div')
+  scrollArea.className = 'editor-scroll-area'
+  scrollArea.scrollTop = scrollTop
+  scrollArea.appendChild(mockEditor.domElement)
+  document.body.appendChild(scrollArea)
+  return scrollArea
+}
+
 function collapsedSectionStyleText() {
   return Array.from(document.head.querySelectorAll('style[data-tolaria-collapsed-sections]'))
     .map((styleElement) => styleElement.textContent ?? '')
@@ -317,11 +374,19 @@ function dispatchHandlePointerReorder(dragHandle: HTMLElement) {
   dispatchPointerEvent(document, 'pointerup', { clientX: 130, clientY: 122 })
 }
 
+function rootSideMenuButtonText() {
+  const sideMenu = screen.getByTestId('side-menu')
+  return screen.getAllByRole('button')
+    .filter((button) => button.closest('[data-testid="side-menu"]') === sideMenu)
+    .filter((button) => !button.closest('[data-testid="menu-sub-dropdown"]'))
+    .map((button) => button.textContent)
+}
+
 function renderPointerReorderFixture() {
   const draggedBlock = testBlock('dragged-block', 'heading', ['Notes'])
   const targetBlock = testBlock('target-block', 'paragraph', ['Paragraph'])
-  const draggedElement = blockElement(draggedBlock.id, rect(120, 80, 420, 40))
-  const targetElement = blockElement(targetBlock.id, rect(120, 120, 420, 40))
+  const draggedElement = blockElement(draggedBlock.id, rect({ left: 120, top: 80, width: 420, height: 40 }))
+  const targetElement = blockElement(targetBlock.id, rect({ left: 120, top: 120, width: 420, height: 40 }))
   mockEditor.domElement.append(draggedElement, targetElement)
   mockEditor.getBlock.mockImplementation((id: string) => (
     id === draggedBlock.id ? draggedBlock
@@ -344,7 +409,7 @@ describe('TolariaSideMenu', () => {
   beforeEach(() => {
     const editorElement = document.createElement('div')
     editorElement.className = 'bn-editor'
-    editorElement.getBoundingClientRect = vi.fn(() => rect(100, 50, 500, 400))
+    editorElement.getBoundingClientRect = vi.fn(() => rect({ left: 100, top: 50, width: 500, height: 400 }))
     document.body.appendChild(editorElement)
 
     sideMenuBlock = {
@@ -389,8 +454,11 @@ describe('TolariaSideMenu', () => {
   })
 
   afterEach(() => {
+    cleanup()
     document.elementsFromPoint = originalElementsFromPoint
     document.body.innerHTML = ''
+    document.head.querySelectorAll('style[data-tolaria-collapsed-sections]')
+      .forEach((styleElement) => styleElement.remove())
   })
 
   it('replaces BlockNote block colors with markdown-safe drag-handle items', () => {
@@ -398,17 +466,19 @@ describe('TolariaSideMenu', () => {
     renderSideMenuWithBlock(sideMenuBlock)
 
     expect(screen.getByTestId('side-menu')).toBeInTheDocument()
-    const sideMenuButtons = screen.getAllByRole('button')
-      .filter((button) => button.closest('[data-testid="side-menu"]') === screen.getByTestId('side-menu'))
-      .filter((button) => button.dataset.testid !== 'menu-root')
-      .filter((button) => button.textContent !== 'Delete')
-
-    expect(sideMenuButtons.map((button) => button.textContent)).toEqual([
+    expect(rootSideMenuButtonText()).toEqual([
       'Drag block',
+      'Delete',
+      'Turn into...',
       'Add block',
     ])
 
     expect(screen.getByText('Delete')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Turn into...' })).toHaveAttribute('aria-haspopup', 'menu')
+    expect(screen.getByTestId('menu-sub-dropdown')).toHaveClass('tolaria-turn-into-menu-dropdown')
+    for (const label of turnIntoButtonLabels) {
+      expect(screen.getByTestId(`menu-item-icon-${label}`)).toBeInTheDocument()
+    }
     expect(screen.queryByText('Colors')).not.toBeInTheDocument()
   })
 
@@ -432,6 +502,31 @@ describe('TolariaSideMenu', () => {
     expect(mockEditor.insertBlocks).toHaveBeenCalledWith([{ type: 'paragraph' }], liveBlock.id, 'after')
     expect(mockEditor.setTextCursorPosition).toHaveBeenCalledWith('inserted-block')
     expect(mockSuggestionMenu.openSuggestionMenu).toHaveBeenCalledWith('/')
+  })
+
+  it('keeps editor scroll stable when opening the add-block slash menu', async () => {
+    const scrollArea = placeEditorInScrollArea(480)
+    const liveBlock = { id: 'tail-block', type: 'paragraph', content: ['Tail text'] }
+    mockEditor.getBlock.mockReturnValue(liveBlock)
+    mockEditor.insertBlocks.mockImplementation(() => {
+      scrollArea.scrollTop = 120
+      return [{ id: 'inserted-block', type: 'paragraph', content: [] }]
+    })
+    mockEditor.setTextCursorPosition.mockImplementation(() => {
+      scrollArea.scrollTop = 180
+    })
+    mockSuggestionMenu.openSuggestionMenu.mockImplementation(() => {
+      queueMicrotask(() => {
+        scrollArea.scrollTop = 240
+      })
+    })
+
+    renderSideMenuWithBlock(liveBlock)
+    const addBlockButton = screen.getByRole('button', { name: 'Add block' })
+    fireEvent.click(addBlockButton)
+    await Promise.resolve()
+
+    expect(scrollArea.scrollTop).toBe(480)
   })
 
   it('ignores delete clicks when the side-menu block disappeared during a reload', () => {
@@ -460,6 +555,33 @@ describe('TolariaSideMenu', () => {
     expect(mockEditor.updateBlock).toHaveBeenCalledWith(liveTable.id, {
       content: { ...liveTable.content, headerRows: 1 },
     })
+  })
+
+  it('turns a live side-menu block into another markdown-safe block type', () => {
+    const liveBlock = {
+      id: 'paragraph-block',
+      type: 'paragraph',
+      content: ['Existing text'],
+      props: {},
+      children: [],
+    }
+    mockEditor.getBlock.mockReturnValue(liveBlock)
+
+    renderSideMenuWithBlock(liveBlock)
+    fireEvent.click(screen.getByRole('button', { name: 'Heading 2' }))
+
+    expect(mockEditor.focus).toHaveBeenCalledOnce()
+    expect(mockEditor.updateBlock).toHaveBeenCalledWith(liveBlock.id, {
+      type: 'heading',
+      props: { level: 2 },
+    })
+  })
+
+  it('ignores turn-into clicks when reload churn leaves a stale side-menu block', () => {
+    renderSideMenuWithBlock(sideMenuBlock)
+
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Heading 2' }))).not.toThrow()
+    expect(mockEditor.updateBlock).not.toHaveBeenCalled()
   })
 
   it('hides table header actions when the live block lookup throws after reload churn', () => {
@@ -579,15 +701,25 @@ describe('TolariaSideMenu', () => {
 
     renderSideMenuWithBlock(heading)
 
-    const sideMenuButtons = screen.getAllByRole('button')
-      .filter((button) => button.closest('[data-testid="side-menu"]') === screen.getByTestId('side-menu'))
-      .filter((button) => button.dataset.testid !== 'menu-root')
-      .filter((button) => button.textContent !== 'Delete')
-
-    expect(sideMenuButtons.map((button) => button.textContent)).toEqual([
+    expect(rootSideMenuButtonText()).toEqual([
       'Drag block',
+      'Delete',
+      'Turn into...',
       'Collapse section',
     ])
+  })
+
+  it('localizes heading collapse and expand labels', () => {
+    const heading = headingBlock('heading-block', 2)
+    mockEditor.document = [heading]
+    appendBlockOuters([heading])
+    mockEditor.getBlock.mockReturnValue(heading)
+
+    renderSideMenuAndCollapseControllerWithBlock(heading, { locale: 'it-IT' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comprimi sezione' }))
+
+    expect(screen.getByRole('button', { name: 'Espandi sezione' })).toBeInTheDocument()
   })
 
   it('only renders the list item collapse toggle when a list item has children', () => {
@@ -608,15 +740,63 @@ describe('TolariaSideMenu', () => {
 
     renderSideMenuWithBlock(parentListItem)
 
-    const sideMenuButtons = screen.getAllByRole('button')
-      .filter((button) => button.closest('[data-testid="side-menu"]') === screen.getByTestId('side-menu'))
-      .filter((button) => button.dataset.testid !== 'menu-root')
-      .filter((button) => button.textContent !== 'Delete')
-
-    expect(sideMenuButtons.map((button) => button.textContent)).toEqual([
+    expect(rootSideMenuButtonText()).toEqual([
       'Drag block',
+      'Delete',
+      'Turn into...',
       'Collapse item',
     ])
+  })
+
+  it('localizes list item collapse and expand labels', () => {
+    const childListItem = listItemBlock('child-list-item')
+    const parentListItem = listItemBlock('parent-list-item', [childListItem])
+    mockEditor.document = [parentListItem]
+    appendBlockOuters([parentListItem])
+    mockEditor.getBlock.mockImplementation((id: string) => (
+      [parentListItem, childListItem].find((block) => block.id === id)
+    ))
+
+    renderSideMenuAndCollapseControllerWithBlock(parentListItem, { locale: 'it-IT' })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Comprimi elemento' }))
+
+    expect(screen.getByRole('button', { name: 'Espandi elemento' })).toBeInTheDocument()
+  })
+
+  it('does not subscribe collapsed-heading rendering until something is collapsed', () => {
+    const heading = headingBlock('heading', 2)
+    const paragraph = testBlock('paragraph', 'paragraph', ['Text'])
+    const blocks = [heading, paragraph]
+    mockEditor.document = blocks
+    appendBlockOuters(blocks)
+    mockEditor.getBlock.mockImplementation((id: string) => blocks.find((block) => block.id === id))
+
+    renderSideMenuAndCollapseControllerWithBlock(heading)
+
+    expect(mockEditor.onChange).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse section' }))
+
+    expect(mockEditor.onChange).toHaveBeenCalledTimes(1)
+  })
+
+  it('removes collapsed-heading edit subscriptions after the final section is expanded', () => {
+    const unsubscribeEditorChange = vi.fn()
+    const heading = headingBlock('heading', 2)
+    const paragraph = testBlock('paragraph', 'paragraph', ['Text'])
+    const blocks = [heading, paragraph]
+    mockEditor.document = blocks
+    appendBlockOuters(blocks)
+    mockEditor.getBlock.mockImplementation((id: string) => blocks.find((block) => block.id === id))
+    mockEditor.onChange.mockReturnValue(unsubscribeEditorChange)
+
+    renderSideMenuAndCollapseControllerWithBlock(heading)
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse section' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Expand section' }))
+
+    expect(unsubscribeEditorChange).toHaveBeenCalledTimes(1)
+    expect(collapsedSectionStyleText()).toBe('')
   })
 
   it('hides a collapsed heading section until the next same-level heading', () => {

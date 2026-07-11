@@ -16,6 +16,9 @@ import { DEFAULT_THEME_MODE, normalizeThemeMode, type ThemeMode } from '../lib/t
 import type { Settings } from '../types'
 import { normalizeNoteWidthMode } from '../utils/noteWidth'
 
+type UnknownRecord = Record<string, unknown>
+type AiWorkspaceConversationSetting = NonNullable<Settings['ai_workspace_conversations']>[number]
+
 async function invokeNativeIfAvailable<T>(command: string, tauriArgs: Record<string, unknown>): Promise<T | undefined> {
   try {
     return await invoke<T>(command, tauriArgs)
@@ -37,7 +40,11 @@ async function tauriCall<T>(command: string, tauriArgs: Record<string, unknown>,
 const EMPTY_SETTINGS: Settings = {
   auto_pull_interval_minutes: null,
   git_enabled: null,
+  git_path: null,
+  git_provider: null,
+  git_wsl_distro: null,
   autogit_enabled: null,
+  autogit_use_ai_commit_messages: null,
   autogit_idle_threshold_seconds: null,
   autogit_inactive_threshold_seconds: null,
   auto_advance_inbox_after_organize: null,
@@ -70,6 +77,10 @@ function normalizeSettings(settings: Settings): Settings {
   return {
     ...settings,
     git_enabled: settings.git_enabled ?? null,
+    git_path: nullableTrimmedString(settings.git_path),
+    git_provider: normalizeGitProvider(settings.git_provider),
+    git_wsl_distro: nullableTrimmedString(settings.git_wsl_distro),
+    autogit_use_ai_commit_messages: settings.autogit_use_ai_commit_messages ?? null,
     release_channel: serializeReleaseChannel(
       normalizeReleaseChannel(settings.release_channel),
     ),
@@ -92,13 +103,41 @@ function normalizeSettings(settings: Settings): Settings {
   }
 }
 
+function normalizeGitProvider(value: unknown): Settings['git_provider'] {
+  const provider = trimmedString(value).toLowerCase()
+  return provider === 'native' || provider === 'wsl' ? provider : null
+}
+
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function trimmedString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function nullableTrimmedString(value: unknown): string | null {
+  const trimmed = trimmedString(value)
+  return trimmed || null
+}
+
+function normalizeAiWorkspaceConversation(setting: unknown): AiWorkspaceConversationSetting | null {
+  if (!isRecord(setting)) return null
+  const id = trimmedString(setting.id)
+  const title = trimmedString(setting.title)
+  if (!id || !title) return null
+  return {
+    archived: setting.archived === true,
+    id,
+    target_id: nullableTrimmedString(setting.target_id),
+    title,
+  }
+}
+
 function normalizeAiWorkspaceConversations(settings: Settings['ai_workspace_conversations']) {
-  const conversations = (settings ?? []).map((conversation) => ({
-    archived: conversation.archived === true,
-    id: conversation.id.trim(),
-    target_id: conversation.target_id?.trim() || null,
-    title: conversation.title.trim(),
-  })).filter((conversation) => conversation.id && conversation.title)
+  const conversations = (Array.isArray(settings) ? settings : [])
+    .map(normalizeAiWorkspaceConversation)
+    .filter((conversation): conversation is AiWorkspaceConversationSetting => conversation !== null)
 
   return conversations.length > 0 ? conversations : null
 }

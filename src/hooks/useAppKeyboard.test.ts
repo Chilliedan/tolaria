@@ -218,6 +218,21 @@ describe('useAppKeyboard', () => {
     })
   })
 
+  it('lets focused editor surfaces own undo even when app history is available', () => {
+    setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64)')
+    const actions = { ...makeActions(), canUndo: true }
+    renderHook(() => useAppKeyboard(actions))
+
+    withFocusedEditorSurface((editable) => {
+      const undo = fireKeyOnTarget(editable, 'z', { ctrlKey: true, code: 'KeyZ' })
+
+      expect(undo.defaultPrevented).toBe(false)
+      expect(actions.onUndo).not.toHaveBeenCalled()
+      expect(executeAppCommand(APP_COMMAND_IDS.editUndo, actions, 'native-menu')).toBe(false)
+      expect(actions.onUndo).not.toHaveBeenCalled()
+    })
+  })
+
   it('Cmd+E uses the current multi-selection instead of the active note', () => {
     const actions = makeActions()
     const organizeSelected = vi.fn()
@@ -281,6 +296,17 @@ describe('useAppKeyboard', () => {
 
     expect(actions.onToggleOrganized).toHaveBeenCalledWith('/vault/test.md')
     expect(actions.onToggleFavorite).toHaveBeenCalledWith('/vault/test.md')
+  })
+
+  it('uses active-layout letter shortcuts before physical key codes', () => {
+    const actions = makeActions()
+    actions.onToggleFavorite = vi.fn()
+    renderHook(() => useAppKeyboard(actions))
+
+    fireKey('e', { metaKey: true, code: 'KeyD' })
+
+    expect(actions.onToggleOrganized).toHaveBeenCalledWith('/vault/test.md')
+    expect(actions.onToggleFavorite).not.toHaveBeenCalled()
   })
 
   it('Cmd+E still works when editor focus stops propagation', () => {
@@ -392,6 +418,18 @@ describe('useAppKeyboard', () => {
     document.body.appendChild(editable)
     editable.focus()
     try { fn(editable) } finally { document.body.removeChild(editable) }
+  }
+
+  function withFocusedEditorSurface(fn: (editable: HTMLDivElement) => void) {
+    const container = document.createElement('div')
+    container.className = 'editor__blocknote-container'
+    const editable = document.createElement('div')
+    editable.tabIndex = 0
+    editable.setAttribute('contenteditable', 'true')
+    container.appendChild(editable)
+    document.body.appendChild(container)
+    editable.focus()
+    try { fn(editable) } finally { document.body.removeChild(container) }
   }
 
   it('Cmd+Backspace does not delete note when text input is focused', () => {

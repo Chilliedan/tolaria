@@ -30,6 +30,8 @@ const CLAUDE_PROVIDER_ENV_KEYS: &[EnvName<'static>] = &[
     EnvName::trusted("SSL_CERT_DIR"),
     EnvName::trusted("NODE_EXTRA_CA_CERTS"),
 ];
+const LOCALIZED_ERROR_PREFIX: &str = "tolaria:i18n-error:";
+const CLAUDE_TOO_MANY_REDIRECTS_KEY: &str = "ai.error.claude.tooManyRedirects";
 
 /// Status returned by `check_claude_cli`.
 #[derive(Debug, Serialize, Clone)]
@@ -159,10 +161,36 @@ fn first_existing_path(stdout: &str) -> Option<PathBuf> {
 fn first_existing_path_for_platform(stdout: &str, windows: bool) -> Option<PathBuf> {
     let mut paths = stdout.lines().filter_map(existing_path);
     if windows {
-        return paths.find(|path| crate::cli_agent_runtime::has_windows_cli_extension(path));
+        return paths.find(|path| is_windows_claude_code_candidate(path));
     }
 
     paths.next()
+}
+
+fn is_windows_claude_code_candidate(path: &Path) -> bool {
+    crate::cli_agent_runtime::has_windows_cli_extension(path)
+        && !is_windows_claude_desktop_execution_alias(path)
+}
+
+fn is_windows_claude_desktop_execution_alias(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.eq_ignore_ascii_case("Claude.exe"))
+        && contains_component_sequence(path, &["Microsoft", "WindowsApps"])
+}
+
+fn contains_component_sequence(path: &Path, expected: &[&str]) -> bool {
+    let components = path
+        .components()
+        .filter_map(|component| component.as_os_str().to_str())
+        .collect::<Vec<_>>();
+
+    components.windows(expected.len()).any(|window| {
+        window
+            .iter()
+            .zip(expected)
+            .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected))
+    })
 }
 
 fn existing_path(line: &str) -> Option<PathBuf> {
@@ -441,6 +469,10 @@ fn configure_claude_command_environment(cmd: &mut std::process::Command, bin: &P
 }
 
 fn format_failed_claude_exit(failure: ClaudeFailure<'_>) -> String {
+    if is_claude_too_many_redirects_error(failure.stderr) {
+        return localized_error(CLAUDE_TOO_MANY_REDIRECTS_KEY);
+    }
+
     if is_claude_auth_error(failure.stderr) {
         return "Claude CLI is not authenticated. Run `claude auth login` in your terminal.".into();
     }
@@ -455,6 +487,19 @@ fn format_failed_claude_exit(failure: ClaudeFailure<'_>) -> String {
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+fn localized_error(key: &str) -> String {
+    let payload = serde_json::json!({
+        "key": key,
+        "values": {},
+    });
+    format!("{LOCALIZED_ERROR_PREFIX}{payload}")
+}
+
+fn is_claude_too_many_redirects_error(stderr: ClaudeStderr<'_>) -> bool {
+    let lower = stderr.to_ascii_lowercase();
+    lower.contains("toomanyredirects") || lower.contains("too many redirects")
 }
 
 fn is_claude_auth_error(stderr: ClaudeStderr<'_>) -> bool {
@@ -772,6 +817,29 @@ mod tests {
     }
 
     #[test]
+    fn windows_path_lookup_skips_claude_desktop_execution_alias() {
+        let dir = tempfile::tempdir().unwrap();
+        let desktop_alias = dir
+            .path()
+            .join("AppData")
+            .join("Local")
+            .join("Microsoft")
+            .join("WindowsApps")
+            .join("Claude.exe");
+        let cli_binary = dir.path().join(".local").join("bin").join("claude.exe");
+        std::fs::create_dir_all(desktop_alias.parent().unwrap()).unwrap();
+        std::fs::create_dir_all(cli_binary.parent().unwrap()).unwrap();
+        std::fs::write(&desktop_alias, "desktop alias").unwrap();
+        std::fs::write(&cli_binary, "claude code cli").unwrap();
+        let stdout = format!("{}\n{}\n", desktop_alias.display(), cli_binary.display());
+
+        assert_eq!(
+            first_existing_path_for_platform(&stdout, true),
+            Some(cli_binary)
+        );
+    }
+
+    #[test]
     fn unsupported_claude_flag_errors_are_detected() {
         assert!(is_unsupported_claude_flag_error(ClaudeStderr(
             "error: unknown option '--tools'"
@@ -784,7 +852,41 @@ mod tests {
         )));
     }
 
+    #[test]
+    fn format_failed_claude_exit_sanitizes_too_many_redirects() {
+        let message = format_failed_claude_exit(ClaudeFailure {
+            stderr: ClaudeStderr(
+                "API Error: Unable to connect to API (TooManyRedirects)\nredirected to https://example.invalid/callback?token=secret",
+            ),
+            status: failed_exit_status(),
+        });
+
+        assert_eq!(
+            (
+                message.starts_with("tolaria:i18n-error:"),
+                message.contains(r#""key":"ai.error.claude.tooManyRedirects""#),
+                message.contains("https://example.invalid"),
+                message.contains("secret"),
+            ),
+            (true, true, false, false)
+        );
+    }
+
     // --- dispatch_event / dispatch_stream_event ---
+
+    #[cfg(unix)]
+    fn failed_exit_status() -> ExitStatus {
+        use std::os::unix::process::ExitStatusExt;
+
+        ExitStatus::from_raw(1 << 8)
+    }
+
+    #[cfg(windows)]
+    fn failed_exit_status() -> ExitStatus {
+        use std::os::windows::process::ExitStatusExt;
+
+        ExitStatus::from_raw(1)
+    }
 
     fn new_state() -> StreamState {
         StreamState {

@@ -1,4 +1,4 @@
-use super::git_command;
+use super::git_command_at;
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -155,10 +155,8 @@ fn parse_numstat_output(output: &[u8]) -> HashMap<String, DiffStats> {
 }
 
 fn repo_has_head(vault: &Path) -> Result<bool, String> {
-    let output = git_command()
-        .args(["rev-parse", "--verify", "HEAD"])
-        .current_dir(vault)
-        .output()
+    let output = git_command_at(vault)
+        .and_then(|mut command| command.args(["rev-parse", "--verify", "HEAD"]).output())
         .map_err(|e| format!("Failed to run git rev-parse: {e}"))?;
 
     Ok(output.status.success())
@@ -169,10 +167,12 @@ fn load_diff_stats(vault: &Path) -> Result<HashMap<String, DiffStats>, String> {
         return Ok(HashMap::new());
     }
 
-    let output = git_command()
-        .args(["diff", "--numstat", "-z", "--find-renames", "HEAD", "--"])
-        .current_dir(vault)
-        .output()
+    let output = git_command_at(vault)
+        .and_then(|mut command| {
+            command
+                .args(["diff", "--numstat", "-z", "--find-renames", "HEAD", "--"])
+                .output()
+        })
         .map_err(|e| format!("Failed to run git diff --numstat: {e}"))?;
 
     if !output.status.success() {
@@ -241,11 +241,13 @@ fn ensure_path_within_vault(vault: &Path, relative_path: &Path, abs: &Path) -> R
 }
 
 fn load_file_status(vault: &Path, relative_path: &Path) -> Result<String, String> {
-    let output = git_command()
-        .args(["status", "--porcelain", "--"])
-        .arg(relative_path)
-        .current_dir(vault)
-        .output()
+    let output = git_command_at(vault)
+        .and_then(|mut command| {
+            command
+                .args(["status", "--porcelain", "--"])
+                .arg(relative_path)
+                .output()
+        })
         .map_err(|e| format!("Failed to run git status: {e}"))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -257,17 +259,15 @@ fn load_file_status(vault: &Path, relative_path: &Path) -> Result<String, String
 }
 
 fn restore_tracked_file(vault: &Path, relative_path: &Path) -> Result<(), String> {
-    let _ = git_command()
-        .args(["reset", "HEAD", "--"])
-        .arg(relative_path)
-        .current_dir(vault)
-        .output();
+    let _ = git_command_at(vault).and_then(|mut command| {
+        command
+            .args(["reset", "HEAD", "--"])
+            .arg(relative_path)
+            .output()
+    });
 
-    let checkout = git_command()
-        .args(["checkout", "--"])
-        .arg(relative_path)
-        .current_dir(vault)
-        .output()
+    let checkout = git_command_at(vault)
+        .and_then(|mut command| command.args(["checkout", "--"]).arg(relative_path).output())
         .map_err(|e| format!("Failed to run git checkout: {e}"))?;
 
     if checkout.status.success() {
@@ -291,10 +291,16 @@ pub fn get_modified_files_with_stats(
 }
 
 fn get_modified_files_impl(vault: &Path, include_stats: bool) -> Result<Vec<ModifiedFile>, String> {
-    let output = git_command()
-        .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
-        .current_dir(vault)
-        .output()
+    if !super::is_inside_work_tree(vault) {
+        return Ok(Vec::new());
+    }
+
+    let output = git_command_at(vault)
+        .and_then(|mut command| {
+            command
+                .args(["status", "--porcelain=v1", "-z", "--untracked-files=all"])
+                .output()
+        })
         .map_err(|e| format!("Failed to run git status: {e}"))?;
 
     if !output.status.success() {
@@ -372,8 +378,8 @@ pub fn discard_file_changes(vault_path: &str, relative_path: &str) -> Result<(),
 
 #[cfg(test)]
 mod tests {
-    use super::git_command;
     use super::*;
+    use crate::git::git_command;
     use crate::git::git_commit;
     use crate::git::tests::setup_git_repo;
     use std::fs;
@@ -415,6 +421,17 @@ mod tests {
         change(vault, vp);
 
         expect_modified_file(vp, relative_path, status)
+    }
+
+    #[test]
+    fn test_get_modified_files_returns_empty_for_gitless_folder() {
+        let dir = tempfile::TempDir::new().unwrap();
+        fs::write(dir.path().join("note.md"), "# Note\n").unwrap();
+
+        assert!(get_modified_files(dir.path()).unwrap().is_empty());
+        assert!(get_modified_files_with_stats(dir.path())
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

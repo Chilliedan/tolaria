@@ -147,13 +147,13 @@ proposed → active → superseded
 | [0088](0088-markdown-durable-mermaid-diagrams.md) | Markdown-durable Mermaid diagrams in notes | active |
 | [0089](0089-active-vault-filesystem-watcher.md) | Active vault filesystem watcher | active |
 | [0090](0090-pi-cli-agent-adapter.md) | Pi CLI agent adapter | active |
-| [0091](0091-gemini-cli-external-ai-setup.md) | Gemini CLI external AI setup | active |
+| [0091](0091-gemini-cli-external-ai-setup.md) | Gemini CLI external AI setup | superseded -> [0147](0147-antigravity-cli-agent-adapter.md) |
 | [0092](0092-vault-ai-agent-permission-modes.md) | Vault-scoped AI agent permission modes | superseded -> [0103](0103-adapter-specific-ai-permission-semantics.md) |
 | [0093](0093-shared-cli-agent-runtime-adapters.md) | Shared CLI agent runtime adapters | active |
 | [0094](0094-gitignored-content-visibility-boundary-filter.md) | Gitignored content visibility as a command-boundary filter | active |
 | [0095](0095-saved-view-order-field.md) | Saved views use an explicit YAML order field | active |
 | [0096](0096-root-created-type-documents.md) | Root-created type documents | active |
-| [0097](0097-gemini-cli-agent-adapter.md) | Gemini CLI agent adapter | active |
+| [0097](0097-gemini-cli-agent-adapter.md) | Gemini CLI agent adapter | superseded -> [0147](0147-antigravity-cli-agent-adapter.md) |
 | [0098](0098-in-app-image-and-pdf-file-previews.md) | In-app image and PDF previews for binary vault files | superseded → [0110](0110-in-app-media-and-pdf-file-previews.md) |
 | [0099](0099-cumulative-vault-asset-scope.md) | Cumulative vault asset scope for previews | active |
 | [0100](0100-synthetic-vault-root-folder-row.md) | Synthetic vault-root row in folder navigation | active |
@@ -182,7 +182,7 @@ proposed → active → superseded
 | [0121](0121-appimage-external-fallback-for-audio-and-video-previews.md) | AppImage external fallback for audio and video previews | active |
 | [0122](0122-scalar-array-frontmatter-properties.md) | Scalar array frontmatter properties | active |
 | [0123](0123-full-vault-graph-for-secondary-note-windows.md) | Full vault graph for secondary note windows | superseded -> [0124](0124-cached-secondary-note-window-startup.md) |
-| [0124](0124-cached-secondary-note-window-startup.md) | Cached secondary note window startup | active |
+| [0124](0124-cached-secondary-note-window-startup.md) | Cached secondary note window startup | superseded -> [0146](0146-cached-main-window-startup-with-empty-reload-recovery.md) |
 | [0126](0126-renderer-action-history.md) | Renderer action history for app-level undo and redo | active |
 | [0127](0127-native-ai-workspace-window.md) | Native AI workspace window | superseded -> [0128](0128-lightweight-ai-workspace-window.md) |
 | [0128](0128-lightweight-ai-workspace-window.md) | Lightweight AI workspace window | active |
@@ -204,10 +204,21 @@ proposed → active → superseded
 | [0143](0143-shared-focus-ownership-guard.md) | Shared focus ownership guard | active |
 | [0144](0144-collections-and-presentations.md) | Collections carry presentation configuration | active |
 | [0145](0145-xdg-backed-app-config-path.md) | XDG-backed app config path | active |
-| [0146](0146-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
-| [0147](0147-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
-| [0148](0148-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
-| [0149](0149-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
-| [0150](0150-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
-| [0151](0151-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
-| [0152](0152-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |
+| [0146](0146-cached-main-window-startup-with-empty-reload-recovery.md) | Cached main-window startup with empty reload recovery | active |
+| [0147](0147-antigravity-cli-agent-adapter.md) | Antigravity CLI agent adapter | superseded -> [0151](0151-antigravity-add-dir-workspace-flag.md) |
+| [0148](0148-cancellable-ai-agent-streams.md) | Cancellable AI agent streams | active |
+| [0149](0149-shared-app-config-policy-manifest.md) | Shared app config policy manifest | active |
+| [0151](0151-antigravity-add-dir-workspace-flag.md) | Antigravity add-dir workspace flag | active |
+| [0152](0152-wsl2-git-provider.md) | WSL2 Git provider | active |
+| [0153](0153-conservative-markdown-delimiter-parsing.md) | Conservative Markdown delimiter parsing | active |
+| [0154](0154-sandboxed-fenced-html-blocks.md) | Sandboxed fenced HTML blocks | active |
+| [0155](0155-html-block-source-edits-use-raw-editor.md) | HTML block source edits use the raw editor | active |
+| [0156](0156-vault-expression-html-blocks-and-line-references.md) | Vault expressions in sandboxed HTML blocks and line references | amended -> [0157](0157-opt-in-sandboxed-html-block-scripts.md) |
+| [0157](0157-opt-in-sandboxed-html-block-scripts.md) | Opt-in sandboxed scripts for HTML block dashboards | active |
+| [0158](0158-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
+| [0159](0159-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
+| [0160](0160-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
+| [0161](0161-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
+| [0162](0162-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
+| [0163](0163-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
+| [0164](0164-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |

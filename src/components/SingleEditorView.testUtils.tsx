@@ -16,7 +16,6 @@ const state = vi.hoisted(() => ({
   hoverGuardMock: vi.fn(),
   imageDropState: { isDragOver: false },
   linkActivationMock: vi.fn(),
-  personMentionCandidates: [] as Record<string, unknown>[],
   wikilinkEntriesRef: { current: [] as VaultEntry[] },
   wikilinkCandidates: [] as Record<string, unknown>[],
 }))
@@ -167,6 +166,7 @@ vi.mock('../utils/url', () => ({
 }))
 
 vi.mock('../utils/typeColors', () => ({
+  ACCENT_COLOR_PICKER_KEYS: ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'gray'],
   buildTypeEntryMap: () => ({}),
 }))
 
@@ -174,11 +174,6 @@ vi.mock('../utils/wikilinkSuggestions', () => ({
   MIN_QUERY_LENGTH: 2,
   deduplicateByPath: <T,>(items: T[]) => items,
   preFilterWikilinks: () => state.wikilinkCandidates,
-}))
-
-vi.mock('../utils/personMentionSuggestions', () => ({
-  PERSON_MENTION_MIN_QUERY: 1,
-  filterPersonMentions: () => state.personMentionCandidates,
 }))
 
 vi.mock('../utils/suggestionEnrichment', () => ({

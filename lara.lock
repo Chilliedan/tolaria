@@ -11,7 +11,7 @@ files:
     command.openSettings: 638c05f4f159a403e04aebe94b46a2a8
     command.openSettings.keywords: ab6b5e03395f4db955ed9cbfd4de33b7
     command.openLanguageSettings: e5a425aa6222fab3df66c0e1e0ca4183
-    command.openLanguageSettings.keywords: 6a910000cbf23eac3c7078e518cae66a
+    command.openLanguageSettings.keywords: c92bcfddcacf33ad7bdb6ccb88f0d4f4
     command.useSystemLanguage: b7f0315c47d4a59faa2a49571fcf1fca
     command.openH1Setting: 05b4f6edc0e98b29670e8ee902cdb9bf
     command.toggleGitignoredFilesVisibility: 0a2d3ea4e8ff8b00a801183caeb97a03
@@ -50,6 +50,21 @@ files:
     feedback.sponsor.description: 6517e0c5d4e4801814a6034dd54862b6
     feedback.sponsor.cta: a2c71ec076796ab6af0ba0ea882303fc
     feedback.sponsor.linkLabel: 7fbe24a8f025219f4d165aeb75352125
+    feedback.newsletter.title: 9f3adefa83caf3ac5212df636ef33c5c
+    feedback.newsletter.description: d5337f32085eac92daad035c25d8cee3
+    feedback.newsletter.cta: a2c71ec076796ab6af0ba0ea882303fc
+    feedback.newsletter.linkLabel: 7fbe24a8f025219f4d165aeb75352125
+    feedback.sponsors.title: e881053494ad211d02cdde59c3ab59d9
+    feedback.sponsors.description: e748f640be55858af848a87e7ce59920
+    feedback.sponsors.developmentSentencePrefix: 7a1a5f3e79fdc91edf2f5ead9d66abb4
+    feedback.sponsors.developmentLinkText: aae3f4f9b055dee6c4832ee2cb76f03f
+    feedback.sponsors.developmentLinkLabel: aae3f4f9b055dee6c4832ee2cb76f03f
+    feedback.sponsors.developmentSentenceSuffix: 5058f1af8388633f609cadb75a75dc9d
+    feedback.sponsors.logoLinkLabel: e5744ab47880f7d488bbb06af085aa07
+    feedback.sponsors.codacyTooltip: 557f730ff4609fb41605f679fb37c08c
+    feedback.sponsors.codeSceneTooltip: 66c9e585df9549189f9018ef0368002a
+    feedback.sponsors.circleCiTooltip: be57bb3a98ed92257bc9541ccadecfee
+    feedback.sponsors.unblockedTooltip: cc19ef4c5aa2a0f8877f86af32da28e9
     feedback.featureRequests.title: 73ea5953d68b2c20a82bb94240f6fe17
     feedback.featureRequests.description: 9583575bdef16e12927b0a5acfa84307
     feedback.featureRequests.cta: c19ef0158349da249920b0d9f67d7d48
@@ -60,17 +75,17 @@ files:
     feedback.discussions.linkLabel: 4f85e3343c5e21d2b11812b2baa8ed83
     feedback.contributeCode.title: 8f93fd72b63620711cc118403b85133e
     feedback.contributeCode.description: 53230626356951578842a8cd7233d1f1
-    feedback.contributeCode.cta: c73dd5e7d432cd18c109b333e0b55299
+    feedback.contributeCode.cta: 900156c5b6af50ce83d772fb8675c3d0
     feedback.contributeCode.linkLabel: bfe9dd9816bb39f82fc003de794a075d
-    feedback.contributingGuide.cta: 6cc1fbcbbc69a70a70a2020c979d8e22
+    feedback.contributingGuide.cta: 5a12c49e05128afb1cd4982f27828864
     feedback.contributingGuide.linkLabel: b1310938ecab4c502a8b3af2ca1ce188
     feedback.reportBug.title: 3406147c3ce729ce17ed76d45c2896f9
     feedback.reportBug.description: 6da172412f774e022b0f32ba17305491
-    feedback.reportBug.cta: 1f5aa905b40956ff5ea8b4cc5ea29315
+    feedback.reportBug.cta: 98fb862aa7857ae3b6c4fc0881fc2b7a
     feedback.reportBug.linkLabel: ffaa2eaa0f015cf037d2b5fe8af6b813
     feedback.linkFallback.title: c5396ec50cec23a09977180747737264
     feedback.linkFallback.description: 91d1e18130765119606f095ac473d9cd
-    feedback.copyDiagnostics: dedf5388697bba1fd53173b04823761a
+    feedback.copyDiagnostics: 4f495a7560b714b55b21b1290c0dd14c
     feedback.diagnosticsCopied: 9c7f3f37df9c000fc67c1a6ee35f40e5
     feedback.diagnosticsCopiedSentence: 6f8ebe492dbb95827ccf7536965dc672
     feedback.clipboardUnavailable: 8e25a424420687ed8e0dc2b1be8c7406
@@ -152,18 +167,27 @@ files:
     command.note.removeIcon: 4bccbad66025e506b37b4218498b299c
     command.note.changeType: 4a54ffd47ed1f65ee97f34bfe8c3de14
     command.note.moveToFolder: 3a0f26c42b9168ad839960d134065905
+    command.note.turnCurrentBlockInto: ffe5660e197b8cc6ea4220aef1cb8983
     command.note.copyDeepLink: 8de1795f59af124594dc4decf77909a1
     command.note.exportPdf: 7a39acf8742a59d1a4f7ae064b6219a0
     command.note.openNewWindow: 6f67b2857093fa0fd45b1122dff4865d
     command.git.initialize: 54a57cdc7105db6fb22dca661ce01ad6
     command.git.commitPush: 8cb5faa4019716f43dd69c41496b1d46
     command.git.addRemote: 7eef951b3f909340a68dc9811be83e9e
+    command.git.generateCommitMessage: 87cc84d36697c0763d61dd63df6ce40f
     command.git.pull: 3988d61f4a4546381f61a4eaf61315b4
     command.git.pullRepository: 931ad25176586fd4332dd671574d3185
     command.git.resolveConflicts: 871ac36968cfca3d2297a89b28b25dee
     command.git.viewChanges: b2699edf69d8e1031afce2b2f94e5c8d
     git.author.label: 7a0ca1a813e4518e479a7927890568ce
     git.author.warning.localOverridesGlobal: 5ea1eb9d1b9d2a80662368ee9e1fba63
+    git.commitMessage.failed: 61e323218034e7e8d2de3f869b268701
+    git.commitMessage.generate: 32b919d18cfaca89383f6000dcc9c031
+    git.commitMessage.generatedAi: f919c1ee7bc85e658b2dcd3d2cc5ae92
+    git.commitMessage.generatedFallback: a78024340c98d9720ad07ab55cb8f951
+    git.commitMessage.generateFromDiff: 9defded1246bfd62d8bd089d0a600e84
+    git.commitMessage.generating: f93642ae2d90147d24e974a5649c6622
+    git.commitMessage.noChanges: 12d5dae6c75361dfbfeaddd092aea647
     git.repository.select: 33fcf2b3ec4686d9cd06051c726d0ba2
     git.toast.autoGitFailed: 3e5d7e183a78e1f54c87ad0dba8a302b
     git.toast.commitFailed: bb50986d29c30042bed1446f8adaa544
@@ -249,11 +273,25 @@ files:
     settings.autogit.title: 0bcc70105ad279503e31fe7b3f47b665
     settings.git.enable: c40503e1b0f483eecf3aff2fd01665c4
     settings.git.enableDescription: a96a43dc4dbf1490d665eef437807b07
+    settings.git.provider: 6a38305c8010acae3c04706773e0546f
+    settings.git.providerDescription: 7f23d6e2c5e462daf774c700ad6af2b6
+    settings.git.providerNative: 2098510f1f33aa3fa4c1ea19ff543813
+    settings.git.providerWsl: c28d793001f0044df477bfdfe280f88c
+    settings.git.wslDistro: cd2dfc009491c44acaa7d1c0d62689bc
+    settings.git.wslDistroDescription: 3acc5588d7c36c4a4dff199048d20eb3
+    settings.git.wslDefaultDistro: 32266d0a0c5b47f0c7593ab569f21a2b
+    settings.git.providerTest: 96467c8e8ddf142f09616c1dcdb4193d
+    settings.git.providerTestDescription: cd60ba8d1135b9de4b5cdf1a19a3a31b
+    settings.git.providerTesting: 1e9731b0f033754e9df1973d1fd77b0f
+    settings.git.providerTestOk: 572542bead66201e0e49fa7c6ff18555
+    settings.git.providerTestFailed: 3d0b8c3ec6a5a258bb3d6af98652c979
     settings.autogit.description.enabled: e65bec70ca4d7921be56f84d10836018
     settings.autogit.description.disabled: 1143ef6ee00614816785e3c6fc299d51
     settings.autogit.description.gitDisabled: 55a1dd2d7f797062cde1374930221649
     settings.autogit.enable: 9b205a4ae0e3ad4e6708155880ce9c75
     settings.autogit.enableDescription: a7424a8f90c0b7f290a8144d12374554
+    settings.autogit.aiCommitMessages: 41ac82bb19cb2f88a32837c01e293f9a
+    settings.autogit.aiCommitMessagesDescription: ffe33e37d2fe7705106401d7fda6decf
     settings.autogit.idleThreshold: 28016cc6fccd951a904ee3020cd733b6
     settings.autogit.idleThresholdDescription: 521140491e8c9d5a1d7b7739bc333358
     settings.autogit.inactiveThreshold: d28cb60d1e70e020ae8d1294e32dd474
@@ -411,6 +449,9 @@ files:
     ai.panel.placeholder.missing: 547c492026d115608067988b7cfbb9a9
     ai.panel.placeholder.ready: 31f5265c2e0432a7ca10d08e5c6f3114
     ai.panel.send: 747c6a3564774149c989884e0c581d53
+    ai.panel.stop: 4c7fadd610e7adf3e0ab80fa4459ad96
+    ai.panel.stoppedResponse: d223fbbd5ade7a06a14ea75105df4f9d
+    ai.error.claude.tooManyRedirects: 590099fedac46db892be91909814b0c7
     ai.error.pi.emptyOutput: f7e27de4f237828178113efbf60e8e52
     ai.error.pi.emptyOutputWithDiagnostic: 41a47dab0883245a1ac42013368e2da4
     ai.message.regenerate: e464a5330788a9f79d06c96989f840cb
@@ -474,10 +515,10 @@ files:
     mcp.setup.disconnecting: 11de134aefe51cb4a5c545b5a057a871
     mcp.setup.runtimeRequirement: 1d7a8c99b2bc875b3601fa57860432fb
     mcp.setup.writeEntryDescription: 370aa4403d2ffc37f574503bc3cd00e6
-    mcp.setup.clientPathsDescription: 3b4a1b9d2c6ad6ae64ba459fa080160d
-    mcp.setup.geminiGuidanceDescription: 182cf5b84b2f56cb1cf41dcdb5e093d8
+    mcp.setup.clientPathsDescription: 541cd3d86aa9af81a6ab3a9d6f921a09
+    mcp.setup.geminiGuidanceDescription: c6d8625d56151afce0bb455504490d84
     mcp.setup.manual.title: b240f1ff497fcaa83e6cd489739f11b6
-    mcp.setup.manual.standardTitle: a3614bf47144cd49a1b055fb993bfc99
+    mcp.setup.manual.standardTitle: d2bc27dce31d27aec7612b638d443b95
     mcp.setup.manual.opencodeTitle: 5c38a2f5fe774f4cb886fcfa11a1acc4
     mcp.setup.manual.copyStandard: 89932d9339adf088de66947e8b7d4768
     mcp.setup.manual.copyOpenCode: dede4ad6a0b29559ea3bed6f796cd0fa
@@ -528,7 +569,8 @@ files:
     sidebar.action.createFolder: 5dc1e97c14fbe72d8b566ce29c39f010
     sidebar.action.renameFolder: db76034f8218cda07dadb746a5643019
     sidebar.action.deleteFolder: 2a2f15300f6f7c81d69860ac1796b517
-    sidebar.action.createNodeInFolderMenu: 857a479229a4ab0bc62bbfb621d3180a
+    sidebar.action.createNoteInFolderMenu: b1dbc8fe9fa4e735ef9d8baacff46377
+    sidebar.action.createFolderInFolderMenu: 21a068a0d74b87c91f795d7fb3e52ad6
     sidebar.action.revealFolderMenu: 76f4ed52da9937ae432dcf5a108fabb4
     sidebar.action.copyFolderPathMenu: 1779ec6018a385912c1a5499a1bbf2b2
     sidebar.action.renameFolderMenu: deb1d8fa030292e7eda2c244b313aca2
@@ -691,6 +733,18 @@ files:
     editor.find.close: b040fbda901d2135cad53e54e0127071
     editor.find.replace: 0ebe6df8a3ac338e0512acc741823fdb
     editor.find.replaceAll: b1c94ca2fbc3e78fc30069c8d0f01680
+    editor.blockType.paragraph: feaf0a320c3d678ad30dd179b7d21584
+    editor.blockType.heading1: fd7500ca2aba5ce6ba82e8dee1ffe5f4
+    editor.blockType.heading2: ea59935a58010a876f94374fb2f41d51
+    editor.blockType.heading3: 652864eb81a28bd7164f1605ab52a26a
+    editor.blockType.heading4: 553ddd7695ba37dc6f821067d9f5da30
+    editor.blockType.heading5: 8c08de90796fbc4c4aae36014c40eec4
+    editor.blockType.heading6: a24b3f7226370522c2a0e7ffd542a031
+    editor.blockType.quote: c48e929b2b1eabba2ba036884433345e
+    editor.blockType.bulletList: 0fc5eb4762a5088027c181896d394181
+    editor.blockType.numberedList: bf087c065d8d3f2e77bc07a82c07df52
+    editor.blockType.checklist: a5d727df2ce2d168bae39c78df4b9054
+    editor.blockType.codeBlock: febf6b24daaaeced55c4cc4db7dc931b
     editor.toolbar.rawReturn: 5ddcf5e0dc8b933b344bb6ca3d8e131d
     editor.toolbar.rawOpen: 89ad60735a649b60dacd2301cda0c4ec
     editor.toolbar.noteWidthNormal: 9bb55413ec536c4a8fa41c4c4464ab44
@@ -720,6 +774,12 @@ files:
     editor.toolbar.exportPdf: 7a39acf8742a59d1a4f7ae064b6219a0
     editor.toolbar.moreActions: 89e19353176b94068dec4c768c25e70b
     editor.toolbar.openProperties: 948b90b60b8ce827f179e8c5b85b112e
+    editor.sideMenu.expandSection: 2d8eda764f87bd48192245a238fe8b65
+    editor.sideMenu.collapseSection: 3d3b02981ab3390bf66247c92a2d8dd9
+    editor.sideMenu.expandItem: 16291fbe2d88fc603b23f97ed2bc22a3
+    editor.sideMenu.collapseItem: 91750c64ed8141fdb63ffb1e878a11ad
+    editor.sideMenu.turnIntoMenu: 43895a54b24688d7aba0f928e8114609
+    editor.sideMenu.turnInto: c2d2b328447c4974e839564b054c72f8
     editor.formatting.highlight: 0b90582f4589d84be89f5b847d4d1ed1
     editor.formatting.highlightTooltip: c27173fea9ec1718030c5fa8440b2c78
     editor.whiteboard.enterFullscreen: 606bf766125ecff4b33ca98122222c72
@@ -728,6 +788,8 @@ files:
     editor.whiteboard.permissionDeniedBody: eb1399413cae00b1614695d3c5c7ac9f
     editor.exportPdf.unavailable: 2fce9834984172b64b66767485d815e9
     editor.exportPdf.failed: bf3fa78ff5725f5cbde8979b67ec2e2a
+    editor.imageImport.unsupportedHeic: 75481136eb7ca33ef4f82806765e406f
+    editor.imageImport.unsupported: 9008202219a82edb8e70700bf351ce60
     filePreview.copyDeepLink: b75833669968adbef634495636e3fe50
     deepLinks.copied: 6ada57681192daf3b4afa07ce7a30575
     deepLinks.error.ambiguousVault: 4365c6d5cf8c2c1165259b32d24a6274
@@ -745,7 +807,18 @@ files:
     noteGitUrls.copied: 6832bf85abaa03a6304cd1cce073d747
     noteGitUrls.error.copyFailed: 1952ee267f473efe8e28ca90659f75f6
     noteGitUrls.error.unavailable: ed08c134bba26350fd28f780c6f1b55b
+    editor.slash.htmlBlock: 3ae2ca009c2969a3af7c0b4d1098eafb
     editor.slash.math: a49950aa047c2292e989e368a97a3aae
+    editor.htmlBlock.toolbar: f5430a69b23b29ca2917a63ea8d8b4c6
+    editor.htmlBlock.editSource: 74a854cf60c14b27b56b55ec6beb8281
+    editor.htmlBlock.doneEditing: 04e6def67d4705fa934c575c137f6151
+    editor.htmlBlock.copySource: 1743d8e43a40d31cdeeebc5016b7127e
+    editor.htmlBlock.openRawEditor: c64edd2ccd76992c9956c33279b9b2da
+    editor.htmlBlock.resetHeight: fad3a0112e0158b33399f360efe70c56
+    editor.htmlBlock.resizeHeight: b1e04c04e37ed535b0a92849f776532b
+    editor.htmlBlock.sourceLabel: 73af2c58f07f2eb07343b6bed68440d4
+    editor.htmlBlock.previewTitle: 9cdc9d596904070d7e489e1cf8650ed5
+    editor.htmlBlock.blockedFallback: 591ec71869a83e53a9a8e904cec5c86a
     tableOfContents.title: f61d6c3e3733db355168b7e1aee6780b
     tableOfContents.close: d3292972a10edd1a06a627f3552f760a
     tableOfContents.empty: e4f02ad69cbbce1ec65d14215e3d5871
@@ -854,6 +927,10 @@ files:
     status.remote.add: f292f8ef85219f0acde6b66eb9c9c0f4
     status.remote.none: ed3f2ebe0d847584fd62fc9e0db2df33
     status.remote.noneDescription: f47636010c21c88a6f81cc41a962b26c
+    status.remote.noUpstream: 41c05263e8d71d526a70f01481ded660
+    status.git.currentBranch: db28ec1bca968fc1dc7a2d32006afc8e
+    status.git.branchLine: cfda131b88d16e9f47db17a9a8c40102
+    status.git.unknownBranch: 658240910e4c727d045070efe206beb6
     status.sync.syncing: b21888f3f83c224b3451901da243d00a
     status.sync.conflict: f1d4ac54357cc0932f385d56814ba7e4
     status.sync.failed: 85b08b086888f8ee2680ddd3398f3574
@@ -943,3 +1020,4 @@ files:
     locale.idID: cc1c9b57607b4439578b68074a5e2d80
     locale.ukUA: e78a6fc14ad64f7a78386b20568ce95b
     locale.svSE: 41171a0fcd362ce98b5f0f11398713b6
+    locale.skSK: 9accc467b159e7ce158e53209c0cde2a

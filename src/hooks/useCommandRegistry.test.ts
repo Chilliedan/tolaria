@@ -244,6 +244,44 @@ describe('useCommandRegistry', () => {
     expect(onChangeNoteType).toHaveBeenCalledOnce()
   })
 
+  it('exposes command palette actions for changing the focused editor block type', () => {
+    const onTurnCurrentBlockInto = vi.fn()
+    const config = makeConfig({ onTurnCurrentBlockInto })
+    const { result } = renderHook(() => useCommandRegistry(config))
+    const cmd = findCommand(result.current, 'turn-current-block-into-heading-2')
+
+    expect(cmd).toMatchObject({
+      enabled: true,
+      group: 'Note',
+      label: 'Turn Current Block into Heading 2',
+    })
+    expect(cmd?.keywords).toEqual(expect.arrayContaining([
+      'block',
+      'convert',
+      'heading',
+      'turn into',
+    ]))
+
+    cmd?.execute()
+
+    expect(onTurnCurrentBlockInto).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'heading-2',
+      props: { level: 2 },
+      type: 'heading',
+    }))
+  })
+
+  it('disables focused block type commands outside markdown notes', () => {
+    const config = makeConfig({
+      activeTabPath: '/vault/Attachments/photo.png',
+      entries: [{ path: '/vault/Attachments/photo.png', title: 'photo.png', fileKind: 'binary' }],
+      onTurnCurrentBlockInto: vi.fn(),
+    })
+    const { result } = renderHook(() => useCommandRegistry(config))
+
+    expect(findCommand(result.current, 'turn-current-block-into-heading-2')?.enabled).toBe(false)
+  })
+
   it('enables Move Note to Folder only when another folder destination exists', () => {
     const onMoveNoteToFolder = vi.fn()
     const { result, rerender } = renderHook(
@@ -387,9 +425,12 @@ describe('useCommandRegistry', () => {
       aiAgentsStatus: {
         claude_code: { status: 'installed', version: '1.0.0' },
         codex: { status: 'missing', version: null },
+        copilot: { status: 'missing', version: null },
         opencode: { status: 'missing', version: null },
         pi: { status: 'missing', version: null },
-        gemini: { status: 'missing', version: null },
+        antigravity: { status: 'missing', version: null },
+        kiro: { status: 'missing', version: null },
+        hermes: { status: 'missing', version: null },
       },
       selectedAiAgent: 'claude_code',
     })
@@ -1028,9 +1069,12 @@ describe('reload-vault command', () => {
       aiAgentsStatus: {
         claude_code: { status: 'installed', version: '1.0.20' },
         codex: { status: 'installed', version: '0.37.0' },
+        copilot: { status: 'installed', version: '1.0.58' },
         opencode: { status: 'installed', version: '0.3.1' },
         pi: { status: 'installed', version: '0.70.2' },
-        gemini: { status: 'installed', version: '0.5.1' },
+        antigravity: { status: 'installed', version: '0.5.1' },
+        kiro: { status: 'missing', version: null },
+        hermes: { status: 'missing', version: null },
       },
       selectedAiAgent: 'claude_code',
       onSetDefaultAiAgent,
@@ -1040,9 +1084,10 @@ describe('reload-vault command', () => {
 
     expect(cmd).toBeDefined()
     expect(cmd!.label).toBe('Switch AI Agent to Codex')
+    expect(findCommand(result.current, 'switch-ai-agent-copilot')).toBeDefined()
     expect(findCommand(result.current, 'switch-ai-agent-opencode')).toBeDefined()
     expect(findCommand(result.current, 'switch-ai-agent-pi')).toBeDefined()
-    expect(findCommand(result.current, 'switch-ai-agent-gemini')).toBeDefined()
+    expect(findCommand(result.current, 'switch-ai-agent-antigravity')).toBeDefined()
 
     cmd!.execute()
     expect(onSetDefaultAiAgent).toHaveBeenCalledWith('codex')
@@ -1054,9 +1099,12 @@ describe('reload-vault command', () => {
       aiAgentsStatus: {
         claude_code: { status: 'installed', version: '1.0.20' },
         codex: { status: 'missing', version: null },
+        copilot: { status: 'missing', version: null },
         opencode: { status: 'missing', version: null },
         pi: { status: 'missing', version: null },
-        gemini: { status: 'missing', version: null },
+        antigravity: { status: 'missing', version: null },
+        kiro: { status: 'missing', version: null },
+        hermes: { status: 'missing', version: null },
       },
       selectedAiAgent: 'claude_code',
       onSetDefaultAiAgent: vi.fn(),
@@ -1064,9 +1112,10 @@ describe('reload-vault command', () => {
     const { result } = renderHook(() => useCommandRegistry(config))
 
     expect(findCommand(result.current, 'switch-ai-agent-codex')).toBeUndefined()
+    expect(findCommand(result.current, 'switch-ai-agent-copilot')).toBeUndefined()
     expect(findCommand(result.current, 'switch-ai-agent-opencode')).toBeUndefined()
     expect(findCommand(result.current, 'switch-ai-agent-pi')).toBeUndefined()
-    expect(findCommand(result.current, 'switch-ai-agent-gemini')).toBeUndefined()
+    expect(findCommand(result.current, 'switch-ai-agent-antigravity')).toBeUndefined()
     expect(findCommand(result.current, 'switch-default-ai-agent')).toBeUndefined()
   })
 })

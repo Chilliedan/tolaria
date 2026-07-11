@@ -119,7 +119,11 @@ export interface ModifiedFile {
 export interface Settings {
   auto_pull_interval_minutes: number | null
   git_enabled?: boolean | null
+  git_path?: string | null
+  git_provider?: GitProviderId | null
+  git_wsl_distro?: string | null
   autogit_enabled?: boolean | null
+  autogit_use_ai_commit_messages?: boolean | null
   autogit_idle_threshold_seconds?: number | null
   autogit_inactive_threshold_seconds?: number | null
   auto_advance_inbox_after_organize?: boolean | null
@@ -178,6 +182,27 @@ export interface GitRemoteStatus {
   ahead: number
   behind: number
   hasRemote: boolean
+  hasUpstream?: boolean
+  upstream?: string | null
+}
+
+export type GitProviderId = 'native' | 'wsl'
+
+export interface GitProviderProbe {
+  provider: GitProviderId
+  label: string
+  available: boolean
+  version: string | null
+  distro: string | null
+  path: string | null
+  message: string
+}
+
+export interface GitProviderStatus {
+  selected_provider: GitProviderId
+  selected_wsl_distro: string | null
+  native: GitProviderProbe
+  wsl_distributions: GitProviderProbe[]
 }
 
 export interface SearchResult {

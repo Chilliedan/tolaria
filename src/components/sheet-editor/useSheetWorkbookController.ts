@@ -64,6 +64,17 @@ function cancelPendingSerialize(
   }
 }
 
+function releaseWorkbookModel(model: Model | null | undefined): void {
+  if (!model) return
+  window.setTimeout(() => {
+    try {
+      model.free()
+    } catch (error) {
+      console.warn('[sheet-editor] Failed to release workbook model:', error)
+    }
+  }, 0)
+}
+
 function shouldSkipWorkbookRebuild({
   content,
   lastEmittedContentRef,
@@ -245,7 +256,7 @@ function publishWorkbook({
   workbookRef: MutableRefObject<SheetWorkbookState | null>
 }) {
   const nextWorkbook = nextWorkbookState({ build, generation, path })
-  workbookRef.current?.model.free()
+  releaseWorkbookModel(workbookRef.current?.model)
   workbookRef.current = nextWorkbook
   resetDirtyTracking(dirtyWorkbookGenerationRef, dirtyBodyRowsRef)
   setWorkbook(nextWorkbook)
@@ -471,7 +482,7 @@ function useWorkbookCleanup({
     pendingExternalFormulaCommitRef.current += 1
     serializeCurrentWorkbook(workbookRef.current?.generation)
     cancelScheduledSerialize()
-    workbookRef.current?.model.free()
+    releaseWorkbookModel(workbookRef.current?.model)
     workbookRef.current = null
     resetDirtyTracking(dirtyWorkbookGenerationRef, dirtyBodyRowsRef)
     workbookGenerationRef.current += 1

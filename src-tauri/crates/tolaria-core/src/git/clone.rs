@@ -79,7 +79,8 @@ fn run_clone(request: &CloneRequest<'_>) -> Result<(), String> {
             request.dest.display()
         )
     })?;
-    let output = build_clone_command(request, destination)
+    let git_destination = super::git_path_argument(destination)?;
+    let output = build_clone_command(request, &git_destination)
         .output()
         .map_err(|e| format!("Failed to run git clone: {}", e))?;
 
@@ -96,7 +97,7 @@ fn run_clone(request: &CloneRequest<'_>) -> Result<(), String> {
 fn build_clone_command(request: &CloneRequest<'_>, destination: &str) -> Command {
     let mut command = git_command();
     command
-        .args(["clone", "--quiet", request.url, destination])
+        .args(["clone", "--quiet", "--", request.url, destination])
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("SSH_ASKPASS_REQUIRE", "never")
         .stdin(Stdio::null());
@@ -246,8 +247,17 @@ mod tests {
             vec![
                 "-c".to_string(),
                 "core.quotePath=false".to_string(),
+                "-c".to_string(),
+                "protocol.ext.allow=never".to_string(),
+                "-c".to_string(),
+                "protocol.file.allow=user".to_string(),
+                "-c".to_string(),
+                "core.fsmonitor=false".to_string(),
+                "-c".to_string(),
+                "core.sshCommand=ssh".to_string(),
                 "clone".to_string(),
                 "--quiet".to_string(),
+                "--".to_string(),
                 "https://example.com/repo.git".to_string(),
                 "/tmp/repo".to_string(),
             ]

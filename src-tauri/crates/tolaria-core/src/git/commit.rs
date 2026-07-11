@@ -1,4 +1,5 @@
-use super::{ensure_author_config, git_command};
+use super::command::git_output_result;
+use super::{ensure_author_config, git_command_at};
 use std::path::Path;
 use std::process::Command;
 
@@ -7,8 +8,8 @@ struct CommitFailure {
     stderr: String,
 }
 
-/// Author + committer identities applied to a server-side commit. The author is
-/// the acting user; the committer is a fixed server identity (spec §8).
+/// Author + committer identities applied to a server-side commit. Both are
+/// the acting user's git identity.
 #[derive(Debug, Clone)]
 pub struct CommitIdentity {
     pub author_name: String,
@@ -154,10 +155,7 @@ pub fn git_commit(vault_path: &str, message: &str) -> Result<String, String> {
     let vault = Path::new(vault_path);
 
     // Stage all changes
-    let add = git_command()
-        .args(["add", "-A"])
-        .current_dir(vault)
-        .output()
+    let add = git_output_result(vault, &["add", "-A"])
         .map_err(|e| format!("Failed to run git add: {}", e))?;
 
     if !add.status.success() {
@@ -182,14 +180,16 @@ pub fn git_commit(vault_path: &str, message: &str) -> Result<String, String> {
 }
 
 fn run_commit(vault: &Path, message: &str, disable_signing: bool) -> Result<String, CommitFailure> {
-    let mut command = git_command();
+    let mut command = git_command_at(vault).map_err(|e| CommitFailure {
+        stdout: String::new(),
+        stderr: format!("Failed to run git commit: {}", e),
+    })?;
     if disable_signing {
         command.args(["-c", "commit.gpgsign=false"]);
     }
 
     let commit = command
         .args(["commit", "-m", message])
-        .current_dir(vault)
         .output()
         .map_err(|e| CommitFailure {
             stdout: String::new(),
@@ -230,8 +230,8 @@ fn is_commit_signing_failure(detail: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::git_command;
     use super::*;
+    use crate::git::git_command;
     use crate::git::tests::{setup_git_repo, GitConfigEnvGuard};
     use std::fs;
     use std::path::Path;

@@ -20,6 +20,10 @@ function nullFragmentAppendError(message = "null is not an object (evaluating 'o
   return new TypeError(message)
 }
 
+function nullFirstChildError() {
+  return new TypeError("Cannot read properties of null (reading 'firstChild')")
+}
+
 function indexSizeError() {
   return new DOMException('The index is not in the allowed range.', 'IndexSizeError')
 }
@@ -111,6 +115,9 @@ describe('isRecoverableEditorTransformError', () => {
     expect(isRecoverableEditorTransformError(new Error(
       'Index 1 out of range for <paragraph("/")>',
     ))).toBe(true)
+    expect(isRecoverableEditorTransformError(new RangeError(
+      'Index 0 out of range for <>',
+    ))).toBe(true)
     expect(isRecoverableEditorTransformError(new Error(
       'Block with ID 6c1c3bb4-e218-4f00-aaf5-40606852d286 not found',
     ))).toBe(true)
@@ -126,6 +133,7 @@ describe('isRecoverableEditorTransformError', () => {
     expect(isRecoverableEditorTransformError(new TypeError(
       "Cannot read properties of null (reading 'append')",
     ))).toBe(true)
+    expect(isRecoverableEditorTransformError(nullFirstChildError())).toBe(true)
     expect(isRecoverableEditorTransformError(new Error('unrelated'))).toBe(false)
   })
 })
@@ -157,6 +165,17 @@ describe('installRichEditorTransformErrorRecovery', () => {
 
   it('recovers WebKit DOM NotFoundError from editor dispatch', () => {
     const { currentDoc, view } = createView(webkitNotFoundError())
+
+    installRichEditorTransformErrorRecovery(view)
+
+    expect(() => view.dispatch({ before: currentDoc })).not.toThrow()
+    expect(trackEvent).toHaveBeenCalledWith('rich_editor_transform_error_recovered', {
+      reason: 'dom_not_found',
+    })
+  })
+
+  it('recovers null firstChild DOM races from editor dispatch', () => {
+    const { currentDoc, view } = createView(nullFirstChildError())
 
     installRichEditorTransformErrorRecovery(view)
 
@@ -273,6 +292,13 @@ describe('installRichEditorTransformErrorRecovery', () => {
     expectDocumentRepairRecovery(
       new RangeError('Index 1 out of range for <paragraph("/")>'),
       'paragraph_index_out_of_range',
+    )
+  })
+
+  it('recovers production empty-fragment index transactions from stale selections', () => {
+    expectDocumentRepairRecovery(
+      new RangeError('Index 0 out of range for <>'),
+      'empty_fragment_index_out_of_range',
     )
   })
 

@@ -30,15 +30,18 @@ import {
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
 import { trackEvent } from '../lib/telemetry'
+import {
+  RICH_EDITOR_BLOCK_TYPE_DEFINITIONS,
+  type RichEditorBlockTypeDefinition,
+  type RichEditorBlockTypeKey,
+} from '../utils/richEditorBlockTypes'
+import { HTML_BLOCK_DEFAULT_HEIGHT, HTML_BLOCK_TYPE } from '../utils/htmlBlockMarkdown'
 import { MATH_BLOCK_TYPE } from '../utils/mathMarkdown'
 import { MERMAID_BLOCK_TYPE, mermaidFenceSource } from '../utils/mermaidMarkdown'
 import { TLDRAW_BLOCK_TYPE, TLDRAW_DEFAULT_HEIGHT } from '../utils/tldrawMarkdown'
 
 type TolariaSlashMenuItem = DefaultReactSuggestionItem & { key: string }
-type TolariaBlockTypeSelectItem = {
-  name: string
-  type: string
-  props?: Record<string, boolean | number | string>
+type TolariaBlockTypeSelectItem = RichEditorBlockTypeDefinition & {
   icon: PhosphorIcon
 }
 type SlashInsertEditor = {
@@ -54,6 +57,7 @@ type BlockSlashMenuItemConfig = {
   type: string
 }
 type TolariaSlashMenuLabels = {
+  htmlTitle: string
   mathTitle: string
 }
 
@@ -62,6 +66,7 @@ export const MERMAID_SLASH_COMMAND_DIAGRAM = [
   '    edit["Switch to the raw editor to edit"]',
 ].join('\n')
 export const MATH_SLASH_COMMAND_LATEX = '\\sqrt{a^2 + b^2}'
+export const HTML_SLASH_COMMAND_SOURCE = ''
 
 const UNSUPPORTED_FORMATTING_TOOLBAR_KEYS = new Set([
   'underlineStyleButton',
@@ -80,20 +85,20 @@ const UNSUPPORTED_SLASH_MENU_KEYS = new Set([
   'toggle_list',
 ])
 
-const TOLARIA_BLOCK_TYPE_SELECT_ITEMS: TolariaBlockTypeSelectItem[] = [
-  { name: 'Paragraph', type: 'paragraph', icon: Paragraph },
-  { name: 'Heading 1', type: 'heading', props: { level: 1 }, icon: TextHOne },
-  { name: 'Heading 2', type: 'heading', props: { level: 2 }, icon: TextHTwo },
-  { name: 'Heading 3', type: 'heading', props: { level: 3 }, icon: TextHThree },
-  { name: 'Heading 4', type: 'heading', props: { level: 4 }, icon: TextHFour },
-  { name: 'Heading 5', type: 'heading', props: { level: 5 }, icon: TextHFive },
-  { name: 'Heading 6', type: 'heading', props: { level: 6 }, icon: TextHSix },
-  { name: 'Quote', type: 'quote', icon: Quotes },
-  { name: 'Bullet List', type: 'bulletListItem', icon: ListBullets },
-  { name: 'Numbered List', type: 'numberedListItem', icon: ListNumbers },
-  { name: 'Checklist', type: 'checkListItem', icon: ListChecks },
-  { name: 'Code Block', type: 'codeBlock', icon: CodeBlock },
-]
+const TOLARIA_BLOCK_TYPE_SELECT_ICONS: Record<RichEditorBlockTypeKey, PhosphorIcon> = {
+  'bullet-list': ListBullets,
+  checklist: ListChecks,
+  'code-block': CodeBlock,
+  'heading-1': TextHOne,
+  'heading-2': TextHTwo,
+  'heading-3': TextHThree,
+  'heading-4': TextHFour,
+  'heading-5': TextHFive,
+  'heading-6': TextHSix,
+  'numbered-list': ListNumbers,
+  paragraph: Paragraph,
+  quote: Quotes,
+}
 
 const TOLARIA_SLASH_MENU_ICONS: Partial<Record<string, PhosphorIcon>> = {
   audio: SpeakerHigh,
@@ -107,6 +112,7 @@ const TOLARIA_SLASH_MENU_ICONS: Partial<Record<string, PhosphorIcon>> = {
   heading_2: TextHTwo,
   heading_3: TextHThree,
   heading_4: TextHFour,
+  html: CodeBlock,
   image: ImageSquare,
   math: Pi,
   mermaid: FlowArrow,
@@ -164,7 +170,7 @@ function createMermaidSlashMenuItem(
 
 export function createMathSlashMenuItem(
   editor: Parameters<typeof getDefaultReactSlashMenuItems>[0],
-  labels: TolariaSlashMenuLabels = { mathTitle: 'Math' },
+  labels: Pick<TolariaSlashMenuLabels, 'mathTitle'> = { mathTitle: 'Math' },
 ): TolariaSlashMenuItem {
   return createBlockSlashMenuItem(editor, {
     key: 'math',
@@ -174,6 +180,23 @@ export function createMathSlashMenuItem(
     type: MATH_BLOCK_TYPE,
     props: {
       latex: MATH_SLASH_COMMAND_LATEX,
+    },
+  })
+}
+
+export function createHtmlBlockSlashMenuItem(
+  editor: Parameters<typeof getDefaultReactSlashMenuItems>[0],
+  labels: Pick<TolariaSlashMenuLabels, 'htmlTitle'> = { htmlTitle: 'HTML block' },
+): TolariaSlashMenuItem {
+  return createBlockSlashMenuItem(editor, {
+    key: 'html',
+    title: labels.htmlTitle,
+    aliases: ['embed', 'iframe', 'sandbox', 'html'],
+    eventName: 'editor_html_block_slash_command_used',
+    type: HTML_BLOCK_TYPE,
+    props: {
+      height: HTML_BLOCK_DEFAULT_HEIGHT,
+      html: HTML_SLASH_COMMAND_SOURCE,
     },
   })
 }
@@ -216,7 +239,7 @@ export function addItemsToMediaGroup(
   return nextItems
 }
 
-function createTolariaSlashMenuIcon(Icon: PhosphorIcon) {
+export function createTolariaSlashMenuIcon(Icon: PhosphorIcon) {
   return createElement(
     'span',
     { className: 'tolaria-slash-menu-icon' },
@@ -236,7 +259,10 @@ function createTolariaSlashMenuIcon(Icon: PhosphorIcon) {
 }
 
 export function getTolariaBlockTypeSelectItems() {
-  return TOLARIA_BLOCK_TYPE_SELECT_ITEMS
+  return RICH_EDITOR_BLOCK_TYPE_DEFINITIONS.map((item): TolariaBlockTypeSelectItem => ({
+    ...item,
+    icon: TOLARIA_BLOCK_TYPE_SELECT_ICONS[item.key],
+  }))
 }
 
 export function filterTolariaFormattingToolbarItems<T extends ReactElement>(
@@ -273,6 +299,7 @@ export function getTolariaSlashMenuItems(
     [
       createMermaidSlashMenuItem(editor),
       createMathSlashMenuItem(editor, labels),
+      createHtmlBlockSlashMenuItem(editor, labels),
       createWhiteboardSlashMenuItem(editor),
     ],
   )

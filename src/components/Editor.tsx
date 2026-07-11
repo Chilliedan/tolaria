@@ -3,7 +3,13 @@ import { useEditorTabSwap } from '../hooks/useEditorTabSwap'
 import { useCreateBlockNote } from '@blocknote/react'
 import '@blocknote/mantine/style.css'
 import 'katex/dist/katex.min.css'
-import { uploadImageFile } from '../hooks/useImageDrop'
+import {
+  emptyImageUploadResult,
+  isUnsupportedImageFormatError,
+  uploadImageFile,
+  type ImageImportError,
+  type UploadImageFileResult,
+} from '../hooks/useImageDrop'
 import { DEFAULT_AI_AGENT, type AiAgentId, type AiAgentReadiness } from '../lib/aiAgents'
 import type { AiTarget } from '../lib/aiTargets'
 import { translate, type AppLocale } from '../lib/i18n'
@@ -36,13 +42,24 @@ import { handleRichEditorPaste } from './richEditorPaste'
 import { createRichEditorMarkdownInputTransformExtension } from './richEditorInputTransformExtension'
 import { createRichEditorTextDirectionExtension } from './richEditorTextDirection'
 import { createRichEditorTransformErrorRecoveryExtension } from './richEditorTransformErrorRecoveryExtension'
+import { createRichEditorBlockSelectionExtension } from './richEditorBlockSelectionExtension'
+import { createTodoBlockShortcutExtension } from './todoBlockShortcutExtension'
+import { createRichEditorCodeBlockTabExtension } from './richEditorCodeBlockTabExtension'
 import { useFilenameAutolinkGuard } from './useFilenameAutolinkGuard'
 import { useEditorPdfExport } from './useEditorPdfExport'
 import type { NotePdfExportSource } from '../utils/notePdfExport'
+import type { RichEditorBlockTypeDefinition } from '../utils/richEditorBlockTypes'
 import {
   useRichEditorContentReadiness,
   useRichEditorSheetSwapState,
 } from './useRichEditorSheetTransition'
+import {
+  installBlockNoteDirectMarkdown,
+  type DirectMarkdownCapableSerializer,
+} from '../utils/blockNoteDirectMarkdown'
+import { installRichEditorDispatchPerformanceProbe } from './richEditorDispatchPerformance'
+import { RICH_EDITOR_BLOCKNOTE_PERFORMANCE_OPTIONS } from './richEditorBlockNoteOptions'
+import { useTurnCurrentBlockIntoCommand } from './useTurnCurrentBlockIntoCommand'
 import './Editor.css'
 import './EditorTheme.css'
 
@@ -126,6 +143,8 @@ interface EditorProps {
   tableOfContentsToggleRef?: React.MutableRefObject<() => void>
   /** Mutable ref that Editor registers the PDF export command into, for command palette and native menu access. */
   pdfExportRef?: React.MutableRefObject<((source?: NotePdfExportSource) => void) | null>
+  /** Mutable ref that Editor registers focused-block type changes into, for command palette access. */
+  turnCurrentBlockIntoRef?: React.MutableRefObject<((target: RichEditorBlockTypeDefinition) => void) | null>
   /** Emits short user-visible messages for editor actions. */
   onToast?: (message: string | null) => void
   onFileCreated?: (relativePath: string) => void
@@ -144,6 +163,8 @@ interface EditorProps {
   flushPendingRawContentRef?: React.MutableRefObject<((path: string) => void) | null>
   locale?: AppLocale
 }
+
+type ImageImportErrorHandler = (error: ImageImportError) => void
 
 function useEditorModeExclusion({
   diffMode, rawMode, handleToggleDiff, handleToggleRaw, rawToggleRef, diffToggleRef,
@@ -212,32 +233,75 @@ interface EditorSetupParams {
   getNoteStatus?: (path: string) => NoteStatus
   rawToggleRef?: React.MutableRefObject<() => void>
   diffToggleRef?: React.MutableRefObject<() => void>
+  onImageImportError?: ImageImportErrorHandler
+}
+
+function imageImportErrorMessage(error: ImageImportError, locale: AppLocale | undefined): string {
+  if (error.kind === 'unsupported-heic') {
+    return translate(locale ?? 'en', 'editor.imageImport.unsupportedHeic', { filename: error.fileName })
+  }
+  return translate(locale ?? 'en', 'editor.imageImport.unsupported', { filename: error.fileName, format: error.format })
+}
+
+function handleEditorImageUploadFailure(
+  file: File,
+  error: unknown,
+  onImageImportError: ImageImportErrorHandler | undefined,
+): UploadImageFileResult {
+  if (!isUnsupportedImageFormatError(error)) throw error
+
+  onImageImportError?.(error)
+  return emptyImageUploadResult(file)
+}
+
+function installDirectMarkdownForRealEditor(editor: ReturnType<typeof useCreateBlockNote>) {
+  if (!('pmSchema' in editor) || !('_tiptapEditor' in editor)) return
+  installBlockNoteDirectMarkdown(editor as DirectMarkdownCapableSerializer)
 }
 
 function useEditorSetup({
   tabs, activeTabPath, vaultPath, onContentChange,
   onLoadDiff, onLoadDiffAtCommit, pendingCommitDiffRequest, onPendingCommitDiffHandled, getNoteStatus,
-  rawToggleRef, diffToggleRef,
+  rawToggleRef, diffToggleRef, onImageImportError,
 }: EditorSetupParams) {
   const vaultPathRef = useRef(vaultPath)
+  const activeTabPathRef = useRef(activeTabPath)
+  const onImageImportErrorRef = useRef(onImageImportError)
   const flushPendingEditorChangeRef = useRef<(() => boolean) | null>(null)
   const sheetFlushRef = useRef<((path: string) => void) | null>(null)
   useEffect(() => { vaultPathRef.current = vaultPath }, [vaultPath])
+  useEffect(() => { activeTabPathRef.current = activeTabPath }, [activeTabPath])
+  useEffect(() => { onImageImportErrorRef.current = onImageImportError }, [onImageImportError])
 
   const editor = useCreateBlockNote({
+    ...RICH_EDITOR_BLOCKNOTE_PERFORMANCE_OPTIONS,
     schema,
     domAttributes: RICH_EDITOR_BIDI_DOM_ATTRIBUTES,
-    uploadFile: (file: File) => uploadImageFile(file, vaultPathRef.current),
+    uploadFile: async (file: File) => {
+      try {
+        return await uploadImageFile(file, vaultPathRef.current)
+      } catch (error) {
+        return handleEditorImageUploadFailure(file, error, onImageImportErrorRef.current)
+      }
+    },
     pasteHandler: handleRichEditorPaste,
+    tabBehavior: 'prefer-indent',
     _tiptapOptions: { injectNonce: RUNTIME_STYLE_NONCE },
     extensions: [
       createRichEditorTransformErrorRecoveryExtension(),
       createImeCompositionKeyGuardExtension(),
+      createRichEditorCodeBlockTabExtension(),
       createMarkdownHighlightShortcutExtension(),
+      createTodoBlockShortcutExtension(),
       createRichEditorMarkdownInputTransformExtension(),
       createRichEditorTextDirectionExtension(),
+      createRichEditorBlockSelectionExtension(),
     ],
   })
+  installDirectMarkdownForRealEditor(editor)
+  useEffect(() => {
+    installRichEditorDispatchPerformanceProbe(editor, () => activeTabPathRef.current)
+  }, [editor])
   useFilenameAutolinkGuard(editor)
   const activeTab = tabs.find((t) => t.entry.path === activeTabPath) ?? null
   const {
@@ -442,6 +506,7 @@ function EditorLayout({
   onVaultChanged,
   workspaces,
   onUnsupportedAiPaste,
+  onImageImportError,
   locale,
 }: {
   tabs: Tab[]
@@ -518,6 +583,7 @@ function EditorLayout({
   onVaultChanged?: () => void
   workspaces?: WorkspaceIdentity[]
   onUnsupportedAiPaste?: (message: string) => void
+  onImageImportError?: ImageImportErrorHandler
   locale?: AppLocale
   onExportPdf?: (source?: NotePdfExportSource) => void
 }) {
@@ -589,6 +655,7 @@ function EditorLayout({
               isConflicted={isConflicted}
               onKeepMine={onKeepMine}
               onKeepTheirs={onKeepTheirs}
+              onImageImportError={onImageImportError}
               locale={locale}
             />
         }
@@ -658,6 +725,10 @@ function buildEditorLayoutProps(
 }
 
 export const Editor = memo(function Editor(props: EditorProps) {
+  const { locale, onToast } = props
+  const handleImageImportError = useCallback((error: ImageImportError) => {
+    onToast?.(imageImportErrorMessage(error, locale))
+  }, [locale, onToast])
   const runtime = useEditorSetup({
     tabs: props.tabs,
     activeTabPath: props.activeTabPath,
@@ -670,12 +741,20 @@ export const Editor = memo(function Editor(props: EditorProps) {
     getNoteStatus: props.getNoteStatus,
     rawToggleRef: props.rawToggleRef,
     diffToggleRef: props.diffToggleRef,
+    onImageImportError: handleImageImportError,
   })
   const findRequest = useEditorFindCommand({
     activeTab: runtime.activeTab,
     findInNoteRef: props.findInNoteRef,
     handleToggleRawExclusive: runtime.handleToggleRawExclusive,
     rawMode: runtime.rawMode,
+  })
+  useTurnCurrentBlockIntoCommand({
+    activeTab: runtime.activeTab,
+    diffMode: runtime.diffMode,
+    editor: runtime.editor,
+    rawMode: runtime.rawMode,
+    turnCurrentBlockIntoRef: props.turnCurrentBlockIntoRef,
   })
   const handleExportPdf = useEditorPdfExport({
     activeTab: runtime.activeTab,
@@ -708,6 +787,7 @@ export const Editor = memo(function Editor(props: EditorProps) {
   return (
     <EditorLayout
       {...buildEditorLayoutProps(props, runtime, findRequest)}
+      onImageImportError={handleImageImportError}
       onToggleInspector={rightPanel.handleToggleInspectorPanel}
       showAIChat={props.showAIChat}
       onToggleAIChat={props.onToggleAIChat ? rightPanel.handleToggleAIChatPanel : undefined}

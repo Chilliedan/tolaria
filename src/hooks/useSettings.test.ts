@@ -15,7 +15,11 @@ const { trackEventMock } = vi.hoisted(() => ({
 const defaultSettings: Settings = {
   auto_pull_interval_minutes: null,
   git_enabled: null,
+  git_path: null,
+  git_provider: null,
+  git_wsl_distro: null,
   autogit_enabled: null,
+  autogit_use_ai_commit_messages: null,
   autogit_idle_threshold_seconds: null,
   autogit_inactive_threshold_seconds: null,
   auto_advance_inbox_after_organize: null,
@@ -45,7 +49,11 @@ const defaultSettings: Settings = {
 const savedSettings: Settings = {
   auto_pull_interval_minutes: 15,
   git_enabled: null,
+  git_path: null,
+  git_provider: null,
+  git_wsl_distro: null,
   autogit_enabled: true,
+  autogit_use_ai_commit_messages: true,
   autogit_idle_threshold_seconds: 90,
   autogit_inactive_threshold_seconds: 30,
   auto_advance_inbox_after_organize: true,
@@ -112,7 +120,11 @@ function changedSettings(): Settings {
   return {
     auto_pull_interval_minutes: null,
     git_enabled: null,
+    git_path: null,
+    git_provider: null,
+    git_wsl_distro: null,
     autogit_enabled: false,
+    autogit_use_ai_commit_messages: false,
     autogit_idle_threshold_seconds: 120,
     autogit_inactive_threshold_seconds: 45,
     auto_advance_inbox_after_organize: false,
@@ -216,6 +228,22 @@ describe('useSettings', () => {
 
     const settings = await renderLoadedSettings()
     expect(settings.date_display_format).toBeNull()
+  })
+
+  it('drops malformed AI workspace conversation settings while preserving valid rows', async () => {
+    mockSettingsStore = {
+      ...savedSettings,
+      ai_workspace_conversations: [
+        { id: null, title: 'Broken chat', target_id: null },
+        { id: '  thread-1  ', title: '  Research plan  ', target_id: null, archived: false },
+        { id: 'thread-2', title: null, target_id: 'agent:codex' },
+      ] as unknown as Settings['ai_workspace_conversations'],
+    }
+
+    const settings = await renderLoadedSettings()
+    expect(settings.ai_workspace_conversations).toEqual([
+      { archived: false, id: 'thread-1', target_id: null, title: 'Research plan' },
+    ])
   })
 
   it('saves settings via backend', async () => {

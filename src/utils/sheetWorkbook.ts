@@ -25,11 +25,19 @@ import {
 } from './sheetMetadata'
 import { parseSheetMarkdownCell } from './sheetMarkdownCell'
 import {
-  extractSheetExternalCellReferences,
+  extractSheetExternalReferenceTargets,
+  hasSheetExternalFrontmatterReferences as bodyHasExternalFrontmatterReferences,
   isExternalFormulaInput,
   SHEET_EXTERNAL_CELL_REFERENCE_PATTERN,
+  SHEET_EXTERNAL_FRONTMATTER_REFERENCE_PATTERN,
+  SHEET_EXTERNAL_LINE_REFERENCE_PATTERN,
+  parseSheetExternalFrontmatterReference,
   type SheetExternalCellReference,
+  type SheetExternalFrontmatterReference,
+  type SheetExternalLineReference,
+  hasSheetExternalLineReferences as bodyHasExternalLineReferences,
 } from './sheetExternalReferences'
+import { resolveSheetFrontmatterProperty } from './sheetFrontmatterProperties'
 import type { SheetExternalFormulaInput, SheetExternalFormulaWorkerDependency } from './sheetExternalFormulaWorker'
 import {
   applySheetWikilinkStyle,
@@ -151,7 +159,15 @@ function parseSheetRows({ content }: { content: string }): string[][] {
 }
 
 export function sheetHasExternalFormulaReferences(content: string): boolean {
-  return extractSheetExternalCellReferences(splitSheetDocument(content).body).length > 0
+  return extractSheetExternalReferenceTargets(splitSheetDocument(content).body).length > 0
+}
+
+export function sheetHasExternalFrontmatterReferences(content: string): boolean {
+  return bodyHasExternalFrontmatterReferences({ value: splitSheetDocument(content).body })
+}
+
+export function sheetHasExternalLineReferences(content: string): boolean {
+  return bodyHasExternalLineReferences({ value: splitSheetDocument(content).body })
 }
 
 function hashSheetWorkerString({ seed, value }: { seed: number; value: string }): number {
@@ -210,7 +226,7 @@ function resolveSheetEntry(
 }
 
 function sheetReferenceTargets({ body }: { body: string }): Set<string> {
-  return new Set(extractSheetExternalCellReferences(body).map((reference) => reference.target))
+  return new Set(extractSheetExternalReferenceTargets(body))
 }
 
 function enqueueNestedDependency({
@@ -285,8 +301,8 @@ export function resolveExternalSheetEntriesForFormula(
 ): VaultEntry[] {
   const resolved = new Map<string, VaultEntry>()
   const resolutionCache = new Map<string, VaultEntry | null>()
-  for (const reference of extractSheetExternalCellReferences(formula)) {
-    const entry = resolveSheetEntry(entries, reference.target, sourceEntry, resolutionCache)
+  for (const target of extractSheetExternalReferenceTargets(formula)) {
+    const entry = resolveSheetEntry(entries, target, sourceEntry, resolutionCache)
     if (!entry) continue
     if (notePathsMatch(entry.path, currentPath)) continue
     resolved.set(entry.path, entry)
@@ -369,6 +385,16 @@ function textFormulaLiteral({ value }: { value: string }): string {
   return JSON.stringify(value)
 }
 
+function frontmatterFormulaLiteral(value: boolean | number | string): string {
+  if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NA()'
+  if (typeof value === 'boolean') return value ? 'TRUE()' : 'FALSE()'
+  return textFormulaLiteral({ value })
+}
+
+function lineFormulaLiteral(value: string): string {
+  return normalizedNumericFormulaLiteral({ value }) ?? textFormulaLiteral({ value })
+}
+
 function externalCellFormulaLiteral({
   column,
   model,
@@ -429,6 +455,118 @@ function resolveExternalCellReference(
   } finally {
     if (!nested.cached) nested.build.model.free()
   }
+}
+
+function normalizedSheetTarget(target: string): string {
+  return target.trim().replace(/\\/g, '/').replace(/^\/+/, '').toLowerCase()
+}
+
+function withoutMarkdownExtension(value: string): string {
+  return value.replace(/\.md$/i, '')
+}
+
+function normalizedEntryPath(entry: VaultEntry): string {
+  return entry.path.replace(/\\/g, '/').replace(/\/+$/g, '').toLowerCase()
+}
+
+function entryFilenameStem(entry: VaultEntry): string {
+  return withoutMarkdownExtension(entry.filename).toLowerCase()
+}
+
+function uniqueEntryResolution(matches: VaultEntry[]): { ambiguous: boolean; entry?: VaultEntry } {
+  const unique = new Map(matches.map((entry) => [entry.path, entry]))
+  if (unique.size === 0) return { ambiguous: false }
+  if (unique.size > 1) return { ambiguous: true }
+  return { ambiguous: false, entry: Array.from(unique.values())[0] }
+}
+
+function frontmatterTargetPathMatches(entries: VaultEntry[], target: string): VaultEntry[] {
+  if (!target.includes('/')) return []
+
+  const targetSuffixes = target.endsWith('.md') ? [`/${target}`] : [`/${target}`, `/${target}.md`]
+  return entries.filter((entry) => targetSuffixes.some((suffix) => normalizedEntryPath(entry).endsWith(suffix)))
+}
+
+function frontmatterTargetSimpleMatchGroups(entries: VaultEntry[], target: string): VaultEntry[][] {
+  const targetStem = withoutMarkdownExtension(target)
+  const humanizedTarget = targetStem.replace(/-/g, ' ')
+  return [
+    entries.filter((entry) => entryFilenameStem(entry) === targetStem),
+    entries.filter((entry) => entry.aliases.some((alias) => normalizedSheetTarget(alias) === target)),
+    entries.filter((entry) => normalizedSheetTarget(entry.title) === target || normalizedSheetTarget(entry.title) === targetStem),
+    humanizedTarget === targetStem ? [] : entries.filter((entry) => normalizedSheetTarget(entry.title) === humanizedTarget),
+  ]
+}
+
+function frontmatterReferenceEntryResolution(
+  entries: VaultEntry[],
+  target: string,
+): { ambiguous: boolean; entry?: VaultEntry } {
+  const normalizedTarget = normalizedSheetTarget(target)
+  const pathResolution = uniqueEntryResolution(frontmatterTargetPathMatches(entries, normalizedTarget))
+  if (pathResolution.ambiguous || pathResolution.entry) return pathResolution
+
+  for (const matches of frontmatterTargetSimpleMatchGroups(entries, normalizedTarget)) {
+    const resolution = uniqueEntryResolution(matches)
+    if (resolution.ambiguous || resolution.entry) return resolution
+  }
+  return { ambiguous: false }
+}
+
+function resolveExternalFrontmatterEntry(
+  reference: SheetExternalFrontmatterReference,
+  context: SheetExternalFormulaContext,
+): { ambiguous: boolean; entry?: VaultEntry } {
+  const resolution = frontmatterReferenceEntryResolution(context.entries, reference.target)
+  if (resolution.ambiguous || resolution.entry) return resolution
+
+  const entry = resolveSheetEntry(
+    context.entries,
+    reference.target,
+    context.sourceEntry,
+    context.entryResolutionCache,
+  )
+  return { ambiguous: false, entry }
+}
+
+function resolveExternalFrontmatterReference(
+  reference: SheetExternalFrontmatterReference,
+  context: SheetExternalFormulaContext,
+): string {
+  const resolution = resolveExternalFrontmatterEntry(reference, context)
+  if (resolution.ambiguous || !resolution.entry) return 'NA()'
+
+  const content = context.contentsByPath.get(resolution.entry.path)
+  if (content === undefined) return 'NA()'
+
+  const value = resolveSheetFrontmatterProperty(content, reference.path)
+  return value === null ? 'NA()' : frontmatterFormulaLiteral(value)
+}
+
+function bodyLine(content: string, line: number): string | null {
+  const lines = splitSheetDocument(content).body.split(/\r\n|\r|\n/)
+  return lines[line - 1] ?? null
+}
+
+function resolveExternalLineReference(
+  reference: SheetExternalLineReference,
+  context: SheetExternalFormulaContext,
+): string {
+  const entry = resolveSheetEntry(
+    context.entries,
+    reference.target,
+    context.sourceEntry,
+    context.entryResolutionCache,
+  )
+  if (!entry) return 'NA()'
+
+  const content = notePathsMatch(entry.path, context.currentPath)
+    ? context.contentsByPath.get(context.currentPath)
+    : context.contentsByPath.get(entry.path)
+  if (content === undefined) return 'NA()'
+
+  const line = bodyLine(content, reference.line)
+  return line === null ? 'NA()' : lineFormulaLiteral(line)
 }
 
 function localSheetCellReference(
@@ -492,7 +630,7 @@ export function resolveExternalFormulaInput(
   const cacheRun = withExternalWorkbookCache(context)
   let unresolved = false
   try {
-    const evaluated = value.replace(SHEET_EXTERNAL_CELL_REFERENCE_PATTERN, (match, rawTarget, columnAbsolute, rawColumn, rowAbsolute, row) => {
+    let evaluated = value.replace(SHEET_EXTERNAL_CELL_REFERENCE_PATTERN, (match, rawTarget, columnAbsolute, rawColumn, rowAbsolute, row) => {
       const { replacement, resolved } = replacementForExternalFormulaReference({
         cacheRun,
         columnAbsolute,
@@ -504,6 +642,19 @@ export function resolveExternalFormulaInput(
       })
       unresolved = unresolved || !resolved
       return replacement
+    })
+
+    evaluated = evaluated.replace(SHEET_EXTERNAL_LINE_REFERENCE_PATTERN, (_match, rawTarget, rawLine) => (
+      resolveExternalLineReference({
+        line: Number.parseInt(rawLine, 10),
+        target: wikilinkTarget(`[[${rawTarget}]]`),
+      }, cacheRun.context)
+    ))
+
+    evaluated = evaluated.replace(SHEET_EXTERNAL_FRONTMATTER_REFERENCE_PATTERN, (match, rawTarget, propertyPath) => {
+      const reference = parseSheetExternalFrontmatterReference({ propertyPath, rawTarget })
+      if (!reference) return match
+      return resolveExternalFrontmatterReference(reference, cacheRun.context)
     })
 
     if (unresolved || evaluated === value) return null

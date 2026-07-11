@@ -117,10 +117,12 @@ async function expectTooltip(trigger: HTMLElement, ...parts: string[]) {
 }
 
 async function openOverflowMenu() {
-  fireEvent.pointerDown(screen.getByRole('button', { name: 'More note actions' }), {
-    button: 0,
-    ctrlKey: false,
-  })
+  const trigger = screen.getByRole('button', { name: 'More note actions' })
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  fireEvent.mouseDown(trigger, { button: 0, ctrlKey: false })
+  fireEvent.pointerUp(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  fireEvent.mouseUp(trigger, { button: 0, ctrlKey: false })
+  fireEvent.click(trigger, { button: 0, ctrlKey: false })
   return screen.findByRole('menu')
 }
 
@@ -602,6 +604,37 @@ describe('BreadcrumbBar — action buttons always right-aligned', () => {
     const tooltip = await screen.findByRole('tooltip')
     expect(document.querySelector('[data-slot="tooltip-content"]')).toHaveAttribute('data-align', 'end')
     expect(tooltip).toHaveTextContent('Add to favorites')
+  })
+
+  it('updates the visible tooltip when the pointer slides between adjacent action icons', async () => {
+    render(
+      <BreadcrumbBar
+        entry={baseEntry}
+        {...defaultProps}
+        onToggleFavorite={vi.fn()}
+        onToggleOrganized={vi.fn()}
+      />,
+    )
+
+    const favoriteButton = screen.getByRole('button', { name: 'Add to favorites' })
+    const organizedButton = screen.getByRole('button', { name: 'Set note as organized' })
+
+    act(() => {
+      fireEvent.pointerEnter(favoriteButton)
+    })
+
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Add to favorites')
+
+    act(() => {
+      fireEvent.pointerMove(organizedButton)
+    })
+
+    await waitFor(() => {
+      const visibleTooltips = screen.getAllByRole('tooltip')
+      expect(visibleTooltips).toHaveLength(1)
+      expect(visibleTooltips[0]).toHaveTextContent('Set note as organized')
+      expect(visibleTooltips[0]).not.toHaveTextContent('Add to favorites')
+    })
   })
 
   it('lets the title use the free space before the fixed drag gap', () => {

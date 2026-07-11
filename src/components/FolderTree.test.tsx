@@ -615,7 +615,7 @@ describe('FolderTree', () => {
 
     window.addEventListener(CREATE_NOTE_IN_FOLDER_EVENT, onCreateNoteInFolder)
     fireEvent.contextMenu(screen.getAllByTestId('folder-row:projects')[1])
-    fireEvent.click(screen.getByTestId('create-node-in-folder-menu-item'))
+    fireEvent.click(screen.getByTestId('create-note-in-folder-menu-item'))
 
     expect(onCreateNoteInFolder).toHaveBeenCalledOnce()
     expect((onCreateNoteInFolder.mock.calls[0][0] as CustomEvent).detail).toEqual({
@@ -623,6 +623,32 @@ describe('FolderTree', () => {
       rootPath: '/Users/luca/Team',
     })
     window.removeEventListener(CREATE_NOTE_IN_FOLDER_EVENT, onCreateNoteInFolder)
+  })
+
+  it('creates a folder inside the right-clicked folder', async () => {
+    const onCreateFolder = vi.fn().mockResolvedValue(true)
+    render(
+      <FolderTree
+        folders={mockFolders}
+        selection={defaultSelection}
+        onSelect={vi.fn()}
+        onCreateFolder={onCreateFolder}
+      />,
+    )
+
+    fireEvent.contextMenu(screen.getByText('projects'))
+    fireEvent.click(screen.getByTestId('create-folder-in-folder-menu-item'))
+
+    const parentRow = screen.getByTestId('folder-create-parent:projects')
+    const input = within(parentRow).getByTestId('new-folder-input')
+    fireEvent.change(input, { target: { value: 'research' } })
+    await act(async () => {
+      fireEvent.keyDown(input, { key: 'Enter' })
+    })
+
+    await vi.waitFor(() => {
+      expect(onCreateFolder).toHaveBeenCalledWith('research', { path: 'projects' })
+    })
   })
 
   it('keeps destructive folder actions off the vault root row and menu', () => {
@@ -652,5 +678,43 @@ describe('FolderTree', () => {
     expect(screen.getByTestId('copy-folder-path-menu-item')).toBeInTheDocument()
     expect(screen.queryByText('Rename folder...')).not.toBeInTheDocument()
     expect(screen.queryByTestId('delete-folder-menu-item')).not.toBeInTheDocument()
+  })
+
+  it('moves a dragged note onto an eligible folder row', () => {
+    const onMoveNoteToFolder = vi.fn()
+    renderTree({
+      onCanDropNote: (notePath, folderPath) => notePath === '/vault/alpha.md' && folderPath === 'projects',
+      onMoveNoteToFolder,
+    })
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      getData: vi.fn((type: string) => type === 'application/x-tolaria-note-path' ? '/vault/alpha.md' : ''),
+    }
+    const row = screen.getByTestId('folder-row:projects')
+
+    fireEvent.dragOver(row, { dataTransfer })
+    fireEvent.drop(row, { dataTransfer })
+
+    expect(dataTransfer.dropEffect).toBe('move')
+    expect(onMoveNoteToFolder).toHaveBeenCalledWith('/vault/alpha.md', 'projects')
+  })
+
+  it('moves a dragged note onto the vault root row', () => {
+    const onMoveNoteToFolder = vi.fn()
+    renderTree({
+      onCanDropNote: (notePath, folderPath) => notePath === '/vault/projects/alpha.md' && folderPath === '',
+      onMoveNoteToFolder,
+      vaultRootPath,
+    })
+
+    const dataTransfer = {
+      dropEffect: 'none',
+      getData: vi.fn((type: string) => type === 'application/x-tolaria-note-path' ? '/vault/projects/alpha.md' : ''),
+    }
+
+    fireEvent.drop(screen.getByTestId('folder-row:'), { dataTransfer })
+
+    expect(onMoveNoteToFolder).toHaveBeenCalledWith('/vault/projects/alpha.md', '')
   })
 })
