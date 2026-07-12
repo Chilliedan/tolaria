@@ -1,5 +1,5 @@
 use super::command::git_output_result;
-use super::{ensure_author_config, git_command_at};
+use super::{ensure_author_config, git_command, git_command_at};
 use std::path::Path;
 use std::process::Command;
 

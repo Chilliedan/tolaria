@@ -2,7 +2,7 @@ const ALLOWED_REMOTE_URL_MESSAGE: &str =
     "Repository URL must start with https://, http://, ssh://, or git@host:path.";
 const HIERARCHICAL_REMOTE_SCHEMES: [&str; 3] = ["https://", "http://", "ssh://"];
 
-pub(crate) fn validate_user_remote_url(remote_url: &str) -> Result<&str, String> {
+pub fn validate_user_remote_url(remote_url: &str) -> Result<&str, String> {
     let trimmed = remote_url.trim();
 
     if let Some(message) = invalid_remote_url_message(trimmed) {

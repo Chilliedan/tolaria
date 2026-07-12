@@ -2,7 +2,17 @@ use serde::Serialize;
 use std::ffi::OsString;
 use std::process::{Command, Output};
 
-use crate::settings::{normalize_git_provider, Settings};
+use super::GitProgramConfig;
+
+/// Lowercase and validate a git-provider selection. Defensive: the host app
+/// normalizes this itself before it reaches [`GitProgramConfig`], but a
+/// provider value from an older config file could still be stale.
+fn normalize_git_provider(value: Option<&str>) -> Option<String> {
+    match value.map(|candidate| candidate.trim().to_ascii_lowercase()) {
+        Some(provider) if provider == "native" || provider == "wsl" => Some(provider),
+        _ => None,
+    }
+}
 
 pub(super) const NATIVE_PROVIDER: &str = "native";
 pub(super) const WSL_PROVIDER: &str = "wsl";
@@ -49,13 +59,13 @@ pub struct GitProviderStatus {
 }
 
 impl GitProviderSelection {
-    pub(super) fn from_settings(settings: Option<&Settings>) -> Self {
+    pub(super) fn from_config(config: Option<&GitProgramConfig>) -> Self {
         let provider =
-            settings.and_then(|settings| normalize_git_provider(settings.git_provider.as_deref()));
+            config.and_then(|config| normalize_git_provider(config.git_provider.as_deref()));
 
         if provider.as_deref() == Some(WSL_PROVIDER) && wsl_supported_on_this_platform() {
             return Self::Wsl {
-                distro: settings.and_then(|settings| settings.git_wsl_distro.clone()),
+                distro: config.and_then(|config| config.git_wsl_distro.clone()),
             };
         }
 
@@ -83,9 +93,9 @@ pub(super) fn wsl_git_prefix_args(distro: Option<&str>) -> Vec<OsString> {
 
 pub(super) fn selected_git_path_argument(
     path: &str,
-    settings: Option<&Settings>,
+    config: Option<&GitProgramConfig>,
 ) -> Result<String, String> {
-    match GitProviderSelection::from_settings(settings) {
+    match GitProviderSelection::from_config(config) {
         GitProviderSelection::Wsl { .. } => windows_path_to_wsl_path(path).ok_or_else(|| {
             format!("The selected WSL Git provider cannot translate '{path}' to a WSL path.")
         }),
@@ -94,12 +104,12 @@ pub(super) fn selected_git_path_argument(
 }
 
 pub fn git_provider_status() -> GitProviderStatus {
-    let settings = crate::settings::get_settings().ok();
-    let selection = GitProviderSelection::from_settings(settings.as_ref());
+    let config = super::git_program_config();
+    let selection = GitProviderSelection::from_config(config.as_ref());
 
     GitProviderStatus {
         selected_provider: selection.provider_id().to_string(),
-        selected_wsl_distro: settings.and_then(|settings| settings.git_wsl_distro),
+        selected_wsl_distro: config.and_then(|config| config.git_wsl_distro),
         native: native_git_probe(),
         wsl_distributions: wsl_git_probes(),
     }

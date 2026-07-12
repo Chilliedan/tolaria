@@ -386,7 +386,21 @@ fn setup_macos_webview_shortcut_prevention(
     Ok(())
 }
 
+/// Reads the app's own settings store to answer tolaria-core's git-program
+/// config lookup (custom git binary, WSL provider). tolaria-core has no
+/// `Settings` type of its own; this is the one place that bridges the two.
+fn git_program_config_from_settings() -> Option<tolaria_core::git::GitProgramConfig> {
+    let settings = settings::get_settings().ok()?;
+    Some(tolaria_core::git::GitProgramConfig {
+        git_path: settings.git_path,
+        git_provider: settings.git_provider,
+        git_wsl_distro: settings.git_wsl_distro,
+    })
+}
+
 fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+    tolaria_core::git::set_git_program_config_provider(git_program_config_from_settings);
+
     setup_common_plugins(app)?;
 
     #[cfg(desktop)]

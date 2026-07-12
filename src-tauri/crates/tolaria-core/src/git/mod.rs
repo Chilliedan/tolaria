@@ -53,7 +53,7 @@ pub use provider::{git_provider_status, test_git_provider, GitProviderProbe, Git
 pub use pulse::{get_last_commit_info, get_vault_pulse, LastCommitInfo, PulseCommit, PulseFile};
 pub use remote::{git_pull, git_push, has_remote, GitPullResult, GitPushResult};
 pub use remote_status::{git_remote_status, GitRemoteStatus};
-pub(crate) use remote_url::validate_user_remote_url;
+pub use remote_url::validate_user_remote_url;
 pub use status::{
     discard_file_changes, get_modified_files, get_modified_files_with_stats, ModifiedFile,
 };
