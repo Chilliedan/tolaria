@@ -232,6 +232,63 @@ mod tests {
         assert_eq!(path_lookup_command(), expected);
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn command_path_from_shell_finds_opencode_via_shell_lookup() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let opencode = dir.path().join("opencode");
+        std::fs::write(&opencode, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&opencode, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let shell = dir.path().join("shell");
+        std::fs::write(
+            &shell,
+            format!(
+                "#!/bin/sh\nif [ \"$1\" = \"-lc\" ]; then echo '{}'; fi\n",
+                opencode.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(command_path_from_shell(&shell, "opencode"), Some(opencode));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn command_path_from_shell_returns_none_when_shell_command_fails() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let shell = dir.path().join("shell");
+        std::fs::write(&shell, "#!/bin/sh\nexit 1\n").unwrap();
+        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(command_path_from_shell(&shell, "opencode"), None);
+    }
+
+    #[test]
+    fn user_shell_candidates_always_include_zsh_and_bash_fallbacks() {
+        let candidates = user_shell_candidates();
+
+        assert!(candidates.contains(&PathBuf::from("/bin/zsh")));
+        assert!(candidates.contains(&PathBuf::from("/bin/bash")));
+    }
+
+    #[test]
+    fn opencode_binary_candidates_matches_home_dir_variant() {
+        let Some(home) = dirs::home_dir() else {
+            return;
+        };
+
+        assert_eq!(
+            opencode_binary_candidates(),
+            opencode_binary_candidates_for_home(&home)
+        );
+    }
+
     #[test]
     fn first_existing_path_skips_empty_and_missing_lines() {
         let dir = tempfile::tempdir().unwrap();

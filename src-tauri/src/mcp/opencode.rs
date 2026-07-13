@@ -264,6 +264,84 @@ mod tests {
     }
 
     #[test]
+    fn remove_config_returns_false_when_file_is_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("opencode.json");
+
+        assert!(!remove_config(&config_path).unwrap());
+    }
+
+    #[test]
+    fn remove_config_returns_false_when_mcp_key_is_absent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("opencode.json");
+        write_config_json(&config_path, serde_json::json!({ "$schema": "x" }));
+
+        assert!(!remove_config(&config_path).unwrap());
+    }
+
+    #[test]
+    fn remove_config_returns_false_when_neither_server_name_present() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("opencode.json");
+        write_config_json(
+            &config_path,
+            serde_json::json!({ "mcp": { "other": { "type": "local" } } }),
+        );
+
+        assert!(!remove_config(&config_path).unwrap());
+        let config = read_config(&config_path);
+        assert!(config["mcp"]["other"].is_object());
+    }
+
+    #[test]
+    fn config_path_points_under_the_opencode_config_dir() {
+        let Some(path) = config_path() else {
+            return;
+        };
+
+        assert!(path.ends_with("opencode/opencode.json"));
+    }
+
+    #[test]
+    fn read_registered_entry_returns_none_when_file_is_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("opencode.json");
+
+        assert!(read_registered_entry(&config_path).is_none());
+    }
+
+    #[test]
+    fn read_registered_entry_finds_primary_or_legacy_entry() {
+        let tmp = tempfile::tempdir().unwrap();
+        let config_path = tmp.path().join("opencode.json");
+        write_config_json(
+            &config_path,
+            serde_json::json!({
+                "mcp": { "tolaria": { "type": "local", "command": ["node", "/index.js"] } }
+            }),
+        );
+        assert_eq!(
+            read_registered_entry(&config_path).unwrap()["command"][1],
+            "/index.js"
+        );
+
+        write_config_json(
+            &config_path,
+            serde_json::json!({
+                "mcp": { "laputa": { "type": "local", "command": ["node", "/legacy.js"] } }
+            }),
+        );
+        assert_eq!(
+            read_registered_entry(&config_path).unwrap()["command"][1],
+            "/legacy.js"
+        );
+
+        write_config_json(&config_path, serde_json::json!({ "mcp": {} }));
+        assert!(read_registered_entry(&config_path).is_none());
+    }
+
+    #[test]
     fn entry_is_installed_checks_opencode_shape_and_index_path() {
         let tmp = tempfile::tempdir().unwrap();
         let index_js = tmp.path().join("index.js");

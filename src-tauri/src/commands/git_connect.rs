@@ -34,3 +34,23 @@ pub async fn git_add_remote(request: GitAddRemoteRequest) -> Result<GitAddRemote
 pub async fn git_add_remote(_request: GitAddRemoteRequest) -> Result<GitAddRemoteResult, String> {
     Err("Adding git remotes is not available on mobile".into())
 }
+
+#[cfg(all(test, desktop))]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn git_add_remote_reports_invalid_url_as_error_result_not_err() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let request = GitAddRemoteRequest {
+            vault_path: dir.path().to_string_lossy().to_string(),
+            remote_url: "not-a-url".to_string(),
+        };
+
+        let result = git_add_remote(request)
+            .await
+            .expect("validation failures resolve to an Ok result, not Err");
+
+        assert_eq!(result.status, "error");
+    }
+}

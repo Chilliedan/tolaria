@@ -738,6 +738,12 @@ mod tests {
     }
 
     #[test]
+    fn test_blank_ui_language_normalizes_to_none() {
+        assert_eq!(normalize_ui_language(Some("   ")), None);
+        assert_eq!(normalize_ui_language(Some("")), None);
+    }
+
+    #[test]
     fn test_supported_ui_languages_are_saved_and_reloaded() {
         let expected_languages = [
             ("it-IT", "it-IT"),
@@ -925,6 +931,63 @@ mod tests {
         let path = dir.path().join("ai-workspace-sessions.json");
 
         assert!(save_ai_workspace_sessions_at(&path, serde_json::json!([])).is_err());
+    }
+
+    #[test]
+    fn test_ai_workspace_sessions_falls_back_to_empty_object_for_non_object_file_contents() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("ai-workspace-sessions.json");
+        fs::write(&path, "[1,2,3]").unwrap();
+
+        assert_eq!(
+            get_ai_workspace_sessions_at(&path).unwrap(),
+            serde_json::json!({})
+        );
+    }
+
+    #[test]
+    fn test_normalize_ai_workspace_conversations_drops_blank_id_or_title() {
+        let conversations = vec![
+            AiWorkspaceConversationSetting {
+                archived: Some(false),
+                id: "  ".to_string(),
+                target_id: None,
+                title: "Has title".to_string(),
+            },
+            AiWorkspaceConversationSetting {
+                archived: Some(false),
+                id: "keep-me".to_string(),
+                target_id: None,
+                title: "  ".to_string(),
+            },
+            AiWorkspaceConversationSetting {
+                archived: Some(true),
+                id: " valid-id ".to_string(),
+                target_id: Some("  ".to_string()),
+                title: " Valid title ".to_string(),
+            },
+        ];
+
+        let normalized = normalize_ai_workspace_conversations(Some(conversations)).unwrap();
+
+        assert_eq!(normalized.len(), 1);
+        assert_eq!(normalized[0].id, "valid-id");
+        assert_eq!(normalized[0].title, "Valid title");
+        assert_eq!(normalized[0].target_id, None);
+    }
+
+    #[test]
+    fn test_normalize_ai_workspace_conversations_none_when_all_entries_invalid() {
+        assert_eq!(normalize_ai_workspace_conversations(None), None);
+        assert_eq!(
+            normalize_ai_workspace_conversations(Some(vec![AiWorkspaceConversationSetting {
+                archived: Some(false),
+                id: String::new(),
+                target_id: None,
+                title: "Untitled".to_string(),
+            }])),
+            None
+        );
     }
 
     #[test]

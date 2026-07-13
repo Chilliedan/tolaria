@@ -204,4 +204,89 @@ mod tests {
             "clipboard timeout should return promptly"
         );
     }
+
+    #[cfg(all(desktop, unix))]
+    #[test]
+    fn native_clipboard_write_succeeds_for_fast_commands() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "cat >/dev/null"]);
+
+        let result =
+            write_native_clipboard_with_timeout(command, "copy me", Duration::from_secs(2));
+
+        assert!(result.is_ok(), "unexpected write failure: {result:?}");
+    }
+
+    #[cfg(all(desktop, unix))]
+    #[test]
+    fn native_clipboard_write_reports_command_failure() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "cat >/dev/null; echo 'boom' >&2; exit 1"]);
+
+        let error = write_native_clipboard_with_timeout(command, "copy me", Duration::from_secs(2))
+            .expect_err("non-zero exit should be reported as an error");
+
+        assert!(
+            error.contains("boom"),
+            "unexpected clipboard failure error: {error}"
+        );
+    }
+
+    #[cfg(all(desktop, unix))]
+    #[test]
+    fn native_clipboard_read_returns_stdout_on_success() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "printf 'hello clipboard'"]);
+
+        let result = read_native_clipboard_with_timeout(command, Duration::from_secs(2))
+            .expect("fast read command should succeed");
+
+        assert_eq!(result, "hello clipboard");
+    }
+
+    #[cfg(all(desktop, unix))]
+    #[test]
+    fn native_clipboard_read_times_out_slow_commands() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 2"]);
+
+        let result = read_native_clipboard_with_timeout(command, Duration::from_millis(50));
+
+        let error = result.expect_err("slow read command should time out");
+        assert!(
+            error.contains("timed out"),
+            "unexpected clipboard read timeout error: {error}"
+        );
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    fn clipboard_failure_message_falls_back_when_stderr_is_empty() {
+        assert_eq!(
+            clipboard_failure_message(b""),
+            "Native clipboard command failed"
+        );
+        assert_eq!(
+            clipboard_failure_message(b"  \n"),
+            "Native clipboard command failed"
+        );
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    fn clipboard_failure_message_includes_trimmed_stderr() {
+        assert_eq!(
+            clipboard_failure_message(b"  disk full\n"),
+            "Native clipboard command failed: disk full"
+        );
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    fn clipboard_timeout_message_reports_milliseconds() {
+        assert_eq!(
+            clipboard_timeout_message(Duration::from_millis(250)),
+            "Native clipboard command timed out after 250ms"
+        );
+    }
 }

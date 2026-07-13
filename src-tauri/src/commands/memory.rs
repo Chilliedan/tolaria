@@ -139,6 +139,26 @@ mod tests {
     }
 
     #[test]
+    fn rejects_rows_with_missing_or_non_numeric_fields() {
+        assert!(
+            parse_process_row("42 1").is_none(),
+            "missing rss/command should be rejected"
+        );
+        assert!(
+            parse_process_row("not-a-pid 1 1024 command").is_none(),
+            "non-numeric pid should be rejected"
+        );
+        assert!(
+            parse_process_row("42 not-a-ppid 1024 command").is_none(),
+            "non-numeric parent pid should be rejected"
+        );
+        assert!(
+            parse_process_row("42 1 1024").is_none(),
+            "missing command should be rejected"
+        );
+    }
+
+    #[test]
     fn classifies_nearby_webkit_auxiliaries() {
         let row = ProcessRow {
             pid: 120,
@@ -163,5 +183,106 @@ mod tests {
         };
 
         assert_eq!(classify_related_process(&row, 100), None);
+    }
+
+    #[test]
+    fn classifies_the_current_process_as_app() {
+        let row = ProcessRow {
+            pid: 100,
+            parent_pid: 1,
+            rss_kib: 10,
+            command: "/Applications/Tolaria.app/Contents/MacOS/tolaria".to_string(),
+        };
+
+        assert_eq!(classify_related_process(&row, 100), Some("app".to_string()));
+    }
+
+    #[test]
+    fn classifies_webkit_gpu_and_networking_and_unlabeled_auxiliaries() {
+        for (command, expected) in [
+            ("/System/com.apple.WebKit.GPU.xpc", "webkit-gpu"),
+            (
+                "/System/com.apple.WebKit.Networking.xpc",
+                "webkit-networking",
+            ),
+            ("/System/com.apple.WebKit.Plugin.xpc", "webkit"),
+        ] {
+            let row = ProcessRow {
+                pid: 105,
+                parent_pid: 1,
+                rss_kib: 10,
+                command: command.to_string(),
+            };
+            assert_eq!(
+                classify_related_process(&row, 100),
+                Some(expected.to_string()),
+                "unexpected classification for {command}"
+            );
+        }
+    }
+
+    #[test]
+    fn is_nearby_webkit_auxiliary_requires_higher_pid_within_window_and_webkit_command() {
+        let webkit = |pid: u32| ProcessRow {
+            pid,
+            parent_pid: 1,
+            rss_kib: 10,
+            command: "/System/com.apple.WebKit.WebContent.xpc".to_string(),
+        };
+
+        assert!(is_nearby_webkit_auxiliary(&webkit(150), 100));
+        assert!(
+            !is_nearby_webkit_auxiliary(&webkit(50), 100),
+            "lower pid is not a child auxiliary"
+        );
+        assert!(
+            !is_nearby_webkit_auxiliary(&webkit(100 + WEBKIT_AUX_PID_WINDOW + 1), 100),
+            "pid outside the window should not match"
+        );
+
+        let non_webkit = ProcessRow {
+            pid: 150,
+            parent_pid: 1,
+            rss_kib: 10,
+            command: "/usr/bin/unrelated".to_string(),
+        };
+        assert!(!is_nearby_webkit_auxiliary(&non_webkit, 100));
+    }
+
+    #[test]
+    fn related_process_entry_converts_kib_to_bytes_for_matches_and_skips_unrelated() {
+        let app_row = ProcessRow {
+            pid: 100,
+            parent_pid: 1,
+            rss_kib: 2048,
+            command: "tolaria".to_string(),
+        };
+        let entry = related_process_entry(app_row, 100).expect("current pid should always match");
+        assert_eq!(entry.rss_bytes, 2048 * 1024);
+        assert_eq!(entry.role, "app");
+
+        let unrelated_row = ProcessRow {
+            pid: 900,
+            parent_pid: 1,
+            rss_kib: 10,
+            command: "/usr/bin/unrelated".to_string(),
+        };
+        assert!(related_process_entry(unrelated_row, 100).is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_process_memory_snapshot_includes_the_current_process() {
+        let snapshot =
+            get_process_memory_snapshot().expect("ps should be available in the test environment");
+
+        assert!(
+            snapshot
+                .entries
+                .iter()
+                .any(|entry| entry.pid == snapshot.current_pid && entry.role == "app"),
+            "snapshot should include the current process tagged as \"app\""
+        );
+        assert!(snapshot.total_rss_bytes > 0);
     }
 }
