@@ -41,10 +41,16 @@ async function invokeGitProviderCommand<T>(command: string, args: Record<string,
   if (isTauri()) return invoke<T>(command, args)
 
   try {
-    return await invoke<T>(command, args)
+    // The web transport resolves unimplemented (501) commands to `undefined`
+    // rather than rejecting, since native git/WSL provider selection has no
+    // server-side implementation. Treat that the same as a thrown error so we
+    // still fall back to plausible mock data instead of crashing on render.
+    const result = await invoke<T>(command, args)
+    if (result !== undefined) return result
   } catch {
-    return mockInvoke<T>(command, args)
+    // fall through to the mock below
   }
+  return mockInvoke<T>(command, args)
 }
 
 function providerOptions(t: Translate) {
@@ -123,7 +129,7 @@ export function GitProviderSettingsRows({
     let cancelled = false
     invokeGitProviderCommand<GitProviderStatus>('git_provider_status', {})
       .then((status) => {
-        if (!cancelled) setProviderStatus(status)
+        if (!cancelled) setProviderStatus(status ?? DEFAULT_PROVIDER_STATUS)
       })
       .catch(() => {
         if (!cancelled) setProviderStatus(DEFAULT_PROVIDER_STATUS)
@@ -163,6 +169,7 @@ export function GitProviderSettingsRows({
         distro: gitProvider === 'wsl' ? gitWslDistro : null,
         vaultPath: null,
       })
+      if (!result) throw new Error('No response from the git provider test.')
       setProviderTestResult(result)
       trackGitProviderTested(gitProvider, result.available)
     } catch (error) {
