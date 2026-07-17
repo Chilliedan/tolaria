@@ -1,9 +1,32 @@
 import { describe, expect, it } from 'vitest'
 import { BlockNoteEditor } from '@blocknote/core'
 import { schema } from '../components/editorSchema'
-import { preProcessEditorMarkdown, resolveBlocksForTarget } from './editorBlockResolution'
+import {
+  installRichEditorMarkdownSerializer,
+  preProcessRichEditorMarkdown,
+  serializeRichEditorDocumentToMarkdown,
+} from '../utils/richEditorMarkdown'
+import { resolveBlocksForTarget } from './editorBlockResolution'
 
-describe('preProcessEditorMarkdown', () => {
+describe('preProcessRichEditorMarkdown', () => {
+  it('normalizes bare image paths for BlockNote parsing while preserving fenced code', () => {
+    const markdown = [
+      '```md',
+      '![example](attachments/code.png)',
+      '```',
+      '',
+      '![shot](attachments/shot.png)',
+    ].join('\n')
+
+    expect(preProcessRichEditorMarkdown(markdown)).toBe([
+      '```md',
+      '![example](attachments/code.png)',
+      '```',
+      '',
+      '![shot](./attachments/shot.png)',
+    ].join('\n'))
+  })
+
   it('prepares currency prose without single-tilde strike or inline math placeholders', () => {
     const markdown = [
       '# Finance',
@@ -15,7 +38,7 @@ describe('preProcessEditorMarkdown', () => {
       'Keep ~~deleted~~ marked.',
     ].join('\n')
 
-    const preprocessed = preProcessEditorMarkdown(markdown)
+    const preprocessed = preProcessRichEditorMarkdown(markdown)
 
     expect(preprocessed).toContain('\\~$1.5k/mo now, \\~$3k/mo')
     expect(preprocessed).toContain('\\~$115 lifetime vs \\~$223')
@@ -53,5 +76,32 @@ describe('preProcessEditorMarkdown', () => {
         type: 'bulletListItem',
       }),
     )
+  })
+
+  it('preserves fenced code literals through resolve and save after reload', async () => {
+    const editor = BlockNoteEditor.create({ schema })
+    installRichEditorMarkdownSerializer(editor)
+    const content = [
+      '---',
+      'title: SQL repro',
+      '---',
+      '```sql',
+      'alter table db_sys.crm_client add client_csm_factor decimal(5, 2) null;',
+      'select PATH_WITH_BACKSLASH from container\\_name;',
+      '```',
+    ].join('\n')
+
+    const resolved = await resolveBlocksForTarget({
+      cache: new Map(),
+      content,
+      editor,
+      targetPath: 'sql-repro.md',
+    })
+
+    expect(serializeRichEditorDocumentToMarkdown({
+      blocks: resolved.blocks,
+      editor,
+      tabContent: content,
+    })).toBe(`${content}\n`)
   })
 })

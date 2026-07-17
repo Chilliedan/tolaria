@@ -1,6 +1,7 @@
 import { BlockNoteEditor } from '@blocknote/core'
 import { describe, expect, it, vi } from 'vitest'
 import { schema } from '../components/editorSchema'
+import { installBlockNoteDirectMarkdown } from './blockNoteDirectMarkdown'
 import {
   injectDurableEditorMarkdownBlocks,
   preProcessDurableEditorMarkdown,
@@ -108,6 +109,21 @@ describe('editor durable markdown blocks', () => {
     })
   })
 
+  it('keeps parsed fenced code literal across rich-editor serialization', async () => {
+    const editor = BlockNoteEditor.create({ schema })
+    installBlockNoteDirectMarkdown(editor)
+    const markdown = [
+      '```sql',
+      'alter table db_sys.crm_client add client_csm_factor decimal(5, 2) null;',
+      'select PATH_WITH_BACKSLASH from container\\_name;',
+      '```',
+    ].join('\n')
+
+    const blocks = await editor.tryParseMarkdownToBlocks(markdown)
+
+    expect(serializeDurableEditorBlocks(editor, blocks)).toBe(markdown)
+  })
+
   it('round-trips sandboxed-script HTML fences through the durable editor pipeline', () => {
     const markdown = [
       '```html height="420" scripts="sandboxed"',
@@ -158,6 +174,61 @@ describe('editor durable markdown blocks', () => {
       props: {
         source: markdown,
         diagram: 'flowchart TB\n  a["events: run.* thread.* and field_value"] --> b["ok"]\n',
+      },
+    })
+  })
+
+  it('restores tldraw placeholders after Markdown-active token text passes through BlockNote', async () => {
+    const editor = BlockNoteEditor.create({ schema })
+    const markdown = [
+      '```tldraw id="day-plan" height="640" width="900"',
+      '{ "store": { "shape:focus": { "id": "shape:focus", "type": "geo" } } }',
+      '```',
+    ].join('\n')
+
+    const parsed = await editor.tryParseMarkdownToBlocks(
+      preProcessDurableEditorMarkdown({ markdown }),
+    )
+    const [block] = injectDurableEditorMarkdownBlocks(parsed) as Array<{
+      type: string
+      props?: Record<string, string>
+    }>
+
+    expect(block).toMatchObject({
+      type: TLDRAW_BLOCK_TYPE,
+      props: {
+        boardId: 'day-plan',
+        height: '640',
+        snapshot: '{ "store": { "shape:focus": { "id": "shape:focus", "type": "geo" } } }',
+        width: '900',
+      },
+    })
+  })
+
+  it('recovers tldraw placeholders after Markdown emphasis strips token separators', () => {
+    const markdown = [
+      '```tldraw id="day-plan" height="640" width="900"',
+      '{ "store": { "shape:focus": { "id": "shape:focus", "type": "geo" } } }',
+      '```',
+    ].join('\n')
+    const emphasisStrippedToken = preProcessDurableEditorMarkdown({ markdown }).replaceAll('_', '')
+
+    const [block] = injectDurableEditorMarkdownBlocks([{
+      type: 'paragraph',
+      content: [{ type: 'text', text: emphasisStrippedToken, styles: {} }],
+      children: [],
+    }]) as Array<{
+      type: string
+      props?: Record<string, string>
+    }>
+
+    expect(block).toMatchObject({
+      type: TLDRAW_BLOCK_TYPE,
+      props: {
+        boardId: 'day-plan',
+        height: '640',
+        snapshot: '{ "store": { "shape:focus": { "id": "shape:focus", "type": "geo" } } }',
+        width: '900',
       },
     })
   })

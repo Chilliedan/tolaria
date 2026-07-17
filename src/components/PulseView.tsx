@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, memo, type KeyboardEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, memo, type CSSProperties, type KeyboardEvent } from 'react'
 import { invoke } from '@tauri-apps/api/core'
 import { cn } from '@/lib/utils'
 import { isTauri, mockInvoke } from '../mock-tauri'
@@ -280,14 +280,21 @@ function PulseHeader({
   }, [dragRegionRef, onMouseDown])
 
   const leftPadding = sidebarCollapsed && isMac()
-    ? MACOS_TRAFFIC_LIGHT_SAFE_PADDING
-    : 16
+    ? `var(--tolaria-macos-traffic-light-padding, ${MACOS_TRAFFIC_LIGHT_SAFE_PADDING}px)`
+    : '16px'
+  const headerStyle = {
+    height: 52,
+    padding: '0 16px',
+    '--pulse-header-left-padding': leftPadding,
+    paddingLeft: 'var(--pulse-header-left-padding)',
+    cursor: 'default',
+  } as CSSProperties
 
   return (
     <div
       ref={headerRef}
       className="flex shrink-0 items-center justify-between border-b border-border"
-      style={{ height: 52, padding: `0 16px 0 ${leftPadding}px`, cursor: 'default' }}
+      style={headerStyle}
       data-testid="pulse-header"
     >
       <div className="flex items-center" style={{ gap: 8 }}>

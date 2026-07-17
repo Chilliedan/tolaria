@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0146"
+id: "0160"
 title: "tolaria-core shared transport-agnostic crate"
 status: active
 date: 2026-06-30

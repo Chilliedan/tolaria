@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0152"
+id: "0166"
 title: "Web command surface completion (git reads, folder ops, desktop-only no-ops)"
 status: active
 date: 2026-07-07

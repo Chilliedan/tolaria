@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0149"
+id: "0163"
 title: "Write path and optimistic concurrency for the web server (tolaria-server, Phase 4)"
 status: active
 date: 2026-07-02

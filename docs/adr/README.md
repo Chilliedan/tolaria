@@ -208,17 +208,19 @@ proposed → active → superseded
 | [0147](0147-antigravity-cli-agent-adapter.md) | Antigravity CLI agent adapter | superseded -> [0151](0151-antigravity-add-dir-workspace-flag.md) |
 | [0148](0148-cancellable-ai-agent-streams.md) | Cancellable AI agent streams | active |
 | [0149](0149-shared-app-config-policy-manifest.md) | Shared app config policy manifest | active |
-| [0151](0151-antigravity-add-dir-workspace-flag.md) | Antigravity add-dir workspace flag | active |
+| [0151](0151-antigravity-add-dir-workspace-flag.md) | Antigravity add-dir workspace flag | superseded -> [0159](0159-antigravity-permission-flags-aligned-with-cli.md) |
 | [0152](0152-wsl2-git-provider.md) | WSL2 Git provider | active |
 | [0153](0153-conservative-markdown-delimiter-parsing.md) | Conservative Markdown delimiter parsing | active |
 | [0154](0154-sandboxed-fenced-html-blocks.md) | Sandboxed fenced HTML blocks | active |
 | [0155](0155-html-block-source-edits-use-raw-editor.md) | HTML block source edits use the raw editor | active |
 | [0156](0156-vault-expression-html-blocks-and-line-references.md) | Vault expressions in sandboxed HTML blocks and line references | amended -> [0157](0157-opt-in-sandboxed-html-block-scripts.md) |
 | [0157](0157-opt-in-sandboxed-html-block-scripts.md) | Opt-in sandboxed scripts for HTML block dashboards | active |
-| [0158](0158-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
-| [0159](0159-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
-| [0160](0160-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
-| [0161](0161-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
-| [0162](0162-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
-| [0163](0163-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
-| [0164](0164-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |
+| [0158](0158-vault-write-mcp-tools-update-and-append.md) | Vault-write MCP tools: update_note and append_to_note | active |
+| [0159](0159-antigravity-permission-flags-aligned-with-cli.md) | Antigravity permission flags aligned with CLI | active |
+| [0160](0160-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
+| [0161](0161-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
+| [0162](0162-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
+| [0163](0163-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
+| [0164](0164-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
+| [0165](0165-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
+| [0166](0166-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |

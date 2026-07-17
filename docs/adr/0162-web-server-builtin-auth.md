@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0148"
+id: "0162"
 title: "Built-in authentication for the web server (tolaria-server, Phase 3)"
 status: active
 date: 2026-07-01

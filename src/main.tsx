@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import './index.css'
 import { FrontendReadyMarker } from './components/FrontendReadyMarker'
 import { LinuxTitlebar } from './components/LinuxTitlebar'
+import { StartupShellFallback } from './components/StartupShellFallback'
 import { applyStoredThemeMode } from './lib/themeMode'
 import {
   APP_COMMAND_EVENT_NAME,
@@ -26,6 +27,61 @@ import { isMac, shouldUseCustomWindowChrome } from './utils/platform'
 import { reloadFrontendOnceIfStartupFailed } from './utils/frontendReady'
 
 const TLDRAW_CONTEXT_MENU_SELECTOR = '.tldraw-whiteboard'
+const DISMISSABLE_ESCAPE_SURFACE_SELECTOR = [
+  '[data-slot="dialog-content"]',
+  '[data-slot="popover-content"]',
+  '[role="dialog"]',
+].join(',')
+const MACOS_FULLSCREEN_CHROME_CLASS = 'mac-chrome-fullscreen'
+
+function isTauriRuntime(): boolean {
+  return '__TAURI__' in window || '__TAURI_INTERNALS__' in window
+}
+
+function hasDismissableEscapeSurface(): boolean {
+  return document.querySelector(DISMISSABLE_ESCAPE_SURFACE_SELECTOR) !== null
+}
+
+function installDismissableEscapeDefaultGuard(): void {
+  let escapeStartedWithDismissableSurface = false
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+
+    escapeStartedWithDismissableSurface = hasDismissableEscapeSurface()
+    window.setTimeout(() => {
+      escapeStartedWithDismissableSurface = false
+    }, 0)
+  }, true)
+
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !escapeStartedWithDismissableSurface) return
+
+    event.preventDefault()
+    escapeStartedWithDismissableSurface = false
+  })
+}
+
+async function installMacosFullscreenChromeTracking(): Promise<void> {
+  if (!isMac() || !isTauriRuntime()) return
+
+  try {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window')
+    const appWindow = getCurrentWindow()
+    const syncFullscreenClass = () => {
+      void appWindow.isFullscreen()
+        .then((isFullscreen) => {
+          document.body.classList.toggle(MACOS_FULLSCREEN_CHROME_CLASS, isFullscreen)
+        })
+        .catch(() => {})
+    }
+
+    syncFullscreenClass()
+    await appWindow.onResized(syncFullscreenClass).catch(() => {})
+  } catch {
+    document.body.classList.remove(MACOS_FULLSCREEN_CHROME_CLASS)
+  }
+}
 
 const RootApp = lazy(() => import('./App.tsx'))
 
@@ -55,6 +111,7 @@ function preventNativeContextMenu(event: MouseEvent): void {
 
 document.addEventListener('dragover', preventFileDropNavigation, true)
 document.addEventListener('drop', preventFileDropNavigation, true)
+installDismissableEscapeDefaultGuard()
 
 // Disable native WebKit context menu in Tauri (WKWebView intercepts right-click
 // at native level before React's synthetic events can call preventDefault).
@@ -70,6 +127,7 @@ if (shouldUseCustomWindowChrome()) {
 
 if (isMac()) {
   document.body.classList.add('mac-chrome')
+  void installMacosFullscreenChromeTracking()
 }
 
 applyStoredThemeMode(document, window.localStorage)
@@ -189,7 +247,13 @@ function captureRecoverableReactRootError(
   captureReactRootError(error, { componentStack })
 }
 
-createRoot(document.getElementById('root')!, {
+function getRequiredRootElement(): HTMLElement {
+  const root = document.getElementById('root')
+  if (!root) throw new Error('Tolaria root element is missing')
+  return root
+}
+
+createRoot(getRequiredRootElement(), {
   onCaughtError: captureRecoverableReactRootError,
   onUncaughtError: captureReactRootError,
   onRecoverableError: captureRecoverableReactRootError,
@@ -197,7 +261,7 @@ createRoot(document.getElementById('root')!, {
   <StrictMode>
     <TooltipProvider>
       <LinuxTitlebar />
-      <Suspense fallback={null}>
+      <Suspense fallback={<StartupShellFallback />}>
         <RootApp />
         <FrontendReadyMarker />
       </Suspense>

@@ -1,6 +1,11 @@
 import type { VaultEntry, WorkspaceIdentity } from '../types'
 import type { VaultOption } from '../components/status-bar/types'
 import { ACCENT_COLOR_PICKER_KEYS } from './typeColors'
+import {
+  isNonBlankWorkspacePath,
+  uniqueNonBlankWorkspacePaths,
+  workspaceStringValue,
+} from './workspacePaths'
 
 export const WORKSPACE_COLORS = ACCENT_COLOR_PICKER_KEYS
 export type WorkspaceColor = typeof WORKSPACE_COLORS[number]
@@ -29,10 +34,6 @@ interface WritableWorkspaceOptions<T> {
   graphVaults: T[] | undefined
 }
 
-function stringValue(value: unknown): string {
-  return typeof value === 'string' ? value : ''
-}
-
 function slugifyWorkspaceAlias({ label }: WorkspaceLabelInput): string {
   const normalized = label
     .trim()
@@ -43,7 +44,7 @@ function slugifyWorkspaceAlias({ label }: WorkspaceLabelInput): string {
 }
 
 export function labelFromWorkspacePath(path: string | null | undefined): string {
-  return stringValue(path).split(/[\\/]/).filter(Boolean).pop() || 'Workspace'
+  return workspaceStringValue(path).split(/[\\/]/).filter(Boolean).pop() || 'Workspace'
 }
 
 function shortLabelFromLabel({ label }: WorkspaceLabelInput): string {
@@ -54,26 +55,26 @@ function shortLabelFromLabel({ label }: WorkspaceLabelInput): string {
 }
 
 function workspaceShortLabelFromVault(vault: Pick<VaultOption, 'shortLabel'>, label: string): string {
-  const customShortLabel = stringValue(vault.shortLabel).trim().toUpperCase().slice(0, 3)
+  const customShortLabel = workspaceStringValue(vault.shortLabel).trim().toUpperCase().slice(0, 3)
   return customShortLabel || shortLabelFromLabel({ label })
 }
 
 export function workspaceAliasFromOption(vault: Pick<VaultOption, 'alias' | 'label' | 'path'>): string {
-  const alias = stringValue(vault.alias).trim()
+  const alias = workspaceStringValue(vault.alias).trim()
   return slugifyWorkspaceAlias({
     label: alias || labelFromWorkspacePath(vault.path),
   })
 }
 
 export function workspaceLabelFromVault(vault: Pick<VaultOption, 'label' | 'path'>): string {
-  return stringValue(vault.label).trim() || labelFromWorkspacePath(vault.path)
+  return workspaceStringValue(vault.label).trim() || labelFromWorkspacePath(vault.path)
 }
 
 export function workspaceIdentityFromVault(
   vault: VaultOption,
   options: WorkspaceIdentityOptions = {},
 ): WorkspaceIdentity {
-  const path = stringValue(vault.path)
+  const path = workspaceStringValue(vault.path)
   const label = workspaceLabelFromVault(vault)
   const alias = workspaceAliasFromOption({ ...vault, label })
   return {
@@ -115,18 +116,18 @@ export function mountedWorkspacePaths(vaults: VaultOption[]): string[] {
   return vaults
     .filter((vault) => vault.available !== false && vault.mounted !== false)
     .map((vault) => vault.path)
-}
-
-function uniqueWorkspacePaths(paths: string[]): string[] {
-  return [...new Set(paths.filter((path) => path.trim().length > 0))]
+    .filter(isNonBlankWorkspacePath)
 }
 
 export function workspacesMountedInGraph<T extends { path: string; available?: boolean; mounted?: boolean; managedDefault?: boolean }>({
   defaultVaultPath,
   vaults,
 }: WorkspaceSetOptions<T>): T[] {
+  const defaultPath = workspaceStringValue(defaultVaultPath)
   return vaults.filter((vault) => {
-    if (vault.path === defaultVaultPath) return true
+    const path = workspaceStringValue(vault.path)
+    if (!path.trim()) return false
+    if (path === defaultPath) return true
     return vault.available !== false && vault.mounted !== false
   })
 }
@@ -141,13 +142,9 @@ export function graphWorkspaceVaults<T extends { path: string; available?: boole
 }
 
 function shouldLoadGraphWorkspace(vault: { path: string; available?: boolean; managedDefault?: boolean }): boolean {
-  if (!vault.path.trim()) return false
+  if (!workspaceStringValue(vault.path).trim()) return false
   if (vault.available === false) return false
   return true
-}
-
-function mountedGraphWorkspace<T extends { path: string }>(vault: T): T & { mounted: true } {
-  return { ...vault, mounted: true }
 }
 
 export function graphWorkspaceVaultsForLoading<T extends { path: string; available?: boolean; mounted?: boolean; managedDefault?: boolean }>({
@@ -159,11 +156,13 @@ export function graphWorkspaceVaultsForLoading<T extends { path: string; availab
   const byPath = new Map<string, T & { mounted: true }>()
   for (const vault of vaults) {
     if (shouldLoadGraphWorkspace(vault)) {
-      byPath.set(vault.path, mountedGraphWorkspace(vault))
+      const path = workspaceStringValue(vault.path)
+      byPath.set(path, { ...vault, path, mounted: true } as T & { mounted: true })
     }
   }
-  if (defaultVaultPath.trim() && !byPath.has(defaultVaultPath)) {
-    byPath.set(defaultVaultPath, { path: defaultVaultPath, mounted: true } as T & { mounted: true })
+  const fallbackPath = workspaceStringValue(defaultVaultPath)
+  if (fallbackPath.trim() && !byPath.has(fallbackPath)) {
+    byPath.set(fallbackPath, { path: fallbackPath, mounted: true } as T & { mounted: true })
   }
   return [...byPath.values()]
 }
@@ -174,7 +173,7 @@ export function visibleWorkspacePaths({
   vaults,
 }: WorkspaceGraphOptions<VaultOption>): string[] | undefined {
   if (!enabled) return undefined
-  return uniqueWorkspacePaths([defaultVaultPath, ...mountedWorkspacePaths(vaults)])
+  return uniqueNonBlankWorkspacePaths([defaultVaultPath, ...mountedWorkspacePaths(vaults)])
 }
 
 export function filterEntriesToVisibleWorkspaces(
@@ -201,4 +200,5 @@ export function writableWorkspacePaths<T extends { path: string; available?: boo
   return workspaces
     .filter(isWritableWorkspace)
     .map((workspace) => workspace.path)
+    .filter(isNonBlankWorkspacePath)
 }

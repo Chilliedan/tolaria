@@ -4,11 +4,12 @@
  * permission profile and native file-edit tools; createNote is intentionally
  * narrow so read-only agents can create a new Markdown file without overwrite.
  */
-import { mkdir, open, opendir, realpath } from 'node:fs/promises'
+import { mkdir, open, opendir, realpath, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import matter from 'gray-matter'
 
 const ACTIVE_VAULT_ERROR = 'Note path must stay inside the active vault'
+const VAULT_CONTEXT_PREFIX_BYTES = 64 * 1024
 
 /**
  * Recursively find all .md files under a directory.
@@ -45,7 +46,7 @@ async function resolveVaultNotePath(vaultPath, notePath) {
  * Read a note with parsed frontmatter and content.
  * @param {string} vaultPath
  * @param {string} notePath
- * @returns {Promise<{path: string, frontmatter: Record<string, unknown>, content: string}>}
+ * @returns {Promise<{path: string, frontmatter: Record<string, unknown>, content: string, mtimeMs: number}>}
  */
 export async function getNote(vaultPath, notePath) {
   const {
@@ -54,10 +55,12 @@ export async function getNote(vaultPath, notePath) {
   } = await resolveVaultNotePath(vaultPath, notePath)
   const raw = await readUtf8File(noteRealPath)
   const parsed = parseMarkdownNote(raw)
+  const stats = await statFile(noteRealPath)
   return {
     path: relativePath,
     frontmatter: parsed.data,
     content: parsed.content.trim(),
+    mtimeMs: stats.mtimeMs,
   }
 }
 
@@ -74,6 +77,49 @@ export async function createNote(vaultPath, notePath, content) {
   return {
     path: relativePath,
     absolutePath: requestedPath,
+  }
+}
+
+/**
+ * Replace the full content of an existing vault note.
+ *
+ * Writes are atomic (temp file + rename) so a crashed write never leaves a
+ * truncated note on disk. Pass {@link options.expectedMtime} (note mtimeMs
+ * from get_note) to fail-fast when the note changed between read and write.
+ *
+ * @param {string} vaultPath
+ * @param {string} notePath
+ * @param {string} content
+ * @param {{ expectedMtime?: number }} [options]
+ * @returns {Promise<{path: string, absolutePath: string, mtimeMs: number}>}
+ */
+export async function updateNote(vaultPath, notePath, content, options = {}) {
+  const { noteRealPath, relativePath } = await resolveVaultNotePath(vaultPath, notePath)
+  await assertNoteMatchesExpectedMtime(noteRealPath, options.expectedMtime)
+  const mtimeMs = await writeExistingUtf8File(noteRealPath, content)
+  return {
+    path: relativePath,
+    absolutePath: noteRealPath,
+    mtimeMs,
+  }
+}
+
+/**
+ * Append markdown to an existing vault note body. Safer than {@link updateNote}
+ * for agents that only want to log/extend content without replacing the file.
+ *
+ * @param {string} vaultPath
+ * @param {string} notePath
+ * @param {string} content
+ * @returns {Promise<{path: string, absolutePath: string, mtimeMs: number}>}
+ */
+export async function appendToNote(vaultPath, notePath, content) {
+  const { noteRealPath, relativePath } = await resolveVaultNotePath(vaultPath, notePath)
+  const mtimeMs = await appendUtf8File(noteRealPath, content)
+  return {
+    path: relativePath,
+    absolutePath: noteRealPath,
+    mtimeMs,
   }
 }
 
@@ -126,13 +172,15 @@ export async function vaultContext(vaultPath) {
   }
 
   notesWithMtime.sort((a, b) => b.mtime - a.mtime)
-  const recentNotes = notesWithMtime.slice(0, 20).map(contextNoteWithoutMtime)
+  const recentNotes = await Promise.all(
+    notesWithMtime.slice(0, 20).map(hydrateContextNoteTitle),
+  )
 
   return {
     types: [...typesSet].sort(),
     noteCount: files.length,
     folders: [...foldersSet].sort(),
-    recentNotes,
+    recentNotes: recentNotes.map(contextNoteWithoutMtime),
     configFiles: await readConfigFiles(vaultPath),
     vaultPath,
   }
@@ -241,22 +289,36 @@ function contextNoteWithoutMtime(note) {
 }
 
 async function readVaultContextNote(vaultPath, filePath) {
-  const raw = await readUtf8File(filePath)
-  const parsed = parseMarkdownNote(raw)
+  const { text, truncated } = await readUtf8FilePrefix(filePath, VAULT_CONTEXT_PREFIX_BYTES)
+  const parsed = parseMarkdownNote(text)
   const rel = path.relative(vaultPath, filePath)
   const topFolder = extractTopFolder(rel)
   const stat = await statFile(filePath)
   const type = parsed.data.type || parsed.data.is_a || null
+  const fallbackTitle = path.basename(filePath, '.md')
+  const title = parsed.data.title || extractTitle(text, fallbackTitle)
 
   return {
     topFolder,
     type,
     note: {
+      absolutePath: filePath,
       path: rel,
-      title: parsed.data.title || extractTitle(raw, path.basename(filePath, '.md')),
+      title,
       type,
       mtime: stat.mtimeMs,
+      shouldHydrateTitle: truncated && title === fallbackTitle,
     },
+  }
+}
+
+async function hydrateContextNoteTitle(note) {
+  if (!note.shouldHydrateTitle) return note
+
+  return {
+    ...note,
+    title: extractTitle(await readUtf8File(note.absolutePath), note.title),
+    shouldHydrateTitle: false,
   }
 }
 
@@ -410,6 +472,21 @@ async function readUtf8File(filePath) {
   }
 }
 
+async function readUtf8FilePrefix(filePath, byteLimit) {
+  const handle = await open(filePath, 'r')
+  try {
+    const buffer = Buffer.allocUnsafe(byteLimit)
+    const { bytesRead } = await handle.read(buffer, 0, byteLimit, 0)
+    const stats = await handle.stat()
+    return {
+      text: buffer.subarray(0, bytesRead).toString('utf-8'),
+      truncated: stats.size > bytesRead,
+    }
+  } finally {
+    await handle.close()
+  }
+}
+
 async function writeNewUtf8File(filePath, content) {
   const handle = await open(filePath, 'wx')
   try {
@@ -417,6 +494,42 @@ async function writeNewUtf8File(filePath, content) {
   } finally {
     await handle.close()
   }
+}
+
+async function writeExistingUtf8File(filePath, content) {
+  // Atomic swap: write alongside, then rename over the target so a crash
+  // mid-write never leaves a truncated note on disk.
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  try {
+    await writeFile(tempPath, content, { encoding: 'utf-8', flag: 'wx' })
+    await rename(tempPath, filePath)
+    const stats = await statFile(filePath)
+    return stats.mtimeMs
+  } catch (error) {
+    await rm(tempPath, { force: true })
+    throw error
+  }
+}
+
+async function appendUtf8File(filePath, content) {
+  const handle = await open(filePath, 'a')
+  try {
+    await handle.writeFile(content, 'utf-8')
+    const stat = await handle.stat()
+    return stat.mtimeMs
+  } finally {
+    await handle.close()
+  }
+}
+
+async function assertNoteMatchesExpectedMtime(noteRealPath, expectedMtime) {
+  const stat = await statFile(noteRealPath)
+  if (expectedMtime === undefined || expectedMtime === null) return
+  if (stat.mtimeMs === expectedMtime) return
+
+  throw new Error(
+    `Note was modified since read: expectedMtime ${expectedMtime} but on-disk mtimeMs is ${stat.mtimeMs}. Re-read the note and retry.`,
+  )
 }
 
 async function statFile(filePath) {

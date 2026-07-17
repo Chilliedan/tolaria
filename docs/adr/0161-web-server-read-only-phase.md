@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0147"
+id: "0161"
 title: "Read-only web server phase (tolaria-server, Axum, Docker)"
 status: active
 date: 2026-06-30

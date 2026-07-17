@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0151"
+id: "0165"
 title: "Web server git sync model (per-save authored commits, repo lock)"
 status: active
 date: 2026-07-04

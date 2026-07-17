@@ -1,6 +1,6 @@
 ---
 type: ADR
-id: "0150"
+id: "0164"
 title: "Web client compatibility layer for reusing the desktop app over HTTP"
 status: active
 date: 2026-07-03

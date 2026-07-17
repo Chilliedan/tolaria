@@ -7,6 +7,10 @@ use super::boundary::{
     with_boundary, with_existing_paths, with_requested_root, with_validated_path, ValidatedPathMode,
 };
 
+const LOCALIZED_ERROR_PREFIX: &str = "tolaria:i18n-error:";
+const FILE_ACTION_INSPECT_PATH_ERROR_KEY: &str = "fileActions.error.inspectPath";
+const FILE_ACTION_PATH_MISSING_ERROR_KEY: &str = "fileActions.error.pathMissing";
+
 fn with_note_path<T>(
     path: &Path,
     vault_path: Option<&Path>,
@@ -94,6 +98,26 @@ pub fn open_vault_file_external(
     })
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum FileManagerRevealAction {
+    OpenPath(PathBuf),
+    RevealItemInDir(PathBuf),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RevealPlatform {
+    Windows,
+    Other,
+}
+
+fn current_reveal_platform() -> RevealPlatform {
+    if cfg!(windows) {
+        RevealPlatform::Windows
+    } else {
+        RevealPlatform::Other
+    }
+}
+
 fn open_path_with_default_app(app_handle: &tauri::AppHandle, path: &Path) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
 
@@ -101,6 +125,63 @@ fn open_path_with_default_app(app_handle: &tauri::AppHandle, path: &Path) -> Res
         .opener()
         .open_path(path.to_string_lossy().into_owned(), None::<String>)
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn reveal_path_in_file_manager(
+    app_handle: tauri::AppHandle,
+    path: PathBuf,
+) -> Result<(), String> {
+    let action = file_manager_reveal_action(path.as_path(), current_reveal_platform())?;
+    perform_file_manager_reveal(&app_handle, action)
+}
+
+fn file_manager_reveal_action(
+    path: &Path,
+    platform: RevealPlatform,
+) -> Result<FileManagerRevealAction, String> {
+    if !path.try_exists().map_err(|error| {
+        localized_reveal_error(
+            FILE_ACTION_INSPECT_PATH_ERROR_KEY,
+            serde_json::json!({ "error": error.to_string() }),
+        )
+    })? {
+        return Err(localized_reveal_error(
+            FILE_ACTION_PATH_MISSING_ERROR_KEY,
+            serde_json::json!({ "path": path.display().to_string() }),
+        ));
+    }
+
+    if platform == RevealPlatform::Windows && path.is_dir() {
+        return Ok(FileManagerRevealAction::OpenPath(path.to_path_buf()));
+    }
+
+    Ok(FileManagerRevealAction::RevealItemInDir(path.to_path_buf()))
+}
+
+fn localized_reveal_error(key: &str, values: serde_json::Value) -> String {
+    let payload = serde_json::json!({
+        "key": key,
+        "values": values,
+    });
+    format!("{LOCALIZED_ERROR_PREFIX}{payload}")
+}
+
+fn perform_file_manager_reveal(
+    app_handle: &tauri::AppHandle,
+    action: FileManagerRevealAction,
+) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    match action {
+        FileManagerRevealAction::OpenPath(path) => app_handle
+            .opener()
+            .open_path(path.to_string_lossy().into_owned(), None::<String>),
+        FileManagerRevealAction::RevealItemInDir(path) => {
+            app_handle.opener().reveal_item_in_dir(path)
+        }
+    }
+    .map_err(|error| error.to_string())
 }
 
 fn with_writable_note_path<T>(
@@ -440,6 +521,53 @@ mod tests {
         .unwrap_err();
 
         assert!(error.contains("Path must stay inside the active vault"));
+    }
+
+    #[test]
+    fn windows_folder_reveal_opens_nested_directory() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("Folder With Spaces").join("Nested");
+        fs::create_dir_all(&nested).unwrap();
+
+        let action = file_manager_reveal_action(nested.as_path(), RevealPlatform::Windows).unwrap();
+
+        assert_eq!(action, FileManagerRevealAction::OpenPath(nested));
+    }
+
+    #[test]
+    fn windows_file_reveal_still_selects_file_in_parent() {
+        let dir = TempDir::new().unwrap();
+        let file = note_path(&dir, "Folder With Spaces/project.md");
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(&file, "# Project\n").unwrap();
+
+        let action = file_manager_reveal_action(file.as_path(), RevealPlatform::Windows).unwrap();
+
+        assert_eq!(action, FileManagerRevealAction::RevealItemInDir(file));
+    }
+
+    #[test]
+    fn non_windows_folder_reveal_still_selects_folder_in_parent() {
+        let dir = TempDir::new().unwrap();
+        let nested = dir.path().join("Folder With Spaces").join("Nested");
+        fs::create_dir_all(&nested).unwrap();
+
+        let action = file_manager_reveal_action(nested.as_path(), RevealPlatform::Other).unwrap();
+
+        assert_eq!(action, FileManagerRevealAction::RevealItemInDir(nested));
+    }
+
+    #[test]
+    fn file_manager_reveal_rejects_missing_paths() {
+        let dir = TempDir::new().unwrap();
+        let missing = dir.path().join("missing");
+
+        let error =
+            file_manager_reveal_action(missing.as_path(), RevealPlatform::Windows).unwrap_err();
+
+        assert!(error.starts_with(LOCALIZED_ERROR_PREFIX));
+        assert!(error.contains(FILE_ACTION_PATH_MISSING_ERROR_KEY));
+        assert!(error.contains("missing"));
     }
 
     #[test]

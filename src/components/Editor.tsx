@@ -53,10 +53,7 @@ import {
   useRichEditorContentReadiness,
   useRichEditorSheetSwapState,
 } from './useRichEditorSheetTransition'
-import {
-  installBlockNoteDirectMarkdown,
-  type DirectMarkdownCapableSerializer,
-} from '../utils/blockNoteDirectMarkdown'
+import { installRichEditorMarkdownSerializer } from '../utils/richEditorMarkdown'
 import { installRichEditorDispatchPerformanceProbe } from './richEditorDispatchPerformance'
 import { RICH_EDITOR_BLOCKNOTE_PERFORMANCE_OPTIONS } from './richEditorBlockNoteOptions'
 import { useTurnCurrentBlockIntoCommand } from './useTurnCurrentBlockIntoCommand'
@@ -254,11 +251,6 @@ function handleEditorImageUploadFailure(
   return emptyImageUploadResult(file)
 }
 
-function installDirectMarkdownForRealEditor(editor: ReturnType<typeof useCreateBlockNote>) {
-  if (!('pmSchema' in editor) || !('_tiptapEditor' in editor)) return
-  installBlockNoteDirectMarkdown(editor as DirectMarkdownCapableSerializer)
-}
-
 function useEditorSetup({
   tabs, activeTabPath, vaultPath, onContentChange,
   onLoadDiff, onLoadDiffAtCommit, pendingCommitDiffRequest, onPendingCommitDiffHandled, getNoteStatus,
@@ -298,7 +290,7 @@ function useEditorSetup({
       createRichEditorBlockSelectionExtension(),
     ],
   })
-  installDirectMarkdownForRealEditor(editor)
+  installRichEditorMarkdownSerializer(editor)
   useEffect(() => {
     installRichEditorDispatchPerformanceProbe(editor, () => activeTabPathRef.current)
   }, [editor])
