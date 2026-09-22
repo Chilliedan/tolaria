@@ -205,7 +205,10 @@ if ! run_sidecar_automatic_checks; then
   # ── 1. TypeScript + Vite build ──────────────────────────────────────────
   echo ""
   echo "📦 [1/6] TypeScript + Vite build..."
-  pnpm build
+  # CI and the Docker build give the bundler a 4GB heap; without it the local
+  # build dies with "Ineffective mark-compacts near heap limit" on Node's 2GB
+  # default. Respect an explicit NODE_OPTIONS if the caller set one.
+  NODE_OPTIONS="${NODE_OPTIONS:---max-old-space-size=4096}" pnpm build
   echo "  ✅ Build OK"
 
   # ── 2. Frontend coverage (≥70%) — includes all unit tests ───────────────
