@@ -78,3 +78,29 @@ function resolveDiagnosticPath(path, repositoryRoot) {
   if (!path) return ''
   return path.startsWith('/') ? path : `${repositoryRoot}/${path}`
 }
+
+/**
+ * Pick the commit the gate measures additions against.
+ *
+ * `main` is gated against `origin/main`, as the upstream release branch. Any
+ * other branch is gated against its own last pushed state: a long-lived branch
+ * carries files that do not exist upstream, and diffing those against
+ * `origin/main` reports the whole file as new on every push, so pre-existing
+ * findings can never be cleared by the push that would fix them. Falls back to
+ * `origin/main` when the branch has never been pushed.
+ */
+export function resolveBaseRef({ branch, envBase, upstreamRef }) {
+  if (envBase) return envBase
+  if (branch === 'main') return 'origin/main'
+  return upstreamRef || 'origin/main'
+}
+
+/**
+ * Drop additions in files whose content is identical to `origin/main`. Merging
+ * upstream replays its commits onto the branch, so its files look like new
+ * additions here even though they are unchanged upstream code that main's own
+ * gate already covers.
+ */
+export function withoutUpstreamFiles(additions, upstreamIdenticalPaths) {
+  return new Map([...additions].filter(([path]) => !upstreamIdenticalPaths.has(path)))
+}

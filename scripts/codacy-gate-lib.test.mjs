@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { addedLinesFromDiff, biomeGateFailures, eslintGateFailures } from './codacy-gate-lib.mjs'
+import { addedLinesFromDiff, biomeGateFailures, eslintGateFailures, resolveBaseRef, withoutUpstreamFiles } from './codacy-gate-lib.mjs'
 import { isAuditedRustUnsafe, sarifGateFailures } from './codacy-sarif.mjs'
 
 test('reports findings only on added lines', () => {
@@ -77,4 +77,32 @@ test('reports security ESLint findings only on added lines at every severity', (
     rule: 'security/new',
     tool: 'Codacy ESLint security rules',
   }])
+})
+
+test('main pushes keep the origin/main baseline', () => {
+  assert.equal(resolveBaseRef({ branch: 'main', upstreamRef: 'origin/main' }), 'origin/main')
+  assert.equal(resolveBaseRef({ branch: 'main', upstreamRef: null }), 'origin/main')
+})
+
+test('an explicit CODACY_BASE_REF always wins', () => {
+  assert.equal(resolveBaseRef({ branch: 'feature', envBase: 'HEAD~3', upstreamRef: 'fork/feature' }), 'HEAD~3')
+})
+
+test('other branches measure what they added since their last push', () => {
+  // origin/main is the wrong baseline for a long-lived branch: files that only
+  // exist on the branch read as entirely new on every push, forever.
+  assert.equal(resolveBaseRef({ branch: 'web-client', upstreamRef: 'fork/web-client' }), 'fork/web-client')
+  assert.equal(resolveBaseRef({ branch: 'web-client', upstreamRef: null }), 'origin/main')
+})
+
+test('drops additions in files whose content matches upstream', () => {
+  // Merging upstream brings its files onto the branch; they are not new work,
+  // and they are already gated on main.
+  const additions = new Map([
+    ['/repo/src/mine.ts', new Map([[1, 'mine']])],
+    ['/repo/tests/upstream.spec.ts', new Map([[1, 'theirs']])],
+  ])
+  const kept = withoutUpstreamFiles(additions, new Set(['/repo/tests/upstream.spec.ts']))
+
+  assert.deepEqual([...kept.keys()], ['/repo/src/mine.ts'])
 })
