@@ -6,9 +6,8 @@ import { useAiActivity } from './useAiActivity'
 // tests exercise that desktop behavior, so run them as if inside the Tauri shell.
 vi.mock('../mock-tauri', () => ({ isTauri: () => true }))
 
-let lastWsInstance: MockWebSocket | null = null
-
 class MockWebSocket {
+  static latest: MockWebSocket | null = null
   onmessage: ((event: MessageEvent) => void) | null = null
   onerror: (() => void) | null = null
   onclose: (() => void) | null = null
@@ -17,12 +16,12 @@ class MockWebSocket {
 
   constructor(url: string) {
     this.url = url
-    lastWsInstance = this // eslint-disable-line @typescript-eslint/no-this-alias
+    MockWebSocket.latest = this
   }
 }
 
 beforeEach(() => {
-  lastWsInstance = null
+  MockWebSocket.latest = null
   vi.stubGlobal('WebSocket', MockWebSocket)
   vi.useFakeTimers()
 })
@@ -33,7 +32,7 @@ afterEach(() => {
 })
 
 function sendWsMessage(data: Record<string, unknown>) {
-  lastWsInstance?.onmessage?.(new MessageEvent('message', { data: JSON.stringify(data) }))
+  MockWebSocket.latest?.onmessage?.(new MessageEvent('message', { data: JSON.stringify(data) }))
 }
 
 describe('useAiActivity', () => {
@@ -45,8 +44,8 @@ describe('useAiActivity', () => {
 
   it('connects to ws://localhost:9711', () => {
     renderHook(() => useAiActivity())
-    expect(lastWsInstance).not.toBeNull()
-    expect(lastWsInstance!.url).toBe('ws://localhost:9711')
+    expect(MockWebSocket.latest).not.toBeNull()
+    expect(MockWebSocket.latest?.url).toBe('ws://localhost:9711')
   })
 
   it('sets highlight on ui_action highlight message', () => {
@@ -98,7 +97,7 @@ describe('useAiActivity', () => {
   it('ignores malformed JSON', () => {
     const { result } = renderHook(() => useAiActivity())
     act(() => {
-      lastWsInstance?.onmessage?.(new MessageEvent('message', { data: 'not json' }))
+      MockWebSocket.latest?.onmessage?.(new MessageEvent('message', { data: 'not json' }))
     })
     expect(result.current.highlightElement).toBeNull()
   })
@@ -106,7 +105,7 @@ describe('useAiActivity', () => {
   it('closes WebSocket on unmount', () => {
     const { unmount } = renderHook(() => useAiActivity())
     unmount()
-    expect(lastWsInstance!.close).toHaveBeenCalled()
+    expect(MockWebSocket.latest?.close).toHaveBeenCalled()
   })
 
   it('handles highlight with no path', () => {
@@ -154,6 +153,15 @@ describe('useAiActivity', () => {
     expect(onVaultChanged).toHaveBeenCalledWith('note/new.md')
   })
 
+  it('calls onVaultRegistryChanged on vault_registry_changed action', () => {
+    const onVaultRegistryChanged = vi.fn()
+    renderHook(() => useAiActivity({ onVaultRegistryChanged }))
+    act(() => {
+      sendWsMessage({ type: 'ui_action', action: 'vault_registry_changed', path: '/vault/new', registrationType: 'attach' })
+    })
+    expect(onVaultRegistryChanged).toHaveBeenCalledWith('/vault/new')
+  })
+
   it('does not call onOpenNote when path is missing', () => {
     const onOpenNote = vi.fn()
     renderHook(() => useAiActivity({ onOpenNote }))
@@ -165,9 +173,9 @@ describe('useAiActivity', () => {
 
   it('reconnects on close after delay', () => {
     renderHook(() => useAiActivity())
-    const firstWs = lastWsInstance
+    const firstWs = MockWebSocket.latest
     act(() => { firstWs?.onclose?.() })
     act(() => { vi.advanceTimersByTime(3000) })
-    expect(lastWsInstance).not.toBe(firstWs)
+    expect(MockWebSocket.latest).not.toBe(firstWs)
   })
 })

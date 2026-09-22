@@ -1,3 +1,9 @@
+import {
+  fastMarkdownTextItem as textItem,
+  parseFastMarkdownInline as parseInline,
+  type FastMarkdownInlineItem as InlineItem,
+} from './editorFastMarkdownInline'
+
 export interface FastMarkdownParseMetrics {
   blockCount: number
   durationMs: number
@@ -9,21 +15,6 @@ export interface FastMarkdownParseResult {
   blocks: unknown[]
   metrics: FastMarkdownParseMetrics
   supported: boolean
-}
-
-interface TextStyles {
-  bold?: boolean
-  code?: boolean
-  italic?: boolean
-  strike?: boolean
-}
-
-interface InlineItem {
-  type: 'link' | 'text'
-  text?: string
-  props?: Record<string, string>
-  content?: InlineItem[]
-  styles?: TextStyles
 }
 
 interface BlockLike {
@@ -39,12 +30,9 @@ interface TableContentLike {
   headerRows?: number
 }
 
-type InlineMarkdownText = string
 type LineIndex = number
-type MarkdownHref = string
 type MarkdownLine = string
 type MarkdownSourceText = string
-type MarkdownToken = string
 
 interface ParserState {
   fallbackReason: string | null
@@ -58,12 +46,6 @@ interface ListLine {
   orderedStart?: number
   text: string
   type: 'bulletListItem' | 'checkListItem' | 'numberedListItem'
-}
-
-interface InlineLink {
-  end: number
-  href: string
-  label: string
 }
 
 interface ParsedBlockStep {
@@ -95,171 +77,52 @@ interface SingleLineParseInput {
 const HEADING_RE = /^(#{1,6})[ \t]+(.+?)\s*#*\s*$/u
 const ORDERED_LIST_RE = /^([ \t]*)(\d+)[.)][ \t]+(.+)$/u
 const UNORDERED_LIST_RE = /^([ \t]*)([-*+])[ \t]+(.+)$/u
-const CHECK_LIST_RE = /^([ \t]*)([-*+])[ \t]+\[([ xX])\](?:[ \t]+(.*))?$/u
+const CHECK_LIST_PREFIX_RE = /^([ \t]*)([-*+])[ \t]+\[([ xX])\]/u
 const THEMATIC_BREAK_RE = /^[ \t]{0,3}(?:-{3,}|\*{3,}|_{3,})[ \t]*$/u
 const FENCE_RE = /^[ \t]{0,3}(`{3,}|~{3,})(.*)$/u
-const HTML_BLOCK_RE = /^[ \t]{0,3}<\/?[A-Za-z][^>]*>/u
 const MARKDOWN_IMAGE_RE = /(^|[^\\])!\[[^\]]*\]\(/u
+const STANDALONE_IMAGE_RE = /^[ \t]{0,3}!\[((?:\\.|[^\]\\])*)\]\((<[^>\r\n]+>|[^\s()\r\n]+)\)[ \t]*$/u
 const REFERENCE_LINK_RE = /^[ \t]{0,3}\[[^\]]+\]:[ \t]+/u
 const UNSUPPORTED_BLOCK_RE = /^[ \t]{0,3}(?:#{7,}|:::+|\[\^.+\]:)/u
-const DURABLE_MARKDOWN_TOKEN_PREFIX = '@@TOLARIA_'
-const DURABLE_MARKDOWN_TOKEN_RE = /^@@TOLARIA_[A-Z_]+:[^@]+@@$/u
-const TEXT_STYLE_KEYS: Array<keyof TextStyles> = ['bold', 'code', 'italic', 'strike']
 
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null
 
 function now(): number {
-  return globalThis.performance?.now?.() ?? Date.now()
+  return globalThis.performance.now()
 }
 
 function sourceBytes(source: FastMarkdownSource): number {
   return textEncoder ? textEncoder.encode(source.markdown).byteLength : source.markdown.length
 }
 
+function startsHtmlBlock(line: MarkdownLine): boolean {
+  const candidate = line.trimStart()
+  if (line.length - candidate.length > 3 || candidate.charAt(0) !== '<') return false
+  const nameStart = candidate.charAt(1) === '/' ? 2 : 1
+  return /[A-Za-z]/u.test(candidate.charAt(nameStart)) && candidate.indexOf('>', nameStart + 1) !== -1
+}
+
 function paragraphBlock(content: InlineItem[]): BlockLike {
   return { type: 'paragraph', content, children: [] }
 }
 
-function textItem(text: InlineMarkdownText, styles: TextStyles = {}): InlineItem {
-  return { type: 'text', text, styles }
-}
-
-function stylesEqual(left?: TextStyles, right?: TextStyles): boolean {
-  return TEXT_STYLE_KEYS.every(style => Boolean(left?.[style]) === Boolean(right?.[style]))
-}
-
-function appendText(items: InlineItem[], text: string, styles: TextStyles): void {
-  if (!text) return
-  const previous = items.at(-1)
-  if (previous?.type === 'text' && stylesEqual(previous.styles, styles)) {
-    previous.text = `${previous.text ?? ''}${text}`
-    return
-  }
-  items.push(textItem(text, { ...styles }))
-}
-
-function isEscaped(text: InlineMarkdownText, index: LineIndex): boolean {
-  let slashCount = 0
-  for (let i = index - 1; i >= 0 && text.charAt(i) === '\\'; i--) slashCount += 1
-  return slashCount % 2 === 1
-}
-
-function findUnescaped(text: InlineMarkdownText, needle: MarkdownToken, from: LineIndex): LineIndex {
-  let index = text.indexOf(needle, from)
-  while (index !== -1 && isEscaped(text, index)) index = text.indexOf(needle, index + needle.length)
-  return index
-}
-
-function markdownLinkBounds(text: InlineMarkdownText, index: LineIndex): { hrefEnd: LineIndex; labelEnd: LineIndex } | null {
-  if (text.charAt(index) !== '[' || isEscaped(text, index)) return null
-  const labelEnd = findUnescaped(text, ']', index + 1)
-  if (labelEnd === -1 || text.charAt(labelEnd + 1) !== '(') return null
-  const hrefEnd = findUnescaped(text, ')', labelEnd + 2)
-  return hrefEnd === -1 ? null : { hrefEnd, labelEnd }
-}
-
-function validMarkdownLinkHref(href: MarkdownHref): boolean {
-  if (!href) return false
-  if (!/\s/u.test(href)) return true
-  return href.startsWith('<') && href.endsWith('>')
-}
-
-function normalizedMarkdownLinkHref(href: MarkdownHref): MarkdownHref {
-  return href.startsWith('<') && href.endsWith('>') ? href.slice(1, -1) : href
-}
-
-function readLinkAt(text: InlineMarkdownText, index: LineIndex): InlineLink | null {
-  const bounds = markdownLinkBounds(text, index)
-  if (!bounds) return null
-
-  const href = text.slice(bounds.labelEnd + 2, bounds.hrefEnd).trim()
-  if (!validMarkdownLinkHref(href)) return null
+function imageBlock(line: MarkdownLine): BlockLike | null {
+  const match = STANDALONE_IMAGE_RE.exec(line)
+  if (!match) return null
+  const target = match[2]
   return {
-    end: bounds.hrefEnd + 1,
-    href: normalizedMarkdownLinkHref(href),
-    label: text.slice(index + 1, bounds.labelEnd),
+    type: 'image',
+    props: {
+      name: match[1].replace(/\\([\]\\])/gu, '$1'),
+      url: target.startsWith('<') ? target.slice(1, -1) : target,
+    },
+    children: [],
   }
-}
-
-function parseInline(text: InlineMarkdownText, styles: TextStyles = {}): InlineItem[] {
-  if (isDurableMarkdownToken(text)) return [textItem(text, styles)]
-
-  const items: InlineItem[] = []
-  let index = 0
-
-  while (index < text.length) {
-    const durableToken = readDurableMarkdownTokenAt(text, index)
-    if (durableToken) {
-      appendText(items, durableToken, styles)
-      index += durableToken.length
-      continue
-    }
-
-    const link = readLinkAt(text, index)
-    if (link) {
-      items.push({
-        type: 'link',
-        props: { href: link.href },
-        content: parseInline(link.label, styles),
-      })
-      index = link.end
-      continue
-    }
-
-    const codeEnd = text.charAt(index) === '`' && !isEscaped(text, index)
-      ? findUnescaped(text, '`', index + 1)
-      : -1
-    if (codeEnd !== -1) {
-      appendText(items, text.slice(index + 1, codeEnd), { ...styles, code: true })
-      index = codeEnd + 1
-      continue
-    }
-
-    const marker = nextStyleMarker(text, index)
-    if (marker) {
-      const end = findUnescaped(text, marker.token, index + marker.token.length)
-      if (end !== -1) {
-        const inner = text.slice(index + marker.token.length, end)
-        items.push(...parseInline(inner, { ...styles, [marker.style]: true }))
-        index = end + marker.token.length
-        continue
-      }
-    }
-
-    appendText(items, text.charAt(index) === '\\' ? text.charAt(index + 1) || '\\' : text.charAt(index), styles)
-    index += text.charAt(index) === '\\' && index + 1 < text.length ? 2 : 1
-  }
-
-  return items
-}
-
-function isDurableMarkdownToken(text: InlineMarkdownText): boolean {
-  return DURABLE_MARKDOWN_TOKEN_RE.test(text)
-}
-
-function readDurableMarkdownTokenAt(text: InlineMarkdownText, index: LineIndex): MarkdownToken | null {
-  if (!text.startsWith(DURABLE_MARKDOWN_TOKEN_PREFIX, index)) return null
-
-  const tokenEnd = text.indexOf('@@', index + DURABLE_MARKDOWN_TOKEN_PREFIX.length)
-  if (tokenEnd === -1) return null
-
-  const token = text.slice(index, tokenEnd + 2)
-  return isDurableMarkdownToken(token) ? token : null
-}
-
-function nextStyleMarker(text: InlineMarkdownText, index: LineIndex): { style: keyof TextStyles; token: MarkdownToken } | null {
-  if (isEscaped(text, index)) return null
-  if (text.startsWith('**', index)) return { style: 'bold', token: '**' }
-  if (text.startsWith('__', index)) return { style: 'bold', token: '__' }
-  if (text.startsWith('~~', index)) return { style: 'strike', token: '~~' }
-  if (text.charAt(index) === '*') return { style: 'italic', token: '*' }
-  if (text.charAt(index) === '_') return { style: 'italic', token: '_' }
-  return null
 }
 
 function unsupportedLine(line: MarkdownLine): string | null {
-  if (HTML_BLOCK_RE.test(line)) return 'html-block'
-  if (MARKDOWN_IMAGE_RE.test(line)) return 'markdown-image'
+  if (startsHtmlBlock(line)) return 'html-block'
+  if (MARKDOWN_IMAGE_RE.test(line) && !imageBlock(line)) return 'markdown-image'
   if (REFERENCE_LINK_RE.test(line)) return 'reference-link'
   if (UNSUPPORTED_BLOCK_RE.test(line)) return 'unsupported-block-marker'
   return null
@@ -287,13 +150,13 @@ function quoteBlock(line: MarkdownLine): BlockLike | null {
 }
 
 function listLine(line: MarkdownLine): ListLine | null {
-  const check = CHECK_LIST_RE.exec(line)
+  const check = CHECK_LIST_PREFIX_RE.exec(line)
   if (check) {
     return {
-      checked: check[3].toLowerCase() === 'x',
-      depth: listDepth(check[1]),
-      marker: check[2],
-      text: check[4] ?? '',
+      checked: (check.at(3) ?? '').toLowerCase() === 'x',
+      depth: listDepth(check.at(1) ?? ''),
+      marker: check.at(2) ?? '-',
+      text: line.slice(check.at(0)?.length ?? 0).trimStart(),
       type: 'checkListItem',
     }
   }
@@ -354,7 +217,7 @@ function appendListBlock(
   } else if (!appendNestedListBlock(state, stack, item.depth, block)) {
     return false
   }
-  stack[item.depth] = block
+  stack.splice(item.depth, 1, block)
   stack.length = item.depth + 1
   return true
 }
@@ -365,7 +228,7 @@ function appendNestedListBlock(
   depth: number,
   block: BlockLike,
 ): boolean {
-  const parent = stack[depth - 1]
+  const parent = stack.at(depth - 1)
   if (!parent) {
     state.fallbackReason = 'list-parent-missing'
     return false
@@ -375,7 +238,7 @@ function appendNestedListBlock(
 }
 
 function parseList(state: ParserState, start: LineIndex): { blocks: BlockLike[]; next: LineIndex } | null {
-  const firstLine = state.lines[start]
+  const firstLine = state.lines.at(start)
   if (firstLine === undefined || !listLine(firstLine)) return null
 
   const root: BlockLike[] = []
@@ -383,7 +246,7 @@ function parseList(state: ParserState, start: LineIndex): { blocks: BlockLike[];
   let index = start
 
   while (index < state.lines.length) {
-    const item = listLine(state.lines[index])
+    const item = listLine(state.lines.at(index) ?? '')
     if (!item) break
     if (!appendListBlock(state, root, stack, item)) return null
     index += 1
@@ -393,7 +256,7 @@ function parseList(state: ParserState, start: LineIndex): { blocks: BlockLike[];
 }
 
 function parseFence(state: ParserState, start: LineIndex): { block: BlockLike; next: LineIndex } | null {
-  const opening = FENCE_RE.exec(state.lines[start])
+  const opening = FENCE_RE.exec(state.lines.at(start) ?? '')
   if (!opening) return null
   const marker = opening[1]
   const markerChar = marker.charAt(0)
@@ -401,7 +264,7 @@ function parseFence(state: ParserState, start: LineIndex): { block: BlockLike; n
   let end = start + 1
 
   while (end < state.lines.length) {
-    const trimmed = state.lines[end].trim()
+    const trimmed = (state.lines.at(end) ?? '').trim()
     if (trimmed.startsWith(markerChar.repeat(marker.length))) {
       return {
         block: {
@@ -451,22 +314,22 @@ function isTableSeparator(line: MarkdownLine): boolean {
 }
 
 function isTableStart(lines: MarkdownLine[], index: LineIndex): boolean {
-  const current = lines[index]
-  const next = lines[index + 1]
+  const current = lines.at(index)
+  const next = lines.at(index + 1)
   return Boolean(current?.includes('|') && next && isTableSeparator(next))
 }
 
 function isTableBodyLine(state: ParserState, index: number): boolean {
-  const line = state.lines[index]
+  const line = state.lines.at(index)
   return Boolean(line?.includes('|') && line.trim())
 }
 
 function parseTable(state: ParserState, start: LineIndex): { block: BlockLike; next: LineIndex } | null {
   if (!isTableStart(state.lines, start)) return null
-  const rows: string[][] = [splitTableRow(state.lines[start])]
+  const rows: string[][] = [splitTableRow(state.lines.at(start) ?? '')]
   let index = start + 2
   while (index < state.lines.length && isTableBodyLine(state, index)) {
-    rows.push(splitTableRow(state.lines[index]))
+    rows.push(splitTableRow(state.lines.at(index) ?? ''))
     index += 1
   }
 
@@ -485,7 +348,7 @@ function parseTable(state: ParserState, start: LineIndex): { block: BlockLike; n
         rows: rows.map(row => ({
           cells: Array.from({ length: width }, (_, cellIndex) => ({
             type: 'tableCell' as const,
-            content: parseInline(row[cellIndex] ?? ''),
+            content: parseInline(row.at(cellIndex) ?? ''),
           })),
         })),
       },
@@ -499,7 +362,7 @@ function parseParagraph(state: ParserState, start: LineIndex): { block: BlockLik
   const lines: string[] = []
   let index = start
   while (index < state.lines.length) {
-    const line = state.lines[index]
+    const line = state.lines.at(index) ?? ''
     if (!line.trim()) break
     if (index !== start && startsBlock(state.lines, index)) break
     lines.push(line.trim())
@@ -513,15 +376,14 @@ function parseParagraph(state: ParserState, start: LineIndex): { block: BlockLik
 }
 
 function startsBlock(lines: MarkdownLine[], index: LineIndex): boolean {
-  const line = lines[index]
-  return Boolean(
-    headingBlock(line)
-    || quoteBlock(line)
-    || listLine(line)
-    || FENCE_RE.test(line)
+  const line = lines.at(index) ?? ''
+  if (imageBlock(line)) return true
+  if (headingBlock(line)) return true
+  if (quoteBlock(line)) return true
+  if (listLine(line)) return true
+  return FENCE_RE.test(line)
     || THEMATIC_BREAK_RE.test(line)
-    || isTableStart(lines, index),
-  )
+    || isTableStart(lines, index)
 }
 
 function blockStep({ block, next }: BlockStepInput): ParsedBlockStep {
@@ -540,6 +402,9 @@ function parseMultilineBlock(state: ParserState, index: LineIndex): ParsedBlockS
 }
 
 function parseSingleLineBlock({ index, line }: SingleLineParseInput): ParsedBlockStep | null {
+  const image = imageBlock(line)
+  if (image) return blockStep({ block: image, next: index + 1 })
+
   const heading = headingBlock(line)
   if (heading) return blockStep({ block: heading, next: index + 1 })
 
@@ -555,7 +420,7 @@ function parseNextBlock(state: ParserState, index: LineIndex): ParsedBlockStep |
   const multiline = parseMultilineBlock(state, index)
   if (multiline || state.fallbackReason) return multiline
 
-  const line = state.lines[index]
+  const line = state.lines.at(index) ?? ''
   const singleLine = parseSingleLineBlock({ index, line })
   if (singleLine) return singleLine
 
@@ -583,7 +448,7 @@ function parseBlocks(source: FastMarkdownSource): FastMarkdownParseResult {
   let index = 0
 
   while (index < state.lines.length) {
-    const line = state.lines[index]
+    const line = state.lines.at(index) ?? ''
     const unsupported = unsupportedLine(line)
     if (unsupported) {
       state.fallbackReason = unsupported

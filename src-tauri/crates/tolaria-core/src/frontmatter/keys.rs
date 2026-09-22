@@ -9,20 +9,6 @@ pub(crate) struct FrontmatterKeyRule {
 #[derive(Clone, Copy)]
 pub(crate) struct FrontmatterKey<'a>(&'a str);
 
-impl<'a> FrontmatterKey<'a> {
-    pub(crate) fn new(key: &'a str) -> Self {
-        Self(key)
-    }
-
-    pub(crate) fn normalized(self) -> String {
-        self.0.trim().to_ascii_lowercase().replace(' ', "_")
-    }
-
-    pub(crate) fn is_reserved(self) -> bool {
-        self.normalized().starts_with('_') || is_known_frontmatter_key(self)
-    }
-}
-
 const KNOWN_FRONTMATTER_KEYS: &[FrontmatterKeyRule] = &[
     FrontmatterKeyRule {
         read_key: "title",
@@ -77,6 +63,12 @@ const KNOWN_FRONTMATTER_KEYS: &[FrontmatterKeyRule] = &[
         write_key: "_sidebar_label",
         aliases: &["_sidebar_label", "sidebar_label", "sidebar label"],
         canonicalize_on_write: true,
+    },
+    FrontmatterKeyRule {
+        read_key: "_pinned_properties",
+        write_key: "_pinned_properties",
+        aliases: &["_pinned_properties"],
+        canonicalize_on_write: false,
     },
     FrontmatterKeyRule {
         read_key: "template",
@@ -140,6 +132,20 @@ const KNOWN_FRONTMATTER_KEYS: &[FrontmatterKeyRule] = &[
     },
 ];
 
+impl FrontmatterKey<'_> {
+    pub(crate) fn new(key: &str) -> FrontmatterKey<'_> {
+        FrontmatterKey(key)
+    }
+
+    pub(crate) fn normalized(self) -> String {
+        self.0.trim().to_ascii_lowercase().replace(' ', "_")
+    }
+
+    pub(crate) fn is_reserved(self) -> bool {
+        self.normalized().starts_with('_') || is_known_frontmatter_key(self)
+    }
+}
+
 impl FrontmatterKeyRule {
     pub(crate) fn read_key(self) -> &'static str {
         self.read_key
@@ -181,4 +187,19 @@ pub(crate) fn frontmatter_keys_match(left: FrontmatterKey<'_>, right: Frontmatte
 
 pub(crate) fn is_known_frontmatter_key(key: FrontmatterKey<'_>) -> bool {
     frontmatter_key_rule(key).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn documented_type_system_fields_are_known_frontmatter_keys() {
+        for key in ["_pinned_properties", "_list_properties_display"] {
+            assert!(
+                is_known_frontmatter_key(FrontmatterKey::new(key)),
+                "{key} must stay in the canonical frontmatter key table"
+            );
+        }
+    }
 }

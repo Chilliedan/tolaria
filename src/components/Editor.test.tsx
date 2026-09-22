@@ -1,4 +1,4 @@
-import { screen, fireEvent, act, within } from '@testing-library/react'
+import { screen, fireEvent, act, within, waitFor } from '@testing-library/react'
 import { beforeEach, describe, it, expect, vi } from 'vitest'
 import { formatShortcutDisplay } from '../hooks/appCommandCatalog'
 import { RUNTIME_STYLE_NONCE } from '../lib/runtimeStyleNonce'
@@ -59,6 +59,21 @@ describe('Editor', () => {
 
     expect(defaultPasteHandler).toHaveBeenCalledTimes(1)
     expect(pasteText).not.toHaveBeenCalled()
+  })
+
+  const openingAngle = String.fromCharCode(60)
+  const closingAngle = String.fromCharCode(62)
+  it.each([
+    `The C file includes ${openingAngle}time.h${closingAngle}.`,
+    `${openingAngle}time.h${closingAngle}`,
+    `#include ${openingAngle}limits.h${closingAngle}`,
+    `Render literal ${openingAngle}strong${closingAngle} text safely`,
+  ])('preserves angle-bracketed plain text literally: %s', (text) => {
+    const { defaultPasteHandler, handled, pasteText } = runConfiguredPlainTextPaste(text)
+
+    expect(handled).toBe(true)
+    expect(pasteText).toHaveBeenCalledWith(text)
+    expect(defaultPasteHandler).not.toHaveBeenCalled()
   })
 
   it.each([
@@ -129,6 +144,64 @@ describe('Editor', () => {
       expect.stringMatching(/^asset:\/\/localhost\/%2Fvault%2Fassets%2Freport\.pdf\?tolaria_pdf_preview=/u),
     )
     expect(screen.queryByTestId('blocknote-view')).not.toBeInTheDocument()
+  })
+
+  it('renders HTML in-app and switches to editable source from the breadcrumb', async () => {
+    const standalonePreviewEntry: VaultEntry = {
+      ...mockEntry,
+      path: '/vault/reports/status.html',
+      filename: 'status.html',
+      title: 'status.html',
+      fileKind: 'text',
+    }
+
+    renderEditor({
+      tabs: [{ entry: standalonePreviewEntry, content: '' }],
+      activeTabPath: standalonePreviewEntry.path,
+      entries: [standalonePreviewEntry],
+      vaultPath: '/vault',
+    })
+
+    expect(screen.getByTestId('html-file-preview')).toBeInTheDocument()
+    expect(screen.getByTestId('html-file-preview').parentElement).toHaveAttribute('data-note-pdf-export-root', 'true')
+    expect(screen.queryByTestId('blocknote-view')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open the raw editor' }))
+
+    expect(await screen.findByTestId('raw-editor-codemirror')).toBeInTheDocument()
+    expect(screen.queryByTestId('html-file-preview')).not.toBeInTheDocument()
+
+    act(() => {
+      resetVaultConfigStore()
+    })
+  })
+
+  it('exports the rendered HTML preview through the PDF flow', async () => {
+    const standaloneEntry: VaultEntry = {
+      ...mockEntry,
+      path: '/vault/reports/status.html',
+      filename: 'status.html',
+      title: 'status.html',
+      fileKind: 'text',
+    }
+    const print = vi.spyOn(window, 'print').mockImplementation(() => {})
+
+    try {
+      renderEditor({
+        tabs: [{ entry: standaloneEntry, content: '' }],
+        activeTabPath: standaloneEntry.path,
+        entries: [standaloneEntry],
+        vaultPath: '/vault',
+      })
+
+      fireEvent.click(screen.getByRole('button', { name: 'More note actions' }))
+      fireEvent.click(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Export note as PDF' }))
+
+      await waitFor(() => expect(print).toHaveBeenCalledOnce())
+      window.dispatchEvent(new Event('afterprint'))
+    } finally {
+      print.mockRestore()
+    }
   })
 
   it('shows a graceful fallback when an image preview fails to render', () => {
@@ -306,10 +379,7 @@ describe('Editor', () => {
     })
 
     expect(screen.getByRole('button', { name: 'Open the raw editor' })).toBeInTheDocument()
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'More note actions' }), {
-      button: 0,
-      ctrlKey: false,
-    })
+    fireEvent.click(screen.getByRole('button', { name: 'More note actions' }))
     expect(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Delete this note' })).toBeInTheDocument()
   })
 
@@ -367,10 +437,7 @@ describe('Editor', () => {
         onLoadDiff={async () => '+ added line'}
       />
     )
-    fireEvent.pointerDown(screen.getByRole('button', { name: 'More note actions' }), {
-      button: 0,
-      ctrlKey: false,
-    })
+    fireEvent.click(screen.getByRole('button', { name: 'More note actions' }))
     expect(within(await screen.findByRole('menu')).getByRole('menuitem', { name: 'Git diff' })).toBeInTheDocument()
   })
 
@@ -754,6 +821,32 @@ describe('archived note behavior', () => {
   })
 })
 
+const personalAutocompleteWorkspace = {
+  id: 'personal',
+  label: 'Personal',
+  alias: 'personal',
+  path: '/personal',
+  shortLabel: 'PE',
+  color: null,
+  icon: null,
+  mounted: true,
+  available: true,
+  defaultForNewNotes: true,
+}
+
+const teamAutocompleteWorkspace = {
+  id: 'team',
+  label: 'Team',
+  alias: 'team',
+  path: '/team',
+  shortLabel: 'TE',
+  color: null,
+  icon: null,
+  mounted: true,
+  available: true,
+  defaultForNewNotes: false,
+}
+
 describe('wikilink autocomplete', () => {
   const entries: VaultEntry[] = [
     { ...mockEntry, title: 'Alpha Project', filename: 'alpha.md', aliases: ['al'] },
@@ -774,13 +867,23 @@ describe('wikilink autocomplete', () => {
     )
   }
 
-  it('returns empty array for query shorter than 2 characters', async () => {
+  it('returns existing notes for empty and one-character bracket queries', async () => {
     renderWithEntries()
-    expect(capturedSuggestionState.getItems).toBeTruthy()
-    expect(await capturedSuggestionState.getItems!('')).toEqual([])
-    expect(await capturedSuggestionState.getItems!('a')).toEqual([])
-    // filterSuggestionItems should NOT be called for short queries
-    expect(mockFilterSuggestionItems).not.toHaveBeenCalled()
+    const getItems = capturedSuggestionState.getItems
+    if (!getItems) throw new Error('Expected bracket autocomplete items provider')
+
+    expect((await getItems('')).map(item => item.title)).toEqual([
+      'Alpha Project',
+      'Beta Review',
+      'Gamma Notes',
+    ])
+    expect((await getItems('a')).map(item => item.title)).toEqual([
+      'Alpha Project',
+      'Beta Review',
+      'Gamma Notes',
+      'Create a new note called “a”',
+    ])
+    expect(mockFilterSuggestionItems).toHaveBeenCalledTimes(2)
   })
 
   it('returns items for query of 2+ characters', async () => {
@@ -835,43 +938,19 @@ describe('wikilink autocomplete', () => {
   })
 
   it('prefixes inserted wikilinks when the selected note is in another workspace', async () => {
-    const personalWorkspace = {
-      id: 'personal',
-      label: 'Personal',
-      alias: 'personal',
-      path: '/personal',
-      shortLabel: 'PE',
-      color: null,
-      icon: null,
-      mounted: true,
-      available: true,
-      defaultForNewNotes: true,
-    }
-    const teamWorkspace = {
-      id: 'team',
-      label: 'Team',
-      alias: 'team',
-      path: '/team',
-      shortLabel: 'TE',
-      color: null,
-      icon: null,
-      mounted: true,
-      available: true,
-      defaultForNewNotes: false,
-    }
     const source = {
       ...mockEntry,
       path: '/personal/source.md',
       filename: 'source.md',
       title: 'Source',
-      workspace: personalWorkspace,
+      workspace: personalAutocompleteWorkspace,
     }
     const target = {
       ...mockEntry,
       path: '/team/projects/alpha.md',
       filename: 'alpha.md',
       title: 'Alpha',
-      workspace: teamWorkspace,
+      workspace: teamAutocompleteWorkspace,
     }
     capturedSuggestionState.getItems = null
     mockFilterSuggestionItems.mockImplementation((items: unknown[]) => items)
@@ -887,7 +966,7 @@ describe('wikilink autocomplete', () => {
 
     mockEditor.insertInlineContent.mockClear()
     const items = await capturedSuggestionState.getItems!('Alpha')
-    expect(items[0].workspace).toBe(teamWorkspace)
+    expect(items[0].workspace).toBe(teamAutocompleteWorkspace)
     items[0].onItemClick()
 
     expect(mockEditor.insertInlineContent).toHaveBeenCalledWith([
@@ -1001,10 +1080,16 @@ describe('@ wikilink autocomplete', () => {
   }
   const entries = [personEntry, nonPersonEntry]
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock
-  let getAtItems: ((query: string) => Promise<any[]>) | null = null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock
-  let getBracketItems: ((query: string) => Promise<any[]>) | null = null
+  type TriggerItems = (typeof capturedSuggestionState.getItemsByTrigger)[string]
+  let getAtItems: TriggerItems | null = null
+  let getBracketItems: TriggerItems | null = null
+
+  function autocompleteWorkspace(alias: string, label: string, shortLabel: string, defaultForNewNotes: boolean) {
+    return {
+      id: alias, label, alias, path: `/${alias}`, shortLabel, color: null, icon: null,
+      mounted: true, available: true, defaultForNewNotes,
+    }
+  }
 
   function renderForAtAutocomplete() {
     mockFilterSuggestionItems.mockClear()
@@ -1021,13 +1106,14 @@ describe('@ wikilink autocomplete', () => {
     getBracketItems = capturedSuggestionState.getItemsByTrigger['[['] ?? null
   }
 
-  it('returns the same generic note suggestions as [[ without limiting @ to people', async () => {
+  it('keeps @ limited to generic note suggestions while [[ adds unresolved creation', async () => {
     renderForAtAutocomplete()
     const atItems = await getAtItems!('Lap')
     const bracketItems = await getBracketItems!('Lap')
 
     expect(getAtItems).toBeTruthy()
-    expect(atItems.map(item => item.title)).toEqual(bracketItems.map(item => item.title))
+    expect(atItems.map(item => item.title)).toEqual(bracketItems.slice(0, -1).map(item => item.title))
+    expect(bracketItems.at(-1)?.title).toBe('Create a new note called “Lap”')
     expect(atItems).toHaveLength(1)
     expect(atItems[0].title).toBe('Build Laputa App')
     expect(await getAtItems!('Mat')).toEqual([
@@ -1058,30 +1144,8 @@ describe('@ wikilink autocomplete', () => {
   })
 
   it('preserves cross-workspace wikilink targets when an @ item is clicked', async () => {
-    const personalWorkspace = {
-      id: 'personal',
-      label: 'Personal',
-      alias: 'personal',
-      path: '/personal',
-      shortLabel: 'PE',
-      color: null,
-      icon: null,
-      mounted: true,
-      available: true,
-      defaultForNewNotes: true,
-    }
-    const teamWorkspace = {
-      id: 'team',
-      label: 'Team',
-      alias: 'team',
-      path: '/team',
-      shortLabel: 'TE',
-      color: null,
-      icon: null,
-      mounted: true,
-      available: true,
-      defaultForNewNotes: false,
-    }
+    const personalWorkspace = autocompleteWorkspace('personal', 'Personal', 'PE', true)
+    const teamWorkspace = autocompleteWorkspace('team', 'Team', 'TE', false)
     const source = {
       ...mockEntry,
       path: '/personal/source.md',

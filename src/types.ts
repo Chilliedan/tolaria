@@ -154,6 +154,7 @@ export interface Settings {
 export interface AiWorkspaceConversationSetting {
   archived?: boolean | null
   id: string
+  model_id?: string | null
   target_id?: string | null
   title: string
 }
@@ -203,6 +204,16 @@ export interface GitProviderStatus {
   selected_wsl_distro: string | null
   native: GitProviderProbe
   wsl_distributions: GitProviderProbe[]
+}
+
+export type GitRootRelation = 'vault' | 'parent' | 'none'
+
+export interface GitWorkspaceInfo {
+  vaultRoot: string
+  gitRoot: string | null
+  vaultPathspec: string | null
+  gitRootRelation: GitRootRelation
+  resolutionFailure: string | null
 }
 
 export interface SearchResult {

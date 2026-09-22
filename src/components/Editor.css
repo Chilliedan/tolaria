@@ -30,7 +30,7 @@
   transition: border-color 0.2s ease;
 }
 
-body.mac-chrome .app:not(:has(.app__sidebar)):not(:has(.app__note-list)) .breadcrumb-bar {
+body.mac-chrome .app:not(:has(.app__sidebar), :has(.app__note-list)) .breadcrumb-bar {
   --breadcrumb-bar-left-padding: var(--tolaria-macos-traffic-light-padding, 90px);
 }
 
@@ -233,6 +233,35 @@ body.mac-chrome .app:not(:has(.app__sidebar)):not(:has(.app__note-list)) .breadc
 
 .editor__blocknote-container .bn-suggestion-menu-item:is(:hover, [aria-selected="true"]) .tolaria-slash-menu-icon__fill {
   opacity: 1;
+}
+
+.tolaria-slash-menu__submenu {
+  position: fixed;
+  z-index: 90;
+  display: flex;
+  min-width: 10rem;
+  max-height: min(26rem, calc(100vh - 1rem));
+  flex-direction: column;
+  gap: 0.125rem;
+  overflow-y: auto;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  background: var(--popover);
+  box-shadow: 0 4px 16px var(--shadow-dialog);
+  color: var(--popover-foreground);
+}
+
+.tolaria-slash-menu__submenu-item {
+  width: 100%;
+  justify-content: flex-start;
+  gap: 0.5rem;
+  font-weight: 400;
+}
+
+.tolaria-slash-menu__submenu-item:is(:hover, [aria-selected='true']) {
+  background: var(--accent);
+  color: var(--accent-foreground);
 }
 
 /* =============================================
@@ -536,4 +565,63 @@ body.mac-chrome .app:not(:has(.app__sidebar)):not(:has(.app__note-list)) .breadc
   .editor__blocknote-container .bn-editor {
     padding: 12px 0;
   }
+}
+
+.tolaria-callout {
+  --callout-accent: var(--feedback-info-text);
+  --callout-background: var(--feedback-info-bg);
+  margin: 0.5rem 0;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: var(--callout-background);
+}
+
+.tolaria-callout--success {
+  --callout-accent: var(--feedback-success-text);
+  --callout-background: var(--feedback-success-bg);
+}
+
+.tolaria-callout--warning {
+  --callout-accent: var(--feedback-warning-text);
+  --callout-background: var(--feedback-warning-bg);
+}
+
+.tolaria-callout--error {
+  --callout-accent: var(--feedback-error-text);
+  --callout-background: var(--feedback-error-bg);
+}
+
+.tolaria-callout--example {
+  --callout-accent: var(--accent-purple);
+  --callout-background: var(--accent-purple-light);
+}
+
+.tolaria-callout--quote {
+  --callout-accent: var(--text-secondary);
+  --callout-background: var(--surface-secondary);
+}
+
+.tolaria-callout__header {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.45rem 0.75rem 0.25rem;
+  color: var(--callout-accent);
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.tolaria-callout__header > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.tolaria-callout__body {
+  padding: 0.15rem 0.75rem 0.65rem;
+  color: var(--color-foreground);
+}
+
+.tolaria-callout__body[hidden] {
+  display: none;
 }

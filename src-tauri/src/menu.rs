@@ -8,7 +8,9 @@ use std::{
     sync::OnceLock,
 };
 #[cfg(not(target_os = "macos"))]
-use tauri::{menu::MenuEvent, Manager};
+use tauri::menu::MenuEvent;
+#[cfg(not(target_os = "macos"))]
+use tauri::Manager;
 use tauri::{
     menu::{
         MenuBuilder, MenuItem, MenuItemBuilder, MenuItemKind, Submenu, SubmenuBuilder,
@@ -254,6 +256,10 @@ fn native_window_menu_submenu_id(target_os: &str) -> Option<&'static str> {
     }
 }
 
+fn window_menu_includes_native_fullscreen(target_os: &str) -> bool {
+    target_os == "macos"
+}
+
 fn native_menu_label(label: &str) -> Cow<'_, str> {
     if label.contains('&') {
         Cow::Owned(label.replace('&', "&&"))
@@ -386,12 +392,12 @@ fn build_window_menu(app: &App) -> MenuResult {
         builder = builder.id(id);
     }
 
-    Ok(builder
-        .minimize()
-        .maximize()
-        .separator()
-        .close_window()
-        .build()?)
+    builder = builder.minimize().maximize();
+    if window_menu_includes_native_fullscreen(std::env::consts::OS) {
+        builder = builder.fullscreen();
+    }
+
+    Ok(builder.separator().close_window().build()?)
 }
 
 pub fn setup_menu(app: &App) -> Result<(), Box<dyn Error>> {
@@ -655,6 +661,13 @@ mod tests {
         );
         assert_eq!(native_window_menu_submenu_id("windows"), None);
         assert_eq!(native_window_menu_submenu_id("linux"), None);
+    }
+
+    #[test]
+    fn window_menu_includes_native_fullscreen_on_macos_only() {
+        assert!(window_menu_includes_native_fullscreen("macos"));
+        assert!(!window_menu_includes_native_fullscreen("windows"));
+        assert!(!window_menu_includes_native_fullscreen("linux"));
     }
 
     #[test]

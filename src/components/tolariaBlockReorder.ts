@@ -26,7 +26,7 @@ type PointerReorderState = {
   draggedBlockId: string
   editorElement: HTMLElement
   hasMoved: boolean
-  lastDropTarget?: DropTarget | null
+  lastDropTarget: DropTarget | null
   ownerDocument: Document
   pointerId: number
   startX: number
@@ -259,7 +259,7 @@ export function usePointerBlockReorder(
   }, [clearReorderState, editor])
 
   const onPointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    if ((typeof event.button === 'number' && event.button !== 0) || event.isPrimary === false) return
+    if ((typeof event.button === 'number' && event.button !== 0) || !event.isPrimary) return
 
     runSideMenuAction(() => {
       const liveBlock = liveSideMenuBlock(editor, block)
@@ -280,7 +280,9 @@ export function usePointerBlockReorder(
           nativeEvent.clientX - state.startX,
           nativeEvent.clientY - state.startY,
         )
-        if (!state.hasMoved && distance < POINTER_REORDER_THRESHOLD_PX) return
+        const movementStarted = [state.hasMoved, distance >= POINTER_REORDER_THRESHOLD_PX]
+          .includes(true)
+        if (!movementStarted) return
 
         state.hasMoved = true
         suppressNextClickRef.current = true
@@ -294,10 +296,10 @@ export function usePointerBlockReorder(
           x: nativeEvent.clientX,
           y: nativeEvent.clientY,
         })
-        updateDropIndicator(state.affordances, state.lastDropTarget ?? null)
+        updateDropIndicator(state.affordances, state.lastDropTarget)
         nativeEvent.preventDefault()
       }
-      const handlePointerUp = (nativeEvent: PointerEvent) => finishPointerReorder(nativeEvent)
+      const handlePointerUp = (nativeEvent: PointerEvent) => { finishPointerReorder(nativeEvent); }
       const handlePointerCancel = (nativeEvent: PointerEvent) => {
         if (nativeEvent.pointerId !== pointerId) return
         clearReorderState()
@@ -316,13 +318,14 @@ export function usePointerBlockReorder(
         draggedBlockId: liveBlock.id,
         editorElement,
         hasMoved: false,
+        lastDropTarget: null,
         ownerDocument,
         pointerId,
         startX: event.clientX,
         startY: event.clientY,
       }
       try {
-        event.currentTarget.setPointerCapture?.(pointerId)
+        if ('setPointerCapture' in event.currentTarget) event.currentTarget.setPointerCapture(pointerId)
       } catch {
         // Document-level pointer listeners still complete the reorder gesture.
       }

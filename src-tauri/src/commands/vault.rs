@@ -1,3 +1,4 @@
+mod attachment_cmds;
 mod boundary;
 mod file_cmds;
 mod frontmatter_cmds;
@@ -6,6 +7,7 @@ mod rename_cmds;
 mod scan_cmds;
 mod view_cmds;
 
+pub use attachment_cmds::*;
 pub(super) use boundary::VaultBoundary;
 pub use file_cmds::*;
 pub use frontmatter_cmds::*;
@@ -110,6 +112,20 @@ mod tests {
 
         assert!(type_definition.contains("visible: false"));
         assert!(type_definition.contains("# Type"));
+    }
+
+    fn initialize_test_git_repository(vault_path: &Path) {
+        for args in [
+            &["init"][..],
+            &["config", "user.email", "t@t.com"],
+            &["config", "user.name", "T"],
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault_path)
+                .output()
+                .unwrap();
+        }
     }
 
     #[test]
@@ -267,21 +283,7 @@ mod tests {
     async fn test_reload_vault_invalidates_cache_and_rescans() {
         let dir = tempfile::TempDir::new().unwrap();
         let vault_path = dir.path();
-        std::process::Command::new("git")
-            .args(["init"])
-            .current_dir(vault_path)
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.email", "t@t.com"])
-            .current_dir(vault_path)
-            .output()
-            .unwrap();
-        std::process::Command::new("git")
-            .args(["config", "user.name", "T"])
-            .current_dir(vault_path)
-            .output()
-            .unwrap();
+        initialize_test_git_repository(vault_path);
 
         let cache_dir = tempfile::TempDir::new().unwrap();
         std::env::set_var(

@@ -15,6 +15,7 @@
   max-width: var(--editor-max-width);
   margin: 0 auto;  /* Center the editor body */
   padding: var(--editor-padding-vertical) var(--editor-padding-horizontal);
+  padding-bottom: max(var(--editor-padding-vertical), 50vh);
   color: var(--colors-text);
   caret-color: var(--colors-cursor);
 }
@@ -74,11 +75,6 @@
   pointer-events: none;
 }
 
-/* More horizontal space between drag handle and content */
-.editor__blocknote-container .bn-side-menu ~ * ,
-.editor__blocknote-container [class*="bn-side-menu"] {
-  /* The side menu is positioned via transform — we shift it further left */
-}
 .editor__blocknote-container .bn-block-content {
   margin-inline-start: 8px;
 }
@@ -191,7 +187,7 @@
 .editor__blocknote-container [data-content-type="heading"]:not([data-level])[data-is-only-empty-block] .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before,
 .editor__blocknote-container [data-content-type="heading"][data-level="1"][data-is-empty-and-focused] .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before,
 .editor__blocknote-container [data-content-type="heading"][data-level="1"][data-is-only-empty-block] .bn-inline-content:has(> .ProseMirror-trailingBreak:only-child)::before {
-  content: "Title" !important;
+  content: "Title";
 }
 
 .editor__blocknote-container .bn-block-outer:has(> .bn-block > [data-content-type="heading"][data-level="2"]) {
@@ -231,23 +227,54 @@
 }
 
 /* --- Bullet lists --- */
-/* BlockNote renders bullet as ::before on [data-content-type="bulletListItem"] 
-   with content: "•", display: flex, width: 24px */
+/* BlockNote renders the bullet as a font glyph in a 24px-wide ::before box. */
 .editor__blocknote-container [data-content-type="bulletListItem"] {
+  --lists-marker-inner-radius: calc(var(--editor-font-size) * 0.133333);
+  --lists-marker-radius: calc(var(--editor-font-size) * 0.2);
+  --lists-marker-fade-radius: calc(var(--editor-font-size) * 0.233333);
+  --lists-marker-size: calc(var(--editor-font-size) * 0.4);
+
   padding-inline-start: var(--lists-padding-left);
   margin-bottom: var(--lists-item-spacing);
   gap: var(--lists-bullet-gap) !important;
 }
 
 .editor__blocknote-container [data-content-type="bulletListItem"]::before {
-  font-size: var(--lists-bullet-size) !important;
-  color: var(--lists-bullet-color) !important;
+  /* Draw a 6px dot at the default 15px editor size, scaling with editor zoom. */
+  background: radial-gradient(
+    circle,
+    var(--lists-bullet-color) 0 var(--lists-marker-radius),
+    transparent var(--lists-marker-fade-radius)
+  );
+  color: transparent;
+  font-size: 0;
   min-width: var(--lists-indent-size) !important;
   width: var(--lists-indent-size) !important;
   /* Align bullet with first line of text */
   height: calc(var(--editor-font-size) * var(--editor-line-height)) !important;
   align-items: center !important;
   flex-shrink: 0 !important;
+}
+
+/* Match the theme's nested marker sequence: filled circle, hollow circle, square. */
+.editor__blocknote-container
+  .bn-block-group .bn-block-group
+  [data-content-type="bulletListItem"]::before {
+  background:
+    radial-gradient(
+      circle,
+      transparent 0 var(--lists-marker-inner-radius),
+      var(--lists-bullet-color) var(--lists-marker-inner-radius) var(--lists-marker-radius),
+      transparent var(--lists-marker-fade-radius)
+    );
+}
+
+.editor__blocknote-container
+  .bn-block-group .bn-block-group .bn-block-group
+  [data-content-type="bulletListItem"]::before {
+  background:
+    linear-gradient(var(--lists-bullet-color), var(--lists-bullet-color))
+    center / var(--lists-marker-size) var(--lists-marker-size) no-repeat;
 }
 
 /* Nested list indentation */
@@ -340,7 +367,112 @@
   background-color: var(--feedback-warning-bg);
   color: var(--colors-text);
   border-radius: 2px;
-  padding: 0 0.12em;
+}
+
+.editor__blocknote-container .bn-editor mark.markdown-highlight:has([data-style-type="backgroundColor"][data-value="green"]),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="green"]:has(mark.markdown-highlight),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="green"] mark.markdown-highlight,
+.editor__blocknote-container .bn-editor mark.markdown-highlight [data-style-type="backgroundColor"][data-value="green"] {
+  background-color: var(--accent-green-light);
+}
+
+.editor__blocknote-container .bn-editor mark.markdown-highlight:has([data-style-type="backgroundColor"][data-value="red"]),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="red"]:has(mark.markdown-highlight),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="red"] mark.markdown-highlight,
+.editor__blocknote-container .bn-editor mark.markdown-highlight [data-style-type="backgroundColor"][data-value="red"] {
+  background-color: var(--accent-red-light);
+}
+
+.editor__blocknote-container .bn-editor mark.markdown-highlight:has([data-style-type="backgroundColor"][data-value="blue"]),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="blue"]:has(mark.markdown-highlight),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="blue"] mark.markdown-highlight,
+.editor__blocknote-container .bn-editor mark.markdown-highlight [data-style-type="backgroundColor"][data-value="blue"] {
+  background-color: var(--accent-blue-light);
+}
+
+.editor__blocknote-container .bn-editor mark.markdown-highlight:has([data-style-type="backgroundColor"][data-value="purple"]),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="purple"]:has(mark.markdown-highlight),
+.editor__blocknote-container .bn-editor [data-style-type="backgroundColor"][data-value="purple"] mark.markdown-highlight,
+.editor__blocknote-container .bn-editor mark.markdown-highlight [data-style-type="backgroundColor"][data-value="purple"] {
+  background-color: var(--accent-purple-light);
+}
+
+.markdown-highlight-toolbar-color-host {
+  position: relative;
+  z-index: 41;
+}
+
+.markdown-highlight-toolbar-main {
+  margin-right: 14px;
+}
+
+.markdown-highlight-toolbar-control {
+  position: fixed;
+  z-index: 41;
+}
+
+.markdown-highlight-toolbar-trigger {
+  width: 18px;
+  min-width: 18px;
+  padding: 0;
+  color: var(--colors-menu-text);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.markdown-highlight-toolbar-trigger-icon {
+  width: 11px;
+  height: 11px;
+}
+
+.markdown-highlight-boundary-host {
+  position: relative;
+  z-index: 39;
+}
+
+.markdown-highlight-boundary-control {
+  position: fixed;
+  z-index: 39;
+  transform: translateY(-50%);
+}
+
+.markdown-highlight-boundary-trigger {
+  color: var(--colors-menu-text);
+  background: var(--surface-popover);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 8px var(--shadow-dialog);
+}
+
+.markdown-highlight-color-swatch {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
+
+.markdown-highlight-color-swatch--yellow {
+  color: var(--accent-yellow);
+  background: var(--feedback-warning-bg);
+}
+
+.markdown-highlight-color-swatch--green {
+  color: var(--accent-green);
+  background: var(--accent-green-light);
+}
+
+.markdown-highlight-color-swatch--red {
+  color: var(--accent-red);
+  background: var(--accent-red-light);
+}
+
+.markdown-highlight-color-swatch--blue {
+  color: var(--accent-blue);
+  background: var(--accent-blue-light);
+}
+
+.markdown-highlight-color-swatch--purple {
+  color: var(--accent-purple);
+  background: var(--accent-purple-light);
 }
 
 /* --- Inline: links --- */
@@ -681,10 +813,40 @@ body.tldraw-whiteboard-fullscreen-open {
 
 .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] > pre {
   color: inherit;
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  position: relative;
+  white-space: pre-wrap;
+}
+
+.editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] > div {
+  display: flex;
+  margin-bottom: 0.35rem;
 }
 
 .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] > div > select {
+  min-height: 28px;
+  max-width: min(18rem, 100%);
+  padding: 3px 28px 3px 8px;
+  border: 1px solid color-mix(in srgb, var(--editor-code-block-language) 42%, transparent);
+  border-radius: 6px;
+  appearance: auto;
+  background-color: color-mix(in srgb, var(--editor-code-block-background) 88%, var(--surface-app));
   color: var(--editor-code-block-language) !important;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+  line-height: 1.3;
+  visibility: hidden;
+}
+
+.editor__code-block-language-overlay {
+  position: fixed;
+  z-index: 40;
+}
+
+.editor__code-block-language-overlay .editor__code-block-language-trigger {
+  color: var(--editor-code-block-language);
 }
 
 .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] > div > select > option {
@@ -692,11 +854,35 @@ body.tldraw-whiteboard-fullscreen-open {
   color: var(--foreground);
 }
 
+.editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] > div > select:hover,
+.editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] > div > select:focus-visible {
+  border-color: var(--editor-code-block-language);
+  outline: 2px solid transparent;
+}
+
 .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] pre code {
   background-color: transparent;
   color: inherit;
-  padding: 0;
   border-radius: 0;
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0 0 0 2.75rem;
+  white-space: pre-wrap;
+}
+
+.editor__code-line-number {
+  color: var(--text-muted);
+  display: inline-block;
+  margin-inline-end: 1rem;
+  margin-inline-start: -3rem;
+  pointer-events: none;
+  text-align: right;
+  user-select: none;
+  width: 2rem;
+}
+
+.editor__code-line-number::before {
+  content: attr(data-code-line-number);
 }
 
 .editor__blocknote-container .bn-block-content[data-content-type="codeBlock"] pre code .shiki {
@@ -795,10 +981,48 @@ body.tldraw-whiteboard-fullscreen-open {
   font-style: var(--blockquote-font-style);
 }
 
+/* BlockNote models Markdown blockquote paragraphs as sibling blocks. Join
+   consecutive siblings so their rails read as one quote with paragraph gaps. */
+.editor__blocknote-container
+  .bn-block-outer:has(> .bn-block > [data-content-type="quote"]):has(
+    + .bn-block-outer > .bn-block > [data-content-type="quote"]
+  )
+  > .bn-block
+  > [data-content-type="quote"] {
+  padding-bottom: 0;
+}
+
+.editor__blocknote-container
+  .bn-block-outer:has(> .bn-block > [data-content-type="quote"]):has(
+    + .bn-block-outer > .bn-block > [data-content-type="quote"]
+  )
+  blockquote {
+  margin-bottom: 0;
+}
+
+.editor__blocknote-container
+  .bn-block-outer:has(> .bn-block > [data-content-type="quote"])
+  + .bn-block-outer:has(> .bn-block > [data-content-type="quote"])
+  > .bn-block
+  > [data-content-type="quote"] {
+  padding-top: 0;
+}
+
+.editor__blocknote-container
+  .bn-block-outer:has(> .bn-block > [data-content-type="quote"])
+  + .bn-block-outer:has(> .bn-block > [data-content-type="quote"])
+  blockquote {
+  margin-top: 0;
+}
+
 /* --- Table --- */
 .editor__blocknote-container [data-content-type="table"] table {
   border-color: var(--table-border-color);
   font-size: var(--table-font-size);
+}
+
+.editor__blocknote-container [data-content-type="table"] :is(th, td) {
+  border-color: var(--table-border-color);
 }
 
 .editor__blocknote-container [data-content-type="table"] th {
@@ -808,8 +1032,12 @@ body.tldraw-whiteboard-fullscreen-open {
 
 .editor__blocknote-container [data-content-type="table"] td {
   padding: var(--table-cell-padding-vertical) var(--table-cell-padding-horizontal);
-  border-color: var(--table-border-color);
   text-align: start;
+}
+
+/* Keep the one-pixel grid exposed beneath ProseMirror's selected-cell overlay. */
+.editor__blocknote-container [data-content-type="table"] .selectedCell::after {
+  inset: 1px;
 }
 
 /* --- Horizontal rule --- */

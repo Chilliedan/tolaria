@@ -33,6 +33,21 @@ interface CsvRowSerialization {
   row: CsvRow
 }
 
+interface SourceRowSerialization {
+  parsedSource: ParsedCsvRows
+  rowIndex: number
+  lastRow: number
+  rowTerminator: CsvRowTerminator
+}
+
+interface PreservedSourceRowSerialization extends SourceRowSerialization {
+  rows: CsvRows
+}
+
+interface ReplacementSourceRowSerialization extends SourceRowSerialization {
+  replacements: Map<number, CsvRow>
+}
+
 interface LineBreakLookup {
   content: SheetDocumentContent
   index: number
@@ -42,8 +57,8 @@ const FRONTMATTER_OPEN = '---'
 const FRONTMATTER_DELIMITER_RE = /^---[ \t]*$/m
 
 function firstLineBreakLength({ content, index }: LineBreakLookup): number {
-  if (content[index] === '\r' && content[index + 1] === '\n') return 2
-  if (content[index] === '\n' || content[index] === '\r') return 1
+  if (content.at(index) === '\r' && content.at(index + 1) === '\n') return 2
+  if (content.at(index) === '\n' || content.at(index) === '\r') return 1
   return 0
 }
 
@@ -214,14 +229,14 @@ function serializeCsvCell(cell: CsvCellValue): string {
 
 function lastMeaningfulRowIndex(rows: CsvRows): number {
   for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
-    if (rows[rowIndex]?.some((cell) => cell !== '') === true) return rowIndex
+    if (rows.at(rowIndex)?.some((cell) => cell !== '') === true) return rowIndex
   }
   return -1
 }
 
 function lastMeaningfulColumnIndex(row: CsvRow): number {
   for (let columnIndex = row.length - 1; columnIndex >= 0; columnIndex -= 1) {
-    if (row[columnIndex] !== '') {
+    if (row.at(columnIndex) !== '') {
       return columnIndex
     }
   }
@@ -252,7 +267,7 @@ function csvRowsEqual({ left, right }: CsvRowComparison): boolean {
   const leftCells = left ?? []
   const rightCells = right ?? []
   if (leftCells.length !== rightCells.length) return false
-  return leftCells.every((cell, index) => cell === rightCells[index])
+  return leftCells.every((cell, index) => cell === rightCells.at(index))
 }
 
 export function serializeCsvRowsPreservingSourceRows(rows: CsvRows, source: CsvSource): CsvSource {
@@ -263,19 +278,68 @@ function sourceRowTerminator(parsedSource: ParsedCsvRows): CsvRowTerminator {
   return parsedSource.rowTerminators.find((terminator) => terminator !== '') ?? '\n'
 }
 
+function csvRowAt(rows: CsvRows, rowIndex: number): CsvRow {
+  return rows.at(rowIndex) ?? []
+}
+
+function rawCsvRowAt(parsedSource: ParsedCsvRows, rowIndex: number): CsvSource {
+  return parsedSource.rawRows.at(rowIndex) ?? ''
+}
+
+function csvRowWidth(row: CsvRow | undefined): number {
+  return row?.length ?? 0
+}
+
+function terminatorForSourceRow({
+  parsedSource,
+  rowIndex,
+  lastRow,
+  rowTerminator,
+}: SourceRowSerialization): CsvRowTerminator {
+  const sourceTerminator = parsedSource.rowTerminators.at(rowIndex)
+  if (sourceTerminator !== undefined) return sourceTerminator
+  return rowIndex < lastRow ? rowTerminator : ''
+}
+
+function preservedSourceRow({
+  parsedSource,
+  rowIndex,
+  lastRow,
+  rowTerminator,
+  rows,
+}: PreservedSourceRowSerialization): CsvSource {
+  const row = csvRowAt(rows, rowIndex)
+  const sourceRow = parsedSource.rows.at(rowIndex)
+  const serializedRow = csvRowsEqual({ left: row, right: sourceRow })
+    ? rawCsvRowAt(parsedSource, rowIndex)
+    : serializeCsvRow({ minimumWidth: csvRowWidth(sourceRow), row })
+  return `${serializedRow}${terminatorForSourceRow({ parsedSource, rowIndex, lastRow, rowTerminator })}`
+}
+
 export function serializeCsvRowsPreservingParsedSourceRows(rows: CsvRows, parsedSource: ParsedCsvRows): CsvSource {
   const lastRow = Math.max(lastMeaningfulRowIndex(rows), parsedSource.rows.length - 1)
   if (lastRow < 0) return ''
   const rowTerminator = sourceRowTerminator(parsedSource)
 
-  return Array.from({ length: lastRow + 1 }, (_, rowIndex) => {
-    const row = rows[rowIndex] ?? []
-    const serializedRow = csvRowsEqual({ left: row, right: parsedSource.rows[rowIndex] })
-      ? parsedSource.rawRows[rowIndex] ?? ''
-      : serializeCsvRow({ minimumWidth: parsedSource.rows[rowIndex]?.length ?? 0, row })
-    const terminator = parsedSource.rowTerminators[rowIndex] ?? (rowIndex < lastRow ? rowTerminator : '')
-    return `${serializedRow}${terminator}`
-  }).join('')
+  return Array.from(
+    { length: lastRow + 1 },
+    (_, rowIndex) => preservedSourceRow({ parsedSource, rowIndex, lastRow, rowTerminator, rows }),
+  ).join('')
+}
+
+function replacementSourceRow({
+  parsedSource,
+  replacements,
+  rowIndex,
+  lastRow,
+  rowTerminator,
+}: ReplacementSourceRowSerialization): CsvSource {
+  const replacement = replacements.get(rowIndex)
+  const sourceRow = parsedSource.rows.at(rowIndex)
+  const serializedRow = replacement && !csvRowsEqual({ left: replacement, right: sourceRow })
+    ? serializeCsvRow({ minimumWidth: csvRowWidth(sourceRow), row: replacement })
+    : rawCsvRowAt(parsedSource, rowIndex)
+  return `${serializedRow}${terminatorForSourceRow({ parsedSource, rowIndex, lastRow, rowTerminator })}`
 }
 
 export function serializeCsvRowsReplacingParsedSourceRows(
@@ -283,7 +347,7 @@ export function serializeCsvRowsReplacingParsedSourceRows(
   replacements: Map<number, CsvRow>,
 ): CsvSource {
   if (replacements.size === 0) {
-    return parsedSource.rawRows.map((row, index) => `${row}${parsedSource.rowTerminators[index] ?? ''}`).join('')
+    return parsedSource.rawRows.map((row, index) => `${row}${parsedSource.rowTerminators.at(index) ?? ''}`).join('')
   }
 
   const lastReplacementRow = Math.max(...replacements.keys())
@@ -291,14 +355,10 @@ export function serializeCsvRowsReplacingParsedSourceRows(
   if (lastRow < 0) return ''
   const rowTerminator = sourceRowTerminator(parsedSource)
 
-  return Array.from({ length: lastRow + 1 }, (_, rowIndex) => {
-    const replacement = replacements.get(rowIndex)
-    const serializedRow = replacement && !csvRowsEqual({ left: replacement, right: parsedSource.rows[rowIndex] })
-      ? serializeCsvRow({ minimumWidth: parsedSource.rows[rowIndex]?.length ?? 0, row: replacement })
-      : parsedSource.rawRows[rowIndex] ?? ''
-    const terminator = parsedSource.rowTerminators[rowIndex] ?? (rowIndex < lastRow ? rowTerminator : '')
-    return `${serializedRow}${terminator}`
-  }).join('')
+  return Array.from(
+    { length: lastRow + 1 },
+    (_, rowIndex) => replacementSourceRow({ parsedSource, replacements, rowIndex, lastRow, rowTerminator }),
+  ).join('')
 }
 
 export function columnNameFromIndex(index: ZeroBasedIndex): string {

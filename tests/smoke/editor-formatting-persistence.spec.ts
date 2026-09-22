@@ -121,6 +121,54 @@ async function selectWord(page: Page, blockIndex: number, word: string) {
   await expect(page.locator('.bn-formatting-toolbar')).toBeVisible({ timeout: 5_000 })
 }
 
+async function placeCursorInsideWord(page: Page, word: string) {
+  const placed = await page.locator('.bn-editor').evaluate((editor, targetWord) => {
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+
+    while (walker.nextNode()) {
+      const node = walker.currentNode
+      const index = (node.textContent ?? '').indexOf(targetWord)
+      if (index === -1) continue
+
+      const selection = window.getSelection()
+      if (!selection) return false
+
+      const range = document.createRange()
+      range.setStart(node, index + 1)
+      range.collapse(true)
+      selection.removeAllRanges()
+      selection.addRange(range)
+      document.dispatchEvent(new Event('selectionchange'))
+      return true
+    }
+
+    return false
+  }, word)
+
+  expect(placed).toBe(true)
+}
+
+async function wordPosition(page: Page, blockIndex: number, word: string) {
+  const block = page.locator('.bn-block-content').nth(blockIndex)
+  return block.evaluate((element, targetWord) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+
+    while (walker.nextNode()) {
+      const node = walker.currentNode
+      const index = (node.textContent ?? '').indexOf(targetWord)
+      if (index === -1) continue
+
+      const range = document.createRange()
+      range.setStart(node, index)
+      range.setEnd(node, index + targetWord.length)
+      const rect = range.getBoundingClientRect()
+      return { left: rect.left, top: rect.top }
+    }
+
+    throw new Error(`Could not find word: ${targetWord}`)
+  }, word)
+}
+
 async function openBlockTypeMenu(page: Page) {
   const blockTypeButton = page.getByRole('button', { name: 'Paragraph' })
   await blockTypeButton.focus()
@@ -272,6 +320,27 @@ test('Obsidian-style highlight markdown renders and persists', async ({ page }) 
   expect(await getRawEditorContent(page)).toContain(highlightedLine)
 })
 
+test('Bear-style colored highlight markdown renders without circle prefixes and persists', async ({ page }) => {
+  await openNote(page, 'Note B')
+  await openRawMode(page)
+  const raw = await getRawEditorContent(page)
+  const highlightedLine = '==🔴red== ==🔵blue== ==🟣purple== ==🟢green== ==yellow=='
+  await setRawEditorContent(page, `${raw.trimEnd()}\n\n${highlightedLine}\n`)
+
+  await openBlockNoteMode(page)
+  for (const label of ['red', 'blue', 'purple', 'green', 'yellow']) {
+    await expect(page.locator('mark.markdown-highlight', { hasText: label })).toBeVisible()
+  }
+  await expect(page.locator('.bn-editor')).not.toContainText('🔴')
+  await expect(page.locator('.bn-editor')).not.toContainText('🔵')
+  await expect(page.locator('.bn-editor')).not.toContainText('🟣')
+  await expect(page.locator('.bn-editor')).not.toContainText('🟢')
+
+  await roundTripThroughAnotherNote(page)
+  await openRawMode(page)
+  expect(await getRawEditorContent(page)).toContain(highlightedLine)
+})
+
 test('Obsidian-style highlight markdown typed in rich mode renders and persists', async ({ page }) => {
   await openNote(page, 'Note B')
 
@@ -327,6 +396,37 @@ test('toolbar highlight button toggles selected text and persists removal', asyn
   const raw = await getRawEditorContent(page)
   expect(raw).toContain('This is Note B, referenced by Alpha Project.')
   expect(raw).not.toContain('==referenced==')
+})
+
+test('toolbar highlighting preserves surrounding text geometry', async ({ page }) => {
+  await openNote(page, 'Note B')
+  const positionBefore = await wordPosition(page, 1, 'Alpha')
+  await selectWord(page, 1, 'referenced')
+
+  await page.locator('.bn-formatting-toolbar [data-test="highlight"]').click()
+  await expect(page.locator('.bn-editor mark.markdown-highlight', { hasText: 'referenced' })).toBeVisible()
+
+  const positionAfter = await wordPosition(page, 1, 'Alpha')
+  expect(Math.abs(positionAfter.left - positionBefore.left)).toBeLessThan(0.1)
+  expect(Math.abs(positionAfter.top - positionBefore.top)).toBeLessThan(0.1)
+})
+
+test('toolbar dropdown and boundary control choose and change highlight colors', async ({ page }) => {
+  await openNote(page, 'Note B')
+  await selectWord(page, 1, 'referenced')
+
+  await page.locator('[data-test="highlightColorMenu"]').click()
+  await page.getByRole('menuitem', { name: 'Red' }).click()
+  await expect(page.locator('mark.markdown-highlight', { hasText: 'referenced' })).toBeVisible()
+
+  await placeCursorInsideWord(page, 'referenced')
+  await expect(page.locator('[data-test="highlightBoundaryColorMenu"]')).toBeVisible()
+  await page.locator('[data-test="highlightBoundaryColorMenu"]').click()
+  await page.getByRole('menuitem', { name: 'Blue' }).click()
+
+  await roundTripThroughAnotherNote(page)
+  await openRawMode(page)
+  expect(await getRawEditorContent(page)).toContain('This is Note B, ==🔵referenced== by Alpha Project.')
 })
 
 test('toolbar block-type commands persist numbered lists', async ({ page }) => {

@@ -4,7 +4,7 @@ const HEX3_RE = /^#[0-9a-f]{3}$/i
 const HEX6_RE = /^#[0-9a-f]{6}$/i
 const HEX8_RE = /^#[0-9a-f]{8}$/i
 const CSS_VARIABLE_RE = /^var\(\s*(--[\w-]+)\s*\)$/i
-const RGB_COLOR_RE = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/i
+const RGB_COLOR_RE = /^rgba?\(([^)]*)\)$/i
 
 const SHEET_COLOR_ALIASES = new Map<string, string>([
   ['black', '#000000'],
@@ -53,16 +53,29 @@ function rgbComponentToHex(componentText: string): string | null {
   return component.toString(16).padStart(2, '0')
 }
 
+function validAlpha(parts: string[]): boolean {
+  const alpha = parts.at(3)
+  if (alpha === undefined) return true
+  const alphaValue = Number(alpha)
+  return Number.isFinite(alphaValue) && alphaValue >= 0 && alphaValue <= 1
+}
+
+function rgbParts(value: string): string[] | null {
+  const body = RGB_COLOR_RE.exec(value)?.at(1)
+  if (body === undefined) return null
+  const parts = body.split(',').map(part => part.trim())
+  if (parts.length !== 3 && parts.length !== 4) return null
+  if (!validAlpha(parts)) return null
+  return parts
+}
+
 function rgbColorToHex(value: string): string | null {
-  const match = RGB_COLOR_RE.exec(value)
-  if (!match) return null
+  const parts = rgbParts(value)
+  if (!parts) return null
+  const components = parts.slice(0, 3).map(rgbComponentToHex)
+  if (!components.every((component): component is string => component !== null)) return null
 
-  const red = match[1] ? rgbComponentToHex(match[1]) : null
-  const green = match[2] ? rgbComponentToHex(match[2]) : null
-  const blue = match[3] ? rgbComponentToHex(match[3]) : null
-  if (!red || !green || !blue) return null
-
-  return `#${red}${green}${blue}`
+  return `#${components.join('')}`
 }
 
 export function normalizeSheetColorForIronCalc(value: string | undefined): string | null {

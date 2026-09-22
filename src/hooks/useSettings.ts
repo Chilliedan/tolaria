@@ -19,6 +19,8 @@ import { normalizeNoteWidthMode } from '../utils/noteWidth'
 type UnknownRecord = Record<string, unknown>
 type AiWorkspaceConversationSetting = NonNullable<Settings['ai_workspace_conversations']>[number]
 
+const ignoreSaveResult = () => {}
+
 async function invokeNativeIfAvailable<T>(command: string, tauriArgs: Record<string, unknown>): Promise<T | undefined> {
   try {
     return await invoke<T>(command, tauriArgs)
@@ -71,35 +73,43 @@ const EMPTY_SETTINGS: Settings = {
   multi_workspace_enabled: null,
 }
 
+function nullableBoolean(value: boolean | null | undefined): boolean | null {
+  return value ?? null
+}
+
+function nonEmptyArrayOrNull<T>(items: T[]): T[] | null {
+  return items.length > 0 ? items : null
+}
+
 function normalizeSettings(settings: Settings): Settings {
   const aiModelProviders = normalizeAiModelProviders(settings.ai_model_providers)
 
   return {
     ...settings,
-    git_enabled: settings.git_enabled ?? null,
+    git_enabled: nullableBoolean(settings.git_enabled),
     git_path: nullableTrimmedString(settings.git_path),
     git_provider: normalizeGitProvider(settings.git_provider),
     git_wsl_distro: nullableTrimmedString(settings.git_wsl_distro),
-    autogit_use_ai_commit_messages: settings.autogit_use_ai_commit_messages ?? null,
+    autogit_use_ai_commit_messages: nullableBoolean(settings.autogit_use_ai_commit_messages),
     release_channel: serializeReleaseChannel(
       normalizeReleaseChannel(settings.release_channel),
     ),
-    automatic_update_checks_enabled: settings.automatic_update_checks_enabled ?? null,
+    automatic_update_checks_enabled: nullableBoolean(settings.automatic_update_checks_enabled),
     theme_mode: normalizeThemeMode(settings.theme_mode),
     ui_language: serializeUiLanguagePreference(settings.ui_language),
     date_display_format: normalizeDateDisplayFormat(settings.date_display_format),
     note_width_mode: normalizeNoteWidthMode(settings.note_width_mode),
-    sidebar_type_pluralization_enabled: settings.sidebar_type_pluralization_enabled ?? null,
-    ai_features_enabled: settings.ai_features_enabled ?? null,
+    sidebar_type_pluralization_enabled: nullableBoolean(settings.sidebar_type_pluralization_enabled),
+    ai_features_enabled: nullableBoolean(settings.ai_features_enabled),
     default_ai_agent: normalizeStoredAiAgent(settings.default_ai_agent),
     default_ai_target: settings.default_ai_target?.trim() || null,
-    ai_model_providers: aiModelProviders.length > 0 ? aiModelProviders : null,
+    ai_model_providers: nonEmptyArrayOrNull(aiModelProviders),
     ai_workspace_conversations: normalizeAiWorkspaceConversations(settings.ai_workspace_conversations),
-    hide_gitignored_files: settings.hide_gitignored_files ?? null,
-    all_notes_show_pdfs: settings.all_notes_show_pdfs ?? null,
-    all_notes_show_images: settings.all_notes_show_images ?? null,
-    all_notes_show_unsupported: settings.all_notes_show_unsupported ?? null,
-    multi_workspace_enabled: settings.multi_workspace_enabled ?? null,
+    hide_gitignored_files: nullableBoolean(settings.hide_gitignored_files),
+    all_notes_show_pdfs: nullableBoolean(settings.all_notes_show_pdfs),
+    all_notes_show_images: nullableBoolean(settings.all_notes_show_images),
+    all_notes_show_unsupported: nullableBoolean(settings.all_notes_show_unsupported),
+    multi_workspace_enabled: nullableBoolean(settings.multi_workspace_enabled),
   }
 }
 
@@ -129,6 +139,7 @@ function normalizeAiWorkspaceConversation(setting: unknown): AiWorkspaceConversa
   return {
     archived: setting.archived === true,
     id,
+    model_id: nullableTrimmedString(setting.model_id),
     target_id: nullableTrimmedString(setting.target_id),
     title,
   }
@@ -150,22 +161,27 @@ export function useSettings() {
   const [settings, setSettings] = useState<Settings>(EMPTY_SETTINGS)
   const [loaded, setLoaded] = useState(false)
 
-  const loadSettings = useCallback(async () => {
-    try {
-      const s = await tauriCall<Settings>('get_settings', {})
-      setSettings(normalizeSettings(s))
-    } catch (err) {
-      console.warn('Failed to load settings:', err)
-    } finally {
-      setLoaded(true)
+  useEffect(() => {
+    let active = true
+    void tauriCall<Settings>('get_settings', {})
+      .then((value) => {
+        if (active) setSettings(normalizeSettings(value))
+      })
+      .catch((error: unknown) => {
+        console.warn('Failed to load settings:', error)
+      })
+      .finally(() => {
+        if (active) setLoaded(true)
+      })
+    return () => {
+      active = false
     }
   }, [])
 
-  useEffect(() => {
-    loadSettings()
-  }, [loadSettings])
-
-  const saveSettings = useCallback(async (newSettings: Settings) => {
+  const saveSettings = useCallback(async (
+    newSettings: Settings,
+    onComplete: (succeeded: boolean) => void = ignoreSaveResult,
+  ) => {
     const previousHideGitignored = shouldHideGitignoredFiles(settings)
     const previousThemeMode = effectiveThemeMode(settings)
     const normalizedSettings = normalizeSettings(newSettings)
@@ -180,8 +196,10 @@ export function useSettings() {
       if (previousHideGitignored !== nextHideGitignored) {
         notifyGitignoredVisibilityChanged(nextHideGitignored)
       }
+      onComplete(true)
     } catch (err) {
       console.error('Failed to save settings:', err)
+      onComplete(false)
     }
   }, [settings])
 

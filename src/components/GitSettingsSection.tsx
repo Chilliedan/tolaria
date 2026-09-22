@@ -1,5 +1,8 @@
+import { invoke } from '@tauri-apps/api/core'
+import { useEffect, useState } from 'react'
 import type { createTranslator } from '../lib/i18n'
-import type { GitProviderId } from '../types'
+import { isTauri, mockInvoke } from '../mock-tauri'
+import type { GitProviderId, GitWorkspaceInfo } from '../types'
 import { GitProviderSettingsRows } from './GitProviderSettingsRows'
 import {
   NumberInputControl,
@@ -20,6 +23,7 @@ interface GitSettingsSectionProps {
   gitFeaturesEnabled: boolean
   gitWslDistro: string | null
   isGitVault: boolean
+  vaultPath: string
   setAutoGitEnabled: (value: boolean) => void
   setAutoGitAiCommitMessagesEnabled: (value: boolean) => void
   setAutoGitIdleThresholdSeconds: (value: number) => void
@@ -41,25 +45,115 @@ function describeAutoGitAvailability(
     : t('settings.autogit.description.disabled')
 }
 
+function useGitWorkspaceInfo(vaultPath: string): GitWorkspaceInfo | null {
+  const [workspace, setWorkspace] = useState<{ info: GitWorkspaceInfo; path: string } | null>(null)
+  useEffect(() => {
+    if (!vaultPath) return
+    let cancelled = false
+    const request = isTauri()
+      ? invoke<GitWorkspaceInfo>('git_workspace_info', { vaultPath })
+      : mockInvoke<GitWorkspaceInfo>('git_workspace_info', { vaultPath })
+    request
+      .then((info) => {
+        if (!cancelled) setWorkspace({ info, path: vaultPath })
+      })
+      .catch(() => {
+        if (!cancelled) setWorkspace(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [vaultPath])
+  return workspace?.path === vaultPath ? workspace.info : null
+}
+
+function GitRepositoryRootRow({ t, workspace }: { t: Translate; workspace: GitWorkspaceInfo | null }) {
+  if (!workspace?.gitRoot) return null
+  const description = workspace.gitRootRelation === 'parent'
+    ? t('settings.git.repositoryRootParentDescription')
+    : t('settings.git.repositoryRootVaultDescription')
+
+  return (
+    <SettingsRow label={t('settings.git.repositoryRoot')} description={description}>
+      <span
+        className="block max-w-80 break-all text-right text-xs text-muted-foreground"
+        data-testid="settings-git-root"
+      >
+        {workspace.gitRoot}
+      </span>
+    </SettingsRow>
+  )
+}
+
+function AutoGitSettingsRows({
+  autoGitAiCommitMessagesEnabled,
+  autoGitEnabled,
+  autoGitIdleThresholdSeconds,
+  autoGitInactiveThresholdSeconds,
+  gitControlsAvailable,
+  gitFeaturesEnabled,
+  isGitVault,
+  setAutoGitAiCommitMessagesEnabled,
+  setAutoGitEnabled,
+  setAutoGitIdleThresholdSeconds,
+  setAutoGitInactiveThresholdSeconds,
+  t,
+}: Pick<GitSettingsSectionProps,
+  | 'autoGitAiCommitMessagesEnabled'
+  | 'autoGitEnabled'
+  | 'autoGitIdleThresholdSeconds'
+  | 'autoGitInactiveThresholdSeconds'
+  | 'gitFeaturesEnabled'
+  | 'isGitVault'
+  | 'setAutoGitAiCommitMessagesEnabled'
+  | 'setAutoGitEnabled'
+  | 'setAutoGitIdleThresholdSeconds'
+  | 'setAutoGitInactiveThresholdSeconds'
+  | 't'
+> & { gitControlsAvailable: boolean }) {
+  return (
+    <>
+      <SettingsSwitchRow
+        label={t('settings.autogit.enable')}
+        description={gitControlsAvailable
+          ? t('settings.autogit.enableDescription')
+          : describeAutoGitAvailability(gitFeaturesEnabled, isGitVault, t)}
+        checked={autoGitEnabled}
+        onChange={setAutoGitEnabled}
+        disabled={!gitControlsAvailable}
+        testId="settings-autogit-enabled"
+      />
+      <SettingsSwitchRow
+        label={t('settings.autogit.aiCommitMessages')}
+        description={t('settings.autogit.aiCommitMessagesDescription')}
+        checked={autoGitAiCommitMessagesEnabled}
+        onChange={setAutoGitAiCommitMessagesEnabled}
+        disabled={!gitControlsAvailable}
+        testId="settings-autogit-ai-commit-messages"
+      />
+      <SettingsRow label={t('settings.autogit.idleThreshold')} description={t('settings.autogit.idleThresholdDescription')} controlWidth="compact">
+        <NumberInputControl ariaLabel={t('settings.autogit.idleThreshold')} value={autoGitIdleThresholdSeconds} onValueChange={setAutoGitIdleThresholdSeconds} testId="settings-autogit-idle-threshold" disabled={!gitControlsAvailable} />
+      </SettingsRow>
+      <SettingsRow label={t('settings.autogit.inactiveThreshold')} description={t('settings.autogit.inactiveThresholdDescription')} controlWidth="compact">
+        <NumberInputControl ariaLabel={t('settings.autogit.inactiveThreshold')} value={autoGitInactiveThresholdSeconds} onValueChange={setAutoGitInactiveThresholdSeconds} testId="settings-autogit-inactive-threshold" disabled={!gitControlsAvailable} />
+      </SettingsRow>
+    </>
+  )
+}
+
 export function GitSettingsSection(props: GitSettingsSectionProps) {
   const {
-    autoGitEnabled,
-    autoGitAiCommitMessagesEnabled,
-    autoGitIdleThresholdSeconds,
-    autoGitInactiveThresholdSeconds,
     gitProvider,
     gitFeaturesEnabled,
     gitWslDistro,
     isGitVault,
-    setAutoGitEnabled,
-    setAutoGitAiCommitMessagesEnabled,
-    setAutoGitIdleThresholdSeconds,
-    setAutoGitInactiveThresholdSeconds,
+    vaultPath,
     setGitFeaturesEnabled,
     setGitProvider,
     setGitWslDistro,
     t,
   } = props
+  const workspace = useGitWorkspaceInfo(vaultPath)
   const gitControlsAvailable = gitFeaturesEnabled && isGitVault
 
   return (
@@ -83,53 +177,9 @@ export function GitSettingsSection(props: GitSettingsSectionProps) {
           t={t}
         />
 
-        <SettingsSwitchRow
-          label={t('settings.autogit.enable')}
-          description={gitControlsAvailable
-            ? t('settings.autogit.enableDescription')
-            : describeAutoGitAvailability(gitFeaturesEnabled, isGitVault, t)}
-          checked={autoGitEnabled}
-          onChange={setAutoGitEnabled}
-          disabled={!gitControlsAvailable}
-          testId="settings-autogit-enabled"
-        />
+        <GitRepositoryRootRow t={t} workspace={workspace} />
 
-        <SettingsSwitchRow
-          label={t('settings.autogit.aiCommitMessages')}
-          description={t('settings.autogit.aiCommitMessagesDescription')}
-          checked={autoGitAiCommitMessagesEnabled}
-          onChange={setAutoGitAiCommitMessagesEnabled}
-          disabled={!gitControlsAvailable}
-          testId="settings-autogit-ai-commit-messages"
-        />
-
-        <SettingsRow
-          label={t('settings.autogit.idleThreshold')}
-          description={t('settings.autogit.idleThresholdDescription')}
-          controlWidth="compact"
-        >
-          <NumberInputControl
-            ariaLabel={t('settings.autogit.idleThreshold')}
-            value={autoGitIdleThresholdSeconds}
-            onValueChange={setAutoGitIdleThresholdSeconds}
-            testId="settings-autogit-idle-threshold"
-            disabled={!gitControlsAvailable}
-          />
-        </SettingsRow>
-
-        <SettingsRow
-          label={t('settings.autogit.inactiveThreshold')}
-          description={t('settings.autogit.inactiveThresholdDescription')}
-          controlWidth="compact"
-        >
-          <NumberInputControl
-            ariaLabel={t('settings.autogit.inactiveThreshold')}
-            value={autoGitInactiveThresholdSeconds}
-            onValueChange={setAutoGitInactiveThresholdSeconds}
-            testId="settings-autogit-inactive-threshold"
-            disabled={!gitControlsAvailable}
-          />
-        </SettingsRow>
+        <AutoGitSettingsRows {...props} gitControlsAvailable={gitControlsAvailable} />
       </SettingsGroup>
     </>
   )

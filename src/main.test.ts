@@ -80,7 +80,7 @@ async function importEntrypoint() {
   await import('./main')
 }
 
-async function withUserAgent<T>(userAgent: string, callback: () => Promise<T>): Promise<T> {
+const withUserAgent = async <T>(userAgent: string, callback: () => Promise<T>): Promise<T> => {
   const originalUserAgent = navigator.userAgent
   Object.defineProperty(window.navigator, 'userAgent', { value: userAgent, configurable: true })
   try {
@@ -188,6 +188,29 @@ describe('main entrypoint', () => {
     rootOptions().onCaughtError?.(error, { componentStack: '\n    in App' })
 
     expect(mocks.sentryHandler).toHaveBeenCalledWith(error, { componentStack: '\n    in App' })
+    expect(document.getElementById('tolaria-fatal-render-error')).toBeNull()
+  }, MAIN_ENTRYPOINT_IMPORT_TIMEOUT_MS)
+
+  it('keeps the fatal overlay for an uncaught React root error', async () => {
+    await importEntrypoint()
+
+    const error = new Error('Maximum update depth exceeded')
+    window.__tolariaFrontendReady = true
+    rootOptions().onUncaughtError?.(error, { componentStack: '\n    in App' })
+
+    expect(mocks.sentryHandler).toHaveBeenCalledWith(error, { componentStack: '\n    in App' })
+    expect(document.getElementById('tolaria-fatal-render-error')).toHaveTextContent('Maximum update depth exceeded')
+  }, MAIN_ENTRYPOINT_IMPORT_TIMEOUT_MS)
+
+  it('reloads and suppresses startup default-export chunk errors before frontend readiness', async () => {
+    await importEntrypoint()
+
+    const error = new TypeError("Cannot read properties of undefined (reading 'default')")
+    rootOptions().onUncaughtError?.(error, { componentStack: '' })
+
+    expect(sessionStorage.getItem('tolaria:startup-reload-attempted')).toBe('1')
+    expect(mocks.sentryHandler).not.toHaveBeenCalled()
+    expect(document.getElementById('tolaria-fatal-render-error')).toBeNull()
   }, MAIN_ENTRYPOINT_IMPORT_TIMEOUT_MS)
 
   it('suppresses recovered BlockNote maximum update depth errors from Sentry', async () => {
@@ -210,6 +233,18 @@ describe('main entrypoint', () => {
     window.__tolariaFrontendReady = true
 
     rootOptions().onCaughtError?.(error, { componentStack: '\n    in BlockNoteView' })
+
+    expect(mocks.sentryHandler).not.toHaveBeenCalled()
+    expect(document.getElementById('tolaria-fatal-render-error')).toBeNull()
+  }, MAIN_ENTRYPOINT_IMPORT_TIMEOUT_MS)
+
+  it('suppresses recoverable BlockNote update-depth errors from the React root callback', async () => {
+    await importEntrypoint()
+
+    const error = new Error('Maximum update depth exceeded. This can happen when a component repeatedly calls setState.')
+    window.__tolariaFrontendReady = true
+
+    rootOptions().onRecoverableError?.(error, { componentStack: '\n    in BlockNoteView' })
 
     expect(mocks.sentryHandler).not.toHaveBeenCalled()
     expect(document.getElementById('tolaria-fatal-render-error')).toBeNull()
@@ -260,17 +295,20 @@ describe('main entrypoint', () => {
     })
   }, MAIN_ENTRYPOINT_IMPORT_TIMEOUT_MS)
 
-  it('cancels Escape native defaults after an open dialog surface handles the key', async () => {
+  it('leaves Escape available for an open dialog to handle', async () => {
     await importEntrypoint()
     const dialog = document.createElement('div')
     dialog.setAttribute('data-slot', 'dialog-content')
     document.body.appendChild(dialog)
-    dialog.addEventListener('keydown', () => dialog.remove())
+    dialog.addEventListener('keydown', (event) => {
+      event.stopPropagation()
+      dialog.remove()
+    })
 
     const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
     dialog.dispatchEvent(event)
 
-    expect(event.defaultPrevented).toBe(true)
+    expect(event.defaultPrevented).toBe(false)
   }, MAIN_ENTRYPOINT_IMPORT_TIMEOUT_MS)
 
   it('leaves Escape native defaults available when no dialog or popover is open', async () => {

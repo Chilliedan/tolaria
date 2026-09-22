@@ -10,6 +10,9 @@ RUN NODE_OPTIONS=--max-old-space-size=4096 pnpm exec vite build --config vite.co
 FROM rust:1-bookworm AS server
 WORKDIR /build
 COPY src-tauri ./src-tauri
+# tolaria-core embeds shared cross-runtime contracts (word count, inline
+# markdown) via include_str! from the frontend tree.
+COPY src/shared ./src/shared
 # Build only the server crate (skips the Tauri app's system deps).
 RUN cargo build --release --manifest-path src-tauri/Cargo.toml -p tolaria-server
 

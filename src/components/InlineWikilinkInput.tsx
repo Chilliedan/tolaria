@@ -1,49 +1,42 @@
-import {
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-  type ReactNode,
-} from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react'
 import type { VaultEntry } from '../types'
 import type { NoteReference } from '../utils/ai-context'
 import { buildTypeEntryMap } from '../utils/typeColors'
-import {
-  deleteInlineSelection,
-  replaceInlineSelection,
-  selectedInlineText,
-} from './inlineWikilinkEdits'
+import { deleteInlineSelection, replaceInlineSelection, selectedInlineText } from './inlineWikilinkEdits'
 import {
   buildInlineWikilinkSegments,
   extractInlineWikilinkReferences,
   findActiveWikilinkQuery,
 } from './inlineWikilinkText'
 import { extractDroppedPathText, formatDroppedPathList } from './inlineWikilinkDropText'
-import {
-  readSelectionRange,
-  serializeInlineNode,
-  type InlineSelectionRange,
-} from './inlineWikilinkDom'
+import { readSelectionRange, serializeInlineNode, type InlineSelectionRange } from './inlineWikilinkDom'
 import {
   buildPendingPasteState,
   type PendingPasteState,
   shouldRecoverPendingPaste,
 } from './inlineWikilinkPasteRecovery'
-import {
-  InlineWikilinkEditorField,
-  InlineWikilinkPaletteLayout,
-  InlineWikilinkSuggestionList,
-} from './InlineWikilinkParts'
+import { InlineWikilinkEditorField, InlineWikilinkPaletteLayout } from './InlineWikilinkParts'
+import { InlineWikilinkSuggestionMenu } from './InlineWikilinkSuggestionMenu'
 import { handleInlineWikilinkKeyDown } from './inlineWikilinkKeydown'
 import { useInlineWikilinkSelection } from './useInlineWikilinkSelection'
 import { useInlineWikilinkSuggestionsState } from './useInlineWikilinkSuggestionsState'
 import { normalizeInlineWikilinkValue } from './inlineWikilinkTokens'
+import { isInsertBeforeInput, isPlainTextBeforeInput } from './inlineWikilinkBeforeInput'
 import {
-  isInsertBeforeInput,
-  isPlainTextBeforeInput,
-} from './inlineWikilinkBeforeInput'
+  collapseSelectionRange,
+  fullSelectionRange,
+  isCommandBackspaceShortcut,
+  isCompositionKeyboardEvent,
+  isLineBreakShortcut,
+  isNativeCompositionBeforeInput,
+  isSelectAllShortcut,
+} from './inlineWikilinkInputEvents'
+import {
+  containsUnsupportedInlineContent,
+  deleteToLineStart,
+  hasUnsupportedClipboardPayload,
+  submitInlineValue,
+} from './inlineWikilinkInputOperations'
 import { restorePendingRemountState } from './inlineWikilinkRemountState'
 import { useNativePathDrop } from './useNativePathDrop'
 
@@ -68,56 +61,6 @@ interface InlineWikilinkInputProps {
   paletteFooter?: ReactNode
 }
 
-function collapseSelectionRange(nextSelectionIndex: number) {
-  return {
-    start: nextSelectionIndex,
-    end: nextSelectionIndex,
-  }
-}
-
-function fullSelectionRange(value: string) {
-  return {
-    start: 0,
-    end: value.length,
-  }
-}
-
-function isSelectAllShortcut(event: React.KeyboardEvent<HTMLDivElement>) {
-  return event.key.toLowerCase() === 'a' && (event.metaKey || event.ctrlKey)
-}
-
-function isCommandBackspaceShortcut(event: React.KeyboardEvent<HTMLDivElement>) {
-  return event.key === 'Backspace'
-    && event.metaKey
-    && !event.ctrlKey
-    && !event.altKey
-    && !event.shiftKey
-}
-
-function isLineBreakShortcut(
-  event: React.KeyboardEvent<HTMLDivElement>,
-  isComposing: boolean,
-) {
-  return event.key === 'Enter'
-    && (event.shiftKey || event.ctrlKey)
-    && !isComposing
-    && !event.nativeEvent.isComposing
-    && event.keyCode !== 229
-}
-
-function isNativeCompositionBeforeInput(
-  nativeEvent: InputEvent,
-  isComposing: boolean,
-  hasPendingCompositionInput: boolean,
-  isSettlingComposition: boolean,
-) {
-  return isComposing
-    || hasPendingCompositionInput
-    || nativeEvent.isComposing
-    || nativeEvent.inputType === 'insertCompositionText'
-    || (isSettlingComposition && nativeEvent.inputType === 'insertText' && typeof nativeEvent.data === 'string')
-}
-
 export const UNSUPPORTED_INLINE_PASTE_MESSAGE = 'Only text paste is supported in the AI composer right now.'
 const POST_COMPOSITION_TEXT_INPUT_SETTLE_MS = 120
 
@@ -131,125 +74,52 @@ function usePostCompositionTextInputSettle() {
     window.clearTimeout(compositionSettleTimerRef.current)
     compositionSettleTimerRef.current = null
   }, [])
-  const startCompositionSettleWindow = useCallback(() => {
-    clearCompositionSettleWindow()
-    isSettlingCompositionRef.current = true
-    compositionSettleTimerRef.current = window.setTimeout(() => {
-      isSettlingCompositionRef.current = false
-      compositionSettleTimerRef.current = null
-    }, POST_COMPOSITION_TEXT_INPUT_SETTLE_MS)
-  }, [clearCompositionSettleWindow])
+  const startCompositionSettleWindow = useCallback(
+    (onSettled: () => void) => {
+      clearCompositionSettleWindow()
+      isSettlingCompositionRef.current = true
+      compositionSettleTimerRef.current = window.setTimeout(() => {
+        compositionSettleTimerRef.current = null
+        onSettled()
+      }, POST_COMPOSITION_TEXT_INPUT_SETTLE_MS)
+    },
+    [clearCompositionSettleWindow],
+  )
 
   useLayoutEffect(() => () => clearCompositionSettleWindow(), [clearCompositionSettleWindow])
 
   return {
     clearCompositionSettleWindow,
+    hasPendingCompositionFlush: () => compositionSettleTimerRef.current !== null,
     isSettlingCompositionRef,
     startCompositionSettleWindow,
   }
 }
 
-function hasUnsupportedClipboardPayload(clipboardData: DataTransfer) {
-  if (clipboardData.files.length > 0) return true
-
-  return Array.from(clipboardData.items).some((item) =>
-    item.kind === 'file' || item.type.startsWith('image/'),
-  )
-}
-
-function containsUnsupportedInlineContent(editor: HTMLDivElement) {
-  return editor.querySelector('img, picture, video, audio, canvas, figure, iframe, object') !== null
-}
-
-function deleteToLineStart(
-  value: string,
-  selection: InlineSelectionRange,
-): { value: string; selection: InlineSelectionRange } | null {
-  const start = Math.max(0, Math.min(selection.start, selection.end, value.length))
-  const end = Math.max(start, Math.min(Math.max(selection.start, selection.end), value.length))
-  if (start !== end) return replaceInlineSelection(value, { start, end }, '')
-
-  const lineStart = start === 0 ? 0 : value.lastIndexOf('\n', start - 1) + 1
-  if (lineStart === start) return null
-
-  return replaceInlineSelection(value, { start: lineStart, end: start }, '')
-}
-
-function submitInlineValue({
-  onSubmit,
-  submitOnEmpty,
-  value,
-  references,
-}: {
-  onSubmit?: (text: string, references: NoteReference[]) => void
-  submitOnEmpty: boolean
-  value: string
-  references: NoteReference[]
-}) {
-  if (!onSubmit) return
-  const normalizedValue = normalizeInlineWikilinkValue(value)
-  if (!submitOnEmpty && !normalizedValue.trim()) return
-  onSubmit(normalizedValue, references)
-}
-
-function renderInlineSuggestionList({
-  suggestions,
-  selectedSuggestionIndex,
-  setSuggestionIndex,
-  selectSuggestion,
-  typeEntryMap,
-  suggestionListVariant,
-  suggestionEmptyLabel,
-}: {
-  suggestions: ReturnType<typeof useInlineWikilinkSuggestionsState>['suggestions']
-  selectedSuggestionIndex: number
-  setSuggestionIndex: (index: number) => void
-  selectSuggestion: (index: number) => void
-  typeEntryMap: Record<string, VaultEntry>
-  suggestionListVariant: 'floating' | 'palette'
-  suggestionEmptyLabel: string
-}) {
-  if (suggestions.length === 0) return null
-
-  return (
-    <InlineWikilinkSuggestionList
-      suggestions={suggestions}
-      selectedIndex={selectedSuggestionIndex}
-      onHover={setSuggestionIndex}
-      onSelect={selectSuggestion}
-      typeEntryMap={typeEntryMap}
-      variant={suggestionListVariant}
-      emptyLabel={suggestionEmptyLabel}
-    />
-  )
-}
-
-export function InlineWikilinkInput({
-  entries,
-  value,
-  onChange,
-  onSubmit,
-  onUnsupportedPaste,
-  submitOnEmpty = false,
-  disabled = false,
-  placeholder,
-  placeholderClassName,
-  inputRef,
-  dataTestId = 'agent-input',
-  editorClassName,
-  editorStyle,
-  suggestionListVariant = 'floating',
-  suggestionEmptyLabel = 'No matching notes',
-  paletteHeader,
-  paletteEmptyState,
-  paletteFooter,
-}: InlineWikilinkInputProps) {
+export function InlineWikilinkInput(options: InlineWikilinkInputProps) {
+  const {
+    entries,
+    value,
+    onChange,
+    onSubmit,
+    onUnsupportedPaste,
+    submitOnEmpty = false,
+    disabled = false,
+    placeholder,
+    placeholderClassName,
+    inputRef,
+    dataTestId = 'agent-input',
+    editorClassName,
+    editorStyle,
+    suggestionListVariant = 'floating',
+    suggestionEmptyLabel = 'No matching notes',
+    paletteHeader,
+    paletteEmptyState,
+    paletteFooter,
+  } = options
   const [renderVersion, forceRender] = useState(0)
   const isComposingRef = useRef(false)
-  const segments = useMemo(
-    () => buildInlineWikilinkSegments(value, entries),
-    [entries, value],
-  )
+  const segments = useMemo(() => buildInlineWikilinkSegments(value, entries), [entries, value])
   const typeEntryMap = useMemo(() => buildTypeEntryMap(entries), [entries])
   const {
     editorRef,
@@ -272,6 +142,7 @@ export function InlineWikilinkInput({
   const pendingScrollTopAfterRemountRef = useRef<number | null>(null)
   const {
     clearCompositionSettleWindow,
+    hasPendingCompositionFlush,
     isSettlingCompositionRef,
     startCompositionSettleWindow,
   } = usePostCompositionTextInputSettle()
@@ -285,42 +156,36 @@ export function InlineWikilinkInput({
     )
   }, [editorRef, focusSelectionRange, renderVersion])
   const activeQuery = useMemo(
-    () => selectionRange.start === selectionRange.end
-      ? findActiveWikilinkQuery(value, selectionIndex)
-      : null,
+    () => (selectionRange.start === selectionRange.end ? findActiveWikilinkQuery(value, selectionIndex) : null),
     [selectionIndex, selectionRange.end, selectionRange.start, value],
   )
   const references = useMemo(() => extractInlineWikilinkReferences(value, entries), [entries, value])
-  const {
-    suggestions,
-    selectedSuggestionIndex,
-    setSuggestionIndex,
-    selectSuggestion,
-    cycleSuggestions,
-  } = useInlineWikilinkSuggestionsState({
-    activeQueryKey: activeQuery ? `${activeQuery.start}:${activeQuery.query}` : '',
-    entries,
-    query: activeQuery?.query ?? null,
-    value,
-    selectionIndex,
-    onChange,
-    onSelectionIndexChange: (nextSelectionIndex) => setSelectionRange(collapseSelectionRange(nextSelectionIndex)),
-    focusSelectionAt: (nextSelectionIndex) => focusSelectionRange(collapseSelectionRange(nextSelectionIndex)),
-  })
-  const insertTransferText = useCallback((text: string, focusAfterInsert = false) => {
-    const editor = editorRef.current
-    const currentSelectionRange = editor && !focusAfterInsert
-      ? readSelectionRange(editor)
-      : selectionRange
-    const nextState = replaceInlineSelection(value, currentSelectionRange, text)
-    const shouldRestoreFocus = focusAfterInsert || document.activeElement === editor
+  const { suggestions, selectedSuggestionIndex, setSuggestionIndex, selectSuggestion, cycleSuggestions } =
+    useInlineWikilinkSuggestionsState({
+      activeQueryKey: activeQuery ? `${activeQuery.start}:${activeQuery.query}` : '',
+      entries,
+      query: activeQuery?.query ?? null,
+      value,
+      selectionIndex,
+      onChange,
+      onSelectionIndexChange: (nextSelectionIndex) => setSelectionRange(collapseSelectionRange(nextSelectionIndex)),
+      focusSelectionAt: (nextSelectionIndex) => focusSelectionRange(collapseSelectionRange(nextSelectionIndex)),
+    })
+  const insertTransferText = useCallback(
+    (text: string, focusAfterInsert = false) => {
+      const editor = editorRef.current
+      const currentSelectionRange = editor && !focusAfterInsert ? readSelectionRange(editor) : selectionRange
+      const nextState = replaceInlineSelection(value, currentSelectionRange, text)
+      const shouldRestoreFocus = focusAfterInsert || document.activeElement === editor
 
-    onChange(nextState.value)
-    setSelectionRange(nextState.selection)
-    pendingFocusAfterRemountRef.current = shouldRestoreFocus ? nextState.selection : null
-    pendingScrollTopAfterRemountRef.current = editor?.scrollTop ?? null
-    forceRender((current) => current + 1)
-  }, [editorRef, onChange, selectionRange, setSelectionRange, value])
+      onChange(nextState.value)
+      setSelectionRange(nextState.selection)
+      pendingFocusAfterRemountRef.current = shouldRestoreFocus ? nextState.selection : null
+      pendingScrollTopAfterRemountRef.current = editor?.scrollTop ?? null
+      forceRender((current) => current + 1)
+    },
+    [editorRef, onChange, selectionRange, setSelectionRange, value],
+  )
   const insertNativePathDrop = (paths: string[]) => {
     const droppedPathText = formatDroppedPathList(paths)
     if (!droppedPathText) return
@@ -351,7 +216,7 @@ export function InlineWikilinkInput({
   }
   const deleteContentToLineStart = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (!isCommandBackspaceShortcut(event)) return false
-    if (isComposingRef.current || event.nativeEvent.isComposing || event.keyCode === 229) return false
+    if (isCompositionKeyboardEvent(event, isComposingRef.current)) return false
 
     const editor = editorRef.current
     const currentSelectionRange = editor ? readSelectionRange(editor) : selectionRange
@@ -392,51 +257,57 @@ export function InlineWikilinkInput({
     pendingFocusAfterRemountRef.current = nextState.selection
     forceRender((current) => current + 1)
   }
-  const handleBeforeInput = useCallback((nativeEvent: InputEvent) => {
-    if (disabled) return
+  const handleBeforeInput = useCallback(
+    (nativeEvent: InputEvent) => {
+      if (disabled) return
 
-    if (!isInsertBeforeInput(nativeEvent)) return
+      if (!isInsertBeforeInput(nativeEvent)) return
 
-    if (isNativeCompositionBeforeInput(
-      nativeEvent,
-      isComposingRef.current,
-      pendingCompositionInputRef.current,
-      isSettlingCompositionRef.current,
-    )) return
+      if (
+        isNativeCompositionBeforeInput(
+          nativeEvent,
+          isComposingRef.current,
+          pendingCompositionInputRef.current,
+          isSettlingCompositionRef.current,
+        )
+      )
+        return
 
-    if (nativeEvent.inputType === 'insertLineBreak') {
-      nativeEvent.preventDefault()
-      insertTransferText('\n')
-      return
-    }
-
-    if (isPlainTextBeforeInput(nativeEvent)) {
-      nativeEvent.preventDefault()
-      insertTransferText(nativeEvent.data)
-      return
-    }
-
-    const dataTransfer = nativeEvent.dataTransfer
-    if (!dataTransfer || !hasUnsupportedClipboardPayload(dataTransfer)) return
-
-    if (nativeEvent.inputType === 'insertFromDrop' && handledFileDropRef.current) {
-      handledFileDropRef.current = false
-      nativeEvent.preventDefault()
-      return
-    }
-
-    if (nativeEvent.inputType === 'insertFromDrop') {
-      const droppedPathText = extractDroppedPathText(dataTransfer)
-      if (droppedPathText) {
+      if (nativeEvent.inputType === 'insertLineBreak') {
         nativeEvent.preventDefault()
-        insertTransferText(droppedPathText)
+        insertTransferText('\n')
         return
       }
-    }
 
-    nativeEvent.preventDefault()
-    notifyUnsupportedPaste()
-  }, [disabled, insertTransferText, isSettlingCompositionRef, notifyUnsupportedPaste])
+      if (isPlainTextBeforeInput(nativeEvent)) {
+        nativeEvent.preventDefault()
+        insertTransferText(nativeEvent.data)
+        return
+      }
+
+      const dataTransfer = nativeEvent.dataTransfer
+      if (!dataTransfer || !hasUnsupportedClipboardPayload(dataTransfer)) return
+
+      if (nativeEvent.inputType === 'insertFromDrop' && handledFileDropRef.current) {
+        handledFileDropRef.current = false
+        nativeEvent.preventDefault()
+        return
+      }
+
+      if (nativeEvent.inputType === 'insertFromDrop') {
+        const droppedPathText = extractDroppedPathText(dataTransfer)
+        if (droppedPathText) {
+          nativeEvent.preventDefault()
+          insertTransferText(droppedPathText)
+          return
+        }
+      }
+
+      nativeEvent.preventDefault()
+      notifyUnsupportedPaste()
+    },
+    [disabled, insertTransferText, isSettlingCompositionRef, notifyUnsupportedPaste],
+  )
   useLayoutEffect(() => {
     void renderVersion
     const editor = editorRef.current
@@ -535,7 +406,6 @@ export function InlineWikilinkInput({
       start: Math.min(nextSelection.start, nextValue.length),
       end: Math.min(nextSelection.end, nextValue.length),
     }
-
     const shouldRestoreFocus = document.activeElement === editor || document.activeElement === editorRef.current
     pendingFocusAfterRemountRef.current = shouldRestoreFocus ? clampedSelection : null
     onChange(nextValue)
@@ -551,8 +421,7 @@ export function InlineWikilinkInput({
   }
   const handleCompositionEnd = (compositionEditor: HTMLDivElement) => {
     isComposingRef.current = false
-    startCompositionSettleWindow()
-    queueMicrotask(() => flushPendingCompositionInput(compositionEditor))
+    startCompositionSettleWindow(() => flushPendingCompositionInput(compositionEditor))
   }
   const handleInput = () => {
     if (disabled) return
@@ -562,6 +431,12 @@ export function InlineWikilinkInput({
       return
     }
 
+    if (isSettlingCompositionRef.current && hasPendingCompositionFlush()) {
+      pendingCompositionInputRef.current = true
+      return
+    }
+
+    clearCompositionSettleWindow()
     pendingCompositionInputRef.current = false
     syncValueFromEditor()
   }
@@ -569,9 +444,8 @@ export function InlineWikilinkInput({
     const currentValue = editorRef.current
       ? normalizeInlineWikilinkValue(serializeInlineNode(editorRef.current))
       : value
-    const currentReferences = currentValue === value
-      ? references
-      : extractInlineWikilinkReferences(currentValue, entries)
+    const currentReferences =
+      currentValue === value ? references : extractInlineWikilinkReferences(currentValue, entries)
 
     submitInlineValue({
       onSubmit,
@@ -633,15 +507,17 @@ export function InlineWikilinkInput({
       typeEntryMap={typeEntryMap}
     />
   )
-  const suggestionList = renderInlineSuggestionList({
-    suggestions,
-    selectedSuggestionIndex,
-    setSuggestionIndex,
-    selectSuggestion,
-    typeEntryMap,
-    suggestionListVariant,
-    suggestionEmptyLabel,
-  })
+  const suggestionList = (
+    <InlineWikilinkSuggestionMenu
+      suggestions={suggestions}
+      selectedSuggestionIndex={selectedSuggestionIndex}
+      setSuggestionIndex={setSuggestionIndex}
+      selectSuggestion={selectSuggestion}
+      typeEntryMap={typeEntryMap}
+      suggestionListVariant={suggestionListVariant}
+      suggestionEmptyLabel={suggestionEmptyLabel}
+    />
+  )
   if (suggestionListVariant === 'palette') {
     return (
       <InlineWikilinkPaletteLayout
@@ -653,5 +529,10 @@ export function InlineWikilinkInput({
       />
     )
   }
-  return <div className="relative">{editor}{suggestionList}</div>
+  return (
+    <div className="relative">
+      {editor}
+      {suggestionList}
+    </div>
+  )
 }

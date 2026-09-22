@@ -1,5 +1,7 @@
 // Wikilink placeholder tokens for markdown round-trip
 import { advanceMarkdownFence, type MarkdownFence, type MarkdownFenceScanOptions } from './markdownFences'
+import { stripInlineMarkdown } from './inlineMarkdown'
+import wordCountContract from '../shared/wordCountContract.json'
 
 const WL_START = '\u2039WIKILINK:'
 const WL_END = '\u203A'
@@ -18,8 +20,6 @@ type FrontmatterSplit = [MarkdownSource, MarkdownSource]
 type CharacterCount = number
 type LineIndex = number
 type TextOffset = number
-type TokenSequence = string
-type ParsedTextRange = { text: MarkdownSource, nextIndex: TextOffset }
 type MatchTargets = Set<WikilinkTarget>
 type WordCount = number
 type FenceMarker = MarkdownFence | null
@@ -423,7 +423,7 @@ export function extractBacklinkContext(
         // Collapse whitespace and truncate
         const flat = trimmed.replace(/\s+/g, ' ')
         if (flat.length <= maxLength) return flat
-        return flat.slice(0, maxLength - 1) + '\u2026'
+        return `${flat.slice(0, maxLength - 1)}\u2026`
       }
       match = re.exec(trimmed)
     }
@@ -466,61 +466,6 @@ function removeH1Line(body: MarkdownSource): MarkdownSource {
   return body
 }
 
-/** Strip markdown formatting chars: bold, italic, code, strikethrough, and resolve links. */
-function stripMarkdownChars(s: MarkdownSource): MarkdownSource {
-  let result = ''
-  let i = 0
-  while (i < s.length) {
-    if (s.startsWith('[[', i)) {
-      const parsed = readUntilSequence(s, i + 2, ']]')
-      result += wikilinkDisplayText(parsed.text)
-      i = parsed.nextIndex
-    } else if (s.charAt(i) === '[') {
-      const parsed = readUntilChar(s, i + 1, ']')
-      result += parsed.text
-      i = skipMarkdownLinkDestination(s, parsed.nextIndex)
-    } else if (FORMAT_MARKERS.has(s.charAt(i))) {
-      i++
-    } else {
-      result += s.charAt(i)
-      i++
-    }
-  }
-  return result
-}
-
-function readUntilSequence(
-  value: MarkdownSource,
-  start: TextOffset,
-  sequence: TokenSequence,
-): ParsedTextRange {
-  const end = value.indexOf(sequence, start)
-  if (end === -1) return { text: value.slice(start), nextIndex: value.length }
-  return { text: value.slice(start, end), nextIndex: end + sequence.length }
-}
-
-function readUntilChar(
-  value: MarkdownSource,
-  start: TextOffset,
-  char: TokenSequence,
-): ParsedTextRange {
-  const end = value.indexOf(char, start)
-  if (end === -1) return { text: value.slice(start), nextIndex: value.length }
-  return { text: value.slice(start, end), nextIndex: end + 1 }
-}
-
-function skipMarkdownLinkDestination(value: MarkdownSource, start: TextOffset): TextOffset {
-  if (value.charAt(start) !== '(') return start
-
-  const end = value.indexOf(')', start + 1)
-  return end === -1 ? value.length : end + 1
-}
-
-function wikilinkDisplayText(inner: WikilinkTarget): MarkdownSource {
-  const pipe = inner.indexOf('|')
-  return pipe === -1 ? inner : inner.slice(pipe + 1)
-}
-
 /** Extract sub-heading text (## , ### , etc.) stripped of the # prefix. */
 function extractSubheadingText(line: MarkdownLine): MarkdownSource | null {
   const t = line.trim()
@@ -538,27 +483,55 @@ export function extractSnippet(content: MarkdownSource): MarkdownSource {
   const [, body] = splitFrontmatter(content)
   const withoutH1 = removeH1Line(body)
   const clean = withoutH1.split('\n').filter(isSnippetLine).map(stripListMarker).join(' ')
-  const stripped = stripMarkdownChars(clean).trim()
+  const stripped = stripInlineMarkdown(clean)
   if (stripped) {
     if (stripped.length <= 160) return stripped
-    return stripped.slice(0, 160) + '...'
+    return `${stripped.slice(0, 160)}...`
   }
   // Fallback: collect sub-heading text when no paragraph content exists
   const headingText = withoutH1.split('\n')
     .map(extractSubheadingText)
     .filter((t): t is MarkdownSource => t !== null)
     .join(' ')
-  const headingStripped = stripMarkdownChars(headingText).trim()
+  const headingStripped = stripInlineMarkdown(headingText)
   if (!headingStripped) return ''
   if (headingStripped.length <= 160) return headingStripped
-  return headingStripped.slice(0, 160) + '...'
+  return `${headingStripped.slice(0, 160)}...`
 }
 
 export function countWords(content: MarkdownSource): WordCount {
   const [, body] = splitFrontmatter(content)
   const withoutTitle = body.replace(/^\s*# [^\n]+\n?/, '')
-  const withoutWikilinks = withoutTitle.replace(/\[\[[^\]]*\]\]/g, '')
-  const text = withoutWikilinks.replace(/[#*_[\]`>~\-|]/g, '').trim()
+  const withoutWikilinks = withoutTitle.replace(WORD_COUNT_WIKILINK_RE, '')
+  const text = withoutWikilinks.replace(WORD_COUNT_MARKDOWN_MARKER_RE, '').trim()
   if (!text) return 0
-  return text.split(/\s+/).filter(Boolean).length
+  const cjkCount = [...text.matchAll(WORD_COUNT_UNSPACED_CJK_RE)].length
+  const textWithCjkBoundaries = text.replace(WORD_COUNT_UNSPACED_CJK_RE, ' ')
+  return cjkCount + [...textWithCjkBoundaries.matchAll(WORD_COUNT_WORD_RE)].length
 }
+
+function contractPattern(name: string, expectedSource: string, expression: RegExp): RegExp {
+  if (expression.source === expectedSource) return expression
+  throw new Error(`Word-count pattern drifted from the shared contract: ${name}`)
+}
+
+const WORD_COUNT_WIKILINK_RE = contractPattern(
+  'wikilink',
+  wordCountContract.patterns.wikilink,
+  /\[\[[^\]]*\]\]/gu,
+)
+const WORD_COUNT_MARKDOWN_MARKER_RE = contractPattern(
+  'markdownMarker',
+  wordCountContract.patterns.markdownMarker,
+  /[#*_`>~|]|\[|\]|-/gu,
+)
+const WORD_COUNT_UNSPACED_CJK_RE = contractPattern(
+  'unspacedCjk',
+  wordCountContract.patterns.unspacedCjk,
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/gu,
+)
+const WORD_COUNT_WORD_RE = contractPattern(
+  'word',
+  wordCountContract.patterns.word,
+  /[\p{L}\p{N}]['’\p{L}\p{N}]*/gu,
+)

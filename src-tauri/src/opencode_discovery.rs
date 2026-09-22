@@ -1,6 +1,12 @@
 use crate::ai_agents::AiAgentAvailability;
 use std::path::{Path, PathBuf};
 
+#[cfg(windows)]
+const WINDOWS_ENVIRONMENT_KEYS: [&str; 2] = [
+    r"HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+    r"HKCU\Environment",
+];
+
 pub(crate) fn check_cli() -> AiAgentAvailability {
     match find_binary() {
         Ok(binary) => AiAgentAvailability {
@@ -109,12 +115,60 @@ fn existing_path(line: &str) -> Option<PathBuf> {
 
 fn opencode_binary_candidates() -> Vec<PathBuf> {
     let mut candidates = opencode_binary_candidates_from_env();
+    candidates.extend(opencode_binary_candidates_from_registered_windows_path());
 
     if let Some(home) = dirs::home_dir() {
         candidates.extend(opencode_binary_candidates_for_home(&home));
     }
 
     candidates
+}
+
+#[cfg(windows)]
+fn opencode_binary_candidates_from_registered_windows_path() -> Vec<PathBuf> {
+    WINDOWS_ENVIRONMENT_KEYS
+        .iter()
+        .filter_map(|key| registered_windows_path(key))
+        .flat_map(|path| opencode_candidates_from_windows_path(&path))
+        .collect()
+}
+
+#[cfg(windows)]
+fn registered_windows_path(key: &str) -> Option<String> {
+    crate::hidden_command("reg.exe")
+        .args(["query", key, "/v", "Path"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| {
+            registered_windows_path_from_query(&String::from_utf8_lossy(&output.stdout))
+                .map(str::to_owned)
+        })
+}
+
+#[cfg(not(windows))]
+fn opencode_binary_candidates_from_registered_windows_path() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+#[cfg(any(windows, test))]
+fn opencode_candidates_from_windows_path(path: &str) -> Vec<PathBuf> {
+    path.split(';')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .flat_map(|entry| opencode_executable_names(Path::new(entry)))
+        .collect()
+}
+
+#[cfg(any(windows, test))]
+fn registered_windows_path_from_query(stdout: &str) -> Option<&str> {
+    stdout.lines().find_map(|line| {
+        ["REG_EXPAND_SZ", "REG_SZ"].iter().find_map(|value_kind| {
+            line.split_once(value_kind)
+                .map(|(_, value)| value.trim())
+                .filter(|value| !value.is_empty())
+        })
+    })
 }
 
 fn opencode_binary_candidates_for_home(home: &Path) -> Vec<PathBuf> {
@@ -173,7 +227,6 @@ struct OpencodeEnvCandidateRoots {
     pnpm_home: Option<PathBuf>,
     appdata: Option<PathBuf>,
     localappdata: Option<PathBuf>,
-    program_files: Option<PathBuf>,
 }
 
 impl OpencodeEnvCandidateRoots {
@@ -186,7 +239,6 @@ impl OpencodeEnvCandidateRoots {
             pnpm_home: std::env::var_os("PNPM_HOME").map(PathBuf::from),
             appdata: std::env::var_os("APPDATA").map(PathBuf::from),
             localappdata: std::env::var_os("LOCALAPPDATA").map(PathBuf::from),
-            program_files: std::env::var_os("ProgramFiles").map(PathBuf::from),
         }
     }
 }
@@ -209,15 +261,8 @@ fn opencode_binary_candidates_from_env_values(paths: OpencodeEnvCandidateRoots) 
         opencode_npm_prefix_candidates(&path.join("npm"))
     });
     extend_from_optional_path(&mut candidates, paths.localappdata, |path| {
-        let mut local_candidates = opencode_executable_names(&path.join("pnpm"));
-        local_candidates.extend(opencode_desktop_candidates_for_root(&path.join("Programs")));
-        local_candidates
+        opencode_executable_names(&path.join("pnpm"))
     });
-    extend_from_optional_path(
-        &mut candidates,
-        paths.program_files,
-        opencode_desktop_candidates_for_root,
-    );
 
     candidates
 }
@@ -261,13 +306,6 @@ fn opencode_npm_prefix_candidates(prefix: &Path) -> Vec<PathBuf> {
         prefix.join("lib/node_modules/opencode-ai/bin/opencode"),
     ]);
     candidates
-}
-
-fn opencode_desktop_candidates_for_root(root: &Path) -> Vec<PathBuf> {
-    vec![
-        root.join("OpenCode/opencode.exe"),
-        root.join("opencode/opencode.exe"),
-    ]
 }
 
 #[cfg(test)]
@@ -481,17 +519,15 @@ mod tests {
     }
 
     #[test]
-    fn env_candidates_accept_opencode_path_directory_and_desktop_roots() {
+    fn env_candidates_accept_opencode_path_directory_and_cli_roots() {
         let configured_dir = PathBuf::from(r"C:\Tools\opencode");
         let appdata = PathBuf::from(r"C:\Users\alex\AppData\Roaming");
         let localappdata = PathBuf::from(r"C:\Users\alex\AppData\Local");
-        let program_files = PathBuf::from(r"C:\Program Files");
 
         let candidates = opencode_binary_candidates_from_env_values(OpencodeEnvCandidateRoots {
             opencode_path: Some(configured_dir.clone()),
             appdata: Some(appdata.clone()),
             localappdata: Some(localappdata.clone()),
-            program_files: Some(program_files.clone()),
             ..OpencodeEnvCandidateRoots::default()
         });
 
@@ -499,8 +535,6 @@ mod tests {
             configured_dir.join("opencode.exe"),
             appdata.join("npm/opencode.cmd"),
             localappdata.join("pnpm/opencode.exe"),
-            localappdata.join("Programs/OpenCode/opencode.exe"),
-            program_files.join("OpenCode/opencode.exe"),
         ];
 
         for candidate in expected {
@@ -508,6 +542,51 @@ mod tests {
                 candidates.contains(&candidate),
                 "missing {}",
                 candidate.display()
+            );
+        }
+    }
+
+    #[test]
+    fn registered_windows_path_candidates_include_custom_npm_prefix() {
+        let candidates = opencode_candidates_from_windows_path(
+            r"C:\Windows\System32;D:\projects\npm\npm-global",
+        );
+
+        let custom_prefix = PathBuf::from(r"D:\projects\npm\npm-global");
+        assert!(candidates.contains(&custom_prefix.join("opencode.cmd")));
+        assert!(candidates.contains(&custom_prefix.join("opencode.exe")));
+    }
+
+    #[test]
+    fn registered_windows_path_query_extracts_expandable_path_value() {
+        let output = "\nHKEY_CURRENT_USER\\Environment\n    Path    REG_EXPAND_SZ    C:\\Windows;D:\\projects\\npm\\npm-global\n";
+
+        assert_eq!(
+            registered_windows_path_from_query(output),
+            Some(r"C:\Windows;D:\projects\npm\npm-global"),
+        );
+    }
+
+    #[test]
+    fn env_candidates_exclude_windows_desktop_installs() {
+        let localappdata = PathBuf::from(r"C:\Users\alex\AppData\Local");
+
+        let candidates = opencode_binary_candidates_from_env_values(OpencodeEnvCandidateRoots {
+            localappdata: Some(localappdata.clone()),
+            ..OpencodeEnvCandidateRoots::default()
+        });
+
+        let desktop_binaries = [
+            localappdata.join("Programs/@opencode-aidesktop/OpenCode.exe"),
+            localappdata.join("Programs/OpenCode/opencode.exe"),
+            localappdata.join("Programs/opencode/opencode.exe"),
+        ];
+
+        for binary in desktop_binaries {
+            assert!(
+                !candidates.contains(&binary),
+                "included {}",
+                binary.display()
             );
         }
     }

@@ -1,16 +1,20 @@
 import { useEffect, type RefObject } from 'react'
+import { relativePathStem } from '../utils/wikilink'
 import { openEditorAttachmentOrUrl } from './editorAttachmentActions'
 
-const CODE_CONTEXT_SELECTOR = '[data-content-type="codeBlock"], pre, code'
+const CODE_BLOCK_CONTEXT_SELECTOR = '[data-content-type="codeBlock"], pre'
+const INLINE_CODE_SELECTOR = 'code'
 const HEADING_SELECTOR = '[data-content-type="heading"], h1, h2, h3, h4, h5, h6'
 const MOUSEDOWN_URL_SUPPRESSION_MS = 750
 const MARKDOWN_NOTE_EXT_RE = /\.(?:md|markdown)$/iu
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/iu
+const WIKILINK_SELECTOR = '.wikilink[data-target]'
 type LinkSourcePath = string | null | undefined
 type LinkActivationContext = {
   container: HTMLElement
   onNavigateWikilink: (target: string) => void
   sourceEntryPath?: LinkSourcePath
+  sourceVaultPath?: LinkSourcePath
   vaultPath?: string
 }
 type AnchorKeyRequest = { value: string }
@@ -46,13 +50,14 @@ type HrefActivationRequest = {
 type MarkdownNoteTargetRequest = {
   href: string
   sourceEntryPath?: LinkSourcePath
+  sourceVaultPath?: LinkSourcePath
 }
 type NavigationRequest = {
   context: LinkActivationContext
   target: string
 }
 type PathRequest = { path: string }
-type SourceDirectoryRequest = { sourceEntryPath?: LinkSourcePath }
+type SourceDirectoryRequest = Pick<LinkActivationContext, 'sourceEntryPath' | 'sourceVaultPath'>
 type FollowLinkStateRequest = {
   active: boolean
   container: HTMLElement
@@ -71,7 +76,9 @@ function hasFollowModifier(event: KeyboardEvent | MouseEvent) {
 }
 
 function isInsideCodeContext(target: HTMLElement) {
-  return !!target.closest(CODE_CONTEXT_SELECTOR)
+  if (target.closest(CODE_BLOCK_CONTEXT_SELECTOR)) return true
+  const inlineCode = target.closest(INLINE_CODE_SELECTOR)
+  return Boolean(inlineCode && !target.closest('a[href]'))
 }
 
 function elementFromEventTarget(target: EventTarget | null) {
@@ -81,7 +88,7 @@ function elementFromEventTarget(target: EventTarget | null) {
 }
 
 function resolveWikilinkTarget(target: HTMLElement) {
-  return target.closest<HTMLElement>('.wikilink[data-target]')?.dataset.target ?? null
+  return target.closest<HTMLElement>(WIKILINK_SELECTOR)?.dataset.target ?? null
 }
 
 function resolveAnchorHref(target: HTMLElement) {
@@ -100,9 +107,20 @@ function setFollowLinksActive({ active, container }: FollowLinkStateRequest) {
   else container.removeAttribute('data-follow-links')
 }
 
-function consumeEditorLinkEvent(event: MouseEvent) {
+function consumeEditorLinkEvent(event: Event) {
   event.preventDefault()
   event.stopPropagation()
+}
+
+function makeWikilinkKeyboardAccessible(wikilink: HTMLElement) {
+  wikilink.setAttribute('role', 'link')
+  wikilink.tabIndex = 0
+}
+
+function makeWikilinksKeyboardAccessible(container: HTMLElement) {
+  for (const wikilink of Array.from(container.querySelectorAll<HTMLElement>(WIKILINK_SELECTOR))) {
+    makeWikilinkKeyboardAccessible(wikilink)
+  }
 }
 
 function safeDecodeUriComponent({ value }: DecodeRequest) {
@@ -184,14 +202,17 @@ function normalizePathSegments({ path }: PathRequest) {
   return segments.join('/')
 }
 
-function sourceDirectory({ sourceEntryPath }: SourceDirectoryRequest) {
+function sourceDirectory({ sourceEntryPath, sourceVaultPath }: SourceDirectoryRequest) {
   const sourcePath = sourceEntryPath?.replace(/\\/g, '/')
   if (!sourcePath) return ''
 
-  return sourcePath.split('/').slice(0, -1).join('/')
+  const sourceTarget = sourceVaultPath
+    ? relativePathStem(sourcePath, sourceVaultPath)
+    : sourcePath.replace(/^\/+/, '')
+  return sourceTarget.split('/').slice(0, -1).join('/')
 }
 
-function markdownNoteTargetFromHref({ href, sourceEntryPath }: MarkdownNoteTargetRequest): string | null {
+function markdownNoteTargetFromHref({ href, sourceEntryPath, sourceVaultPath }: MarkdownNoteTargetRequest): string | null {
   const trimmed = href.trim()
   if (!trimmed || trimmed.startsWith('#') || trimmed.startsWith('//') || URL_SCHEME_RE.test(trimmed)) return null
 
@@ -200,7 +221,7 @@ function markdownNoteTargetFromHref({ href, sourceEntryPath }: MarkdownNoteTarge
   if (!MARKDOWN_NOTE_EXT_RE.test(decodedPath)) return null
 
   const pathStem = decodedPath.replace(MARKDOWN_NOTE_EXT_RE, '')
-  const base = sourceDirectory({ sourceEntryPath })
+  const base = sourceDirectory({ sourceEntryPath, sourceVaultPath })
   if (base && !pathStem.startsWith('/')) return normalizePathSegments({ path: `${base}/${pathStem}` })
 
   return normalizePathSegments({ path: pathStem.replace(/^\/+/u, '') })
@@ -228,7 +249,11 @@ function activateHref({ context, event, href }: HrefActivationRequest) {
         return
       }
 
-      const markdownTarget = markdownNoteTargetFromHref({ href, sourceEntryPath: context.sourceEntryPath })
+      const markdownTarget = markdownNoteTargetFromHref({
+        href,
+        sourceEntryPath: context.sourceEntryPath,
+        sourceVaultPath: context.sourceVaultPath,
+      })
       if (markdownTarget) {
         navigateNoteTarget({ context, target: markdownTarget })
         return
@@ -287,6 +312,7 @@ export function useEditorLinkActivation(
   onNavigateWikilink: (target: string) => void,
   vaultPath?: string,
   sourceEntryPath?: LinkSourcePath,
+  sourceVaultPath: LinkSourcePath = vaultPath,
 ) {
   useEffect(() => {
     const container = containerRef.current
@@ -303,8 +329,14 @@ export function useEditorLinkActivation(
       container,
       onNavigateWikilink,
       sourceEntryPath,
+      sourceVaultPath,
       vaultPath,
     }
+    makeWikilinksKeyboardAccessible(container)
+    const wikilinkObserver = new MutationObserver(() => {
+      makeWikilinksKeyboardAccessible(container)
+    })
+    wikilinkObserver.observe(container, { childList: true, subtree: true })
     let handledMouseDownUrl: string | null = null
     let handledMouseDownUrlTimer: number | null = null
     const clearHandledMouseDownUrl = () => {
@@ -336,9 +368,21 @@ export function useEditorLinkActivation(
       clearHandledMouseDownUrl()
       handleEditorLinkEvent({ context, event, phase: 'click' })
     }
+    const handleKeyboardActivation = (event: KeyboardEvent) => {
+      if (event.key !== 'Enter') return
+      const target = elementFromEventTarget(event.target)
+      if (!target) return
+      const wikilinkTarget = resolveWikilinkTarget(target)
+      if (!wikilinkTarget) return
+
+      consumeEditorLinkEvent(event)
+      target.blur()
+      navigateNoteTarget({ context, target: wikilinkTarget })
+    }
 
     container.addEventListener('mousedown', handleMouseDown, true)
     container.addEventListener('click', handleClick, true)
+    container.addEventListener('keydown', handleKeyboardActivation, true)
     window.addEventListener('keydown', handleModifierChange)
     window.addEventListener('keyup', handleModifierChange)
     window.addEventListener('blur', resetModifierState)
@@ -347,12 +391,14 @@ export function useEditorLinkActivation(
     return () => {
       container.removeEventListener('mousedown', handleMouseDown, true)
       container.removeEventListener('click', handleClick, true)
+      container.removeEventListener('keydown', handleKeyboardActivation, true)
       window.removeEventListener('keydown', handleModifierChange)
       window.removeEventListener('keyup', handleModifierChange)
       window.removeEventListener('blur', resetModifierState)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       clearHandledMouseDownUrl()
+      wikilinkObserver.disconnect()
       resetModifierState()
     }
-  }, [containerRef, onNavigateWikilink, sourceEntryPath, vaultPath])
+  }, [containerRef, onNavigateWikilink, sourceEntryPath, sourceVaultPath, vaultPath])
 }

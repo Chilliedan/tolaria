@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import type { ComponentType, ReactNode } from 'react'
-import { expect, vi } from 'vitest'
+import { vi } from 'vitest'
 import type { VaultEntry } from '../types'
 import { TooltipProvider } from './ui/tooltip'
 
@@ -24,30 +24,40 @@ export function getSingleEditorViewTestState() {
   return state
 }
 
+interface BlockNoteViewRawProps {
+  children?: ReactNode
+  editable?: boolean
+  className?: string
+  emojiPicker?: boolean
+  formattingToolbar?: boolean
+  linkToolbar?: boolean
+  slashMenu?: boolean
+  sideMenu?: boolean
+  onChange?: () => void
+  theme?: string
+}
+
+function enabledDataAttribute(value: boolean | undefined) {
+  return value !== false ? 'true' : 'false'
+}
+
+function takeBlockNoteViewError() {
+  const error = state.blockNoteViewError
+  if (!error) return null
+  if (state.blockNoteViewErrorOnce) {
+    state.blockNoteViewError = null
+    state.blockNoteViewErrorOnce = false
+  }
+  return error
+}
+
 vi.mock('@blocknote/react', () => ({
   ComponentsContext: {
     Provider: ({ children }: { children?: ReactNode }) => <>{children}</>,
   },
-  BlockNoteViewRaw: (props: {
-    children?: ReactNode
-    editable?: boolean
-    className?: string
-    emojiPicker?: boolean
-    formattingToolbar?: boolean
-    linkToolbar?: boolean
-    slashMenu?: boolean
-    sideMenu?: boolean
-    onChange?: () => void
-    theme?: string
-  }) => {
-    if (state.blockNoteViewError) {
-      const error = state.blockNoteViewError
-      if (state.blockNoteViewErrorOnce) {
-        state.blockNoteViewError = null
-        state.blockNoteViewErrorOnce = false
-      }
-      throw error
-    }
+  BlockNoteViewRaw: (props: BlockNoteViewRawProps) => {
+    const error = takeBlockNoteViewError()
+    if (error) throw error
 
     const {
       children,
@@ -69,8 +79,8 @@ vi.mock('@blocknote/react', () => ({
     return (
       <div
         data-testid="blocknote-view"
-        data-editable={editable !== false ? 'true' : 'false'}
-        data-link-toolbar={linkToolbar !== false ? 'true' : 'false'}
+        data-editable={enabledDataAttribute(editable)}
+        data-link-toolbar={enabledDataAttribute(linkToolbar)}
         className={className}
         {...restProps}
       >
@@ -82,6 +92,7 @@ vi.mock('@blocknote/react', () => ({
     state.capturedLinkToolbarProps = props
     return <div data-testid="link-toolbar-controller" />
   },
+  FilePanelController: () => null,
   LinkToolbar: ({ children }: { children?: ReactNode }) => (
     <div className="bn-link-toolbar">{children}</div>
   ),
@@ -320,8 +331,8 @@ export function renderEditorHarness(editor = createEditor(), options: { vaultPat
   )
 
   const container = screen.getByTestId('blocknote-view').closest('.editor__blocknote-container')
-  expect(container).toBeTruthy()
-  return { container: container!, editor }
+  if (!container) throw new Error('Expected the editor container to render')
+  return { container, editor }
 }
 
 export function renderEditorHarnessInScrollArea(editor = createEditor()) {
@@ -340,8 +351,8 @@ export function renderEditorHarnessInScrollArea(editor = createEditor()) {
 
   const scrollArea = screen.getByTestId('editor-scroll-area')
   const container = screen.getByTestId('blocknote-view').closest('.editor__blocknote-container')
-  expect(container).toBeTruthy()
-  return { container: container!, editor, scrollArea }
+  if (!container) throw new Error('Expected the editor container to render')
+  return { container, editor, scrollArea }
 }
 
 export function createCodeBlockFixture(text: string) {

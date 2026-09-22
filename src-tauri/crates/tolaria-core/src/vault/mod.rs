@@ -1,3 +1,4 @@
+mod attachment_rename;
 mod cache;
 mod config_seed;
 mod entry;
@@ -11,6 +12,7 @@ mod image;
 mod migration;
 mod parsing;
 pub(crate) mod path_identity;
+mod remote_image;
 mod rename;
 mod rename_transaction;
 mod title_sync;
@@ -24,7 +26,8 @@ mod view_tests;
 mod view_value_conversions;
 mod views;
 
-pub use cache::{invalidate_cache, scan_vault_cached};
+pub use attachment_rename::{rename_attachment, AttachmentRenameRequest, AttachmentRenameResult};
+pub use cache::{invalidate_cache, read_vault_snapshot, refresh_vault_cache, scan_vault_cached};
 pub use config_seed::{
     get_ai_guidance_status, migrate_agents_md, repair_config_files, restore_ai_guidance_files,
     seed_config_files, AiGuidanceFileState, VaultAiGuidanceStatus,
@@ -36,6 +39,7 @@ pub use getting_started::{create_getting_started_vault, default_vault_path, vaul
 pub use ignored::{filter_gitignored_entries, filter_gitignored_folders, filter_gitignored_paths};
 pub use image::{copy_image_to_vault, save_image};
 pub use migration::migrate_is_a_to_type;
+pub use remote_image::download_remote_image;
 pub use rename::{
     auto_rename_untitled, detect_renames, move_note_to_folder, move_note_to_workspace, rename_note,
     rename_note_filename, update_wikilinks_for_renames, AutoRenameUntitledRequest, DetectedRename,
@@ -50,7 +54,9 @@ pub use views::{
 };
 
 use file::read_file_metadata;
-use frontmatter::{extract_fm_and_rels, resolve_is_a, resolve_note_display, resolve_note_width};
+use frontmatter::{
+    extract_fm_and_rels, resolve_is_a, resolve_note_display, resolve_note_width, Frontmatter,
+};
 use parsing::{count_body_words, extract_outgoing_links, extract_snippet, extract_title};
 use type_templates::TypeTemplateSource;
 
@@ -93,6 +99,54 @@ fn resolve_entry_dates(
     }
 }
 
+fn insert_type_relationship(
+    relationships: &mut std::collections::HashMap<String, Vec<String>>,
+    is_a: Option<&str>,
+) {
+    let Some(type_name) = is_a.filter(|name| *name != "Type") else {
+        return;
+    };
+    let type_link = if type_name.starts_with("[[") && type_name.ends_with("]]") {
+        type_name.to_string()
+    } else {
+        format!("[[{}]]", type_name.to_lowercase())
+    };
+    relationships.insert("Type".to_string(), vec![type_link]);
+}
+
+fn apply_markdown_frontmatter(entry: VaultEntry, frontmatter: Frontmatter) -> VaultEntry {
+    VaultEntry {
+        aliases: frontmatter
+            .aliases
+            .map(|value| value.into_vec())
+            .unwrap_or_default(),
+        status: frontmatter.status.and_then(|value| value.into_scalar()),
+        archived: frontmatter.archived.unwrap_or(false),
+        icon: frontmatter.icon.and_then(|value| value.into_scalar()),
+        color: frontmatter.color.and_then(|value| value.into_scalar()),
+        order: frontmatter.order,
+        sidebar_label: frontmatter
+            .sidebar_label
+            .and_then(|value| value.into_scalar()),
+        sort: frontmatter.sort.and_then(|value| value.into_scalar()),
+        view: frontmatter.view.and_then(|value| value.into_scalar()),
+        note_width: resolve_note_width(frontmatter.note_width),
+        display: resolve_note_display(frontmatter.display),
+        visible: frontmatter.visible,
+        organized: frontmatter.organized.unwrap_or(false),
+        favorite: frontmatter.favorite.unwrap_or(false),
+        favorite_index: frontmatter.favorite_index,
+        list_properties_display: frontmatter.list_properties_display.unwrap_or_default(),
+        ..entry
+    }
+}
+
+fn filename_from_path(path: &Path) -> String {
+    path.file_name()
+        .map(|filename| filename.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
 /// Parse a single markdown file into a VaultEntry.
 ///
 /// If `git_dates` is provided, `created_at` comes from git history while
@@ -102,10 +156,7 @@ fn resolve_entry_dates(
 pub fn parse_md_file(path: &Path, git_dates: Option<(u64, u64)>) -> Result<VaultEntry, String> {
     let content = fs::read_to_string(path)
         .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-    let filename = path
-        .file_name()
-        .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let filename = filename_from_path(path);
 
     let matter = Matter::<YAML>::new();
     let parsed = matter.parse(&content);
@@ -118,10 +169,11 @@ pub fn parse_md_file(path: &Path, git_dates: Option<(u64, u64)>) -> Result<Vault
     let outgoing_links = extract_outgoing_links(&parsed.content);
     let (fs_modified, fs_created, file_size) = read_file_metadata(path)?;
     let (modified_at, created_at) = resolve_entry_dates(fs_modified, fs_created, git_dates);
-    let is_a = resolve_is_a(frontmatter.is_a);
+    let is_a = resolve_is_a(frontmatter.is_a.clone());
     let template = TypeTemplateSource {
         explicit_template: frontmatter
             .template
+            .clone()
             .map(|value| value.into_scalar().unwrap_or_default()),
         is_a: is_a.as_deref(),
         title: &title,
@@ -129,60 +181,32 @@ pub fn parse_md_file(path: &Path, git_dates: Option<(u64, u64)>) -> Result<Vault
     }
     .resolve();
 
-    // Add "Type" relationship: isA becomes a navigable link to the type document.
-    // Skip for type documents themselves (isA == "Type") to avoid self-referential links.
-    if let Some(ref type_name) = is_a {
-        if type_name != "Type" {
-            let type_link = if type_name.starts_with("[[") && type_name.ends_with("]]") {
-                type_name.clone()
-            } else {
-                format!("[[{}]]", type_name.to_lowercase())
-            };
-            relationships.insert("Type".to_string(), vec![type_link]);
-        }
-    }
+    insert_type_relationship(&mut relationships, is_a.as_deref());
 
     let belongs_to = preferred_relationship_refs(&relationships, "belongs_to", "Belongs to");
     let related_to = preferred_relationship_refs(&relationships, "related_to", "Related to");
 
-    Ok(VaultEntry {
+    let entry = VaultEntry {
         path: path.to_string_lossy().to_string(),
         filename,
         title,
         is_a,
         snippet,
         relationships,
-        aliases: frontmatter
-            .aliases
-            .map(|a| a.into_vec())
-            .unwrap_or_default(),
         belongs_to,
         related_to,
-        status: frontmatter.status.and_then(|v| v.into_scalar()),
-        archived: frontmatter.archived.unwrap_or(false),
         modified_at,
         created_at,
         file_size,
-        icon: frontmatter.icon.and_then(|v| v.into_scalar()),
-        color: frontmatter.color.and_then(|v| v.into_scalar()),
-        order: frontmatter.order,
-        sidebar_label: frontmatter.sidebar_label.and_then(|v| v.into_scalar()),
         template,
-        sort: frontmatter.sort.and_then(|v| v.into_scalar()),
-        view: frontmatter.view.and_then(|v| v.into_scalar()),
-        note_width: resolve_note_width(frontmatter.note_width),
-        display: resolve_note_display(frontmatter.display),
-        visible: frontmatter.visible,
-        organized: frontmatter.organized.unwrap_or(false),
-        favorite: frontmatter.favorite.unwrap_or(false),
-        favorite_index: frontmatter.favorite_index,
-        list_properties_display: frontmatter.list_properties_display.unwrap_or_default(),
         word_count,
         outgoing_links,
         properties,
         has_h1,
         file_kind: "markdown".to_string(),
-    })
+        ..VaultEntry::default()
+    };
+    Ok(apply_markdown_frontmatter(entry, frontmatter))
 }
 
 /// Parse a non-markdown file into a minimal VaultEntry.
@@ -197,7 +221,7 @@ pub(crate) fn parse_non_md_file(
         .unwrap_or_default();
     let (fs_modified, fs_created, file_size) = read_file_metadata(path)?;
     let (modified_at, created_at) = resolve_entry_dates(fs_modified, fs_created, git_dates);
-    let file_kind = classify_file_kind(path).to_string();
+    let file_kind = classify_file_kind(path);
     let title = extract_yml_name(path).unwrap_or_else(|| filename.clone());
 
     Ok(VaultEntry {
@@ -323,7 +347,7 @@ const TEXT_EXTENSIONS: &[&str] = &[
 ];
 
 /// Classify a file extension into "markdown", "text", or "binary".
-pub(crate) fn classify_file_kind(path: &Path) -> &'static str {
+pub(crate) fn classify_file_kind(path: &Path) -> String {
     let ext = match path.extension() {
         Some(e) => e.to_string_lossy().to_lowercase(),
         None => {
@@ -346,18 +370,18 @@ pub(crate) fn classify_file_kind(path: &Path) -> &'static str {
             ]
             .contains(&name.as_str())
             {
-                "text"
+                "text".to_string()
             } else {
-                "binary"
+                "binary".to_string()
             };
         }
     };
     if ext == "md" || ext == "markdown" {
-        "markdown"
+        "markdown".to_string()
     } else if TEXT_EXTENSIONS.contains(&ext.as_str()) {
-        "text"
+        "text".to_string()
     } else {
-        "binary"
+        "binary".to_string()
     }
 }
 

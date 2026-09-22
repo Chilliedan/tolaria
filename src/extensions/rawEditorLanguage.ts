@@ -1,3 +1,4 @@
+import { html } from '@codemirror/lang-html'
 import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { python } from '@codemirror/lang-python'
@@ -19,21 +20,31 @@ function highlighted(language: Extension): Extension[] {
   return [language, rawEditorSyntaxHighlighting()]
 }
 
-const LANGUAGE_EXTENSIONS: Record<RawEditorLanguageId, () => Extension[]> = {
-  javascript: () => highlighted(javascriptLanguage('javascript')),
-  json: () => highlighted(json()),
-  jsx: () => highlighted(javascriptLanguage('jsx')),
-  markdown: () => [markdownLanguage(), frontmatterHighlightTheme(), frontmatterHighlightPlugin],
-  plain: () => [],
-  python: () => highlighted(python()),
-  sql: () => highlighted(sql()),
-  tsx: () => highlighted(javascriptLanguage('tsx')),
-  typescript: () => highlighted(javascriptLanguage('typescript')),
-  yaml: () => highlighted(yaml()),
+function markupLanguage(id: RawEditorLanguageId): Extension[] | null {
+  switch (id) {
+    case 'html': return highlighted(html())
+    case 'json': return highlighted(json())
+    case 'markdown': return [markdownLanguage(), frontmatterHighlightTheme(), frontmatterHighlightPlugin]
+    case 'plain': return []
+    case 'python': return highlighted(python())
+    case 'sql': return highlighted(sql())
+    case 'yaml': return highlighted(yaml())
+    default: return null
+  }
+}
+
+function scriptLanguage(id: RawEditorLanguageId): Extension[] {
+  switch (id) {
+    case 'javascript': return highlighted(javascriptLanguage('javascript'))
+    case 'jsx': return highlighted(javascriptLanguage('jsx'))
+    case 'tsx': return highlighted(javascriptLanguage('tsx'))
+    case 'typescript': return highlighted(javascriptLanguage('typescript'))
+    default: return []
+  }
 }
 
 function rawEditorLanguage(id: RawEditorLanguageId): Extension[] {
-  return LANGUAGE_EXTENSIONS[id]()
+  return markupLanguage(id) ?? scriptLanguage(id)
 }
 
 export function rawEditorLanguageExtensionsForPath(path?: string | null): Extension[] {

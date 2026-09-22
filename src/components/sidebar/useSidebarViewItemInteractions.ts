@@ -1,5 +1,11 @@
 import {
-  useCallback, useRef, useState, type Dispatch, type KeyboardEvent, type MouseEvent, type RefObject,
+  useCallback,
+  useRef,
+  useState,
+  type Dispatch,
+  type KeyboardEvent,
+  type MouseEvent,
+  type RefObject,
   type SetStateAction,
 } from 'react'
 import type { ViewFile } from '../../types'
@@ -18,11 +24,17 @@ type ViewFilenameAction = (filename: string, rootPath?: string) => void
 
 type RowKeyboardAction = 'select' | 'rename' | 'menu'
 
+const ROW_KEYBOARD_ACTIONS: Partial<Record<string, RowKeyboardAction>> = {
+  Enter: 'select',
+  ' ': 'select',
+  F2: 'rename',
+  ContextMenu: 'menu',
+}
+
 function getRowKeyboardAction(event: KeyboardEvent<HTMLElement>): RowKeyboardAction | null {
-  if (event.key === 'Enter' || event.key === ' ') return 'select'
-  if (event.key === 'F2') return 'rename'
-  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) return 'menu'
-  return null
+  const directAction = ROW_KEYBOARD_ACTIONS[event.key]
+  if (directAction) return directAction
+  return event.shiftKey && event.key === 'F10' ? 'menu' : null
 }
 
 function runViewFilenameAction(view: ViewFile, action?: ViewFilenameAction) {
@@ -31,11 +43,7 @@ function runViewFilenameAction(view: ViewFile, action?: ViewFilenameAction) {
   else action(view.filename)
 }
 
-function commitViewRename(
-  view: ViewFile,
-  nextName: string,
-  onUpdateViewDefinition?: ViewDefinitionPatchHandler,
-) {
+function commitViewRename(view: ViewFile, nextName: string, onUpdateViewDefinition?: ViewDefinitionPatchHandler) {
   const trimmed = nextName.trim()
   if (trimmed && trimmed !== view.definition.name) {
     if (view.rootPath) onUpdateViewDefinition?.(view.filename, { name: trimmed }, view.rootPath)
@@ -48,13 +56,8 @@ function useViewInteractionState() {
   const [isRenaming, setIsRenaming] = useState(false)
   const customizeRef = useRef<HTMLDivElement>(null)
   const rowRef = useRef<HTMLElement>(null)
-  const {
-    closeContextMenu,
-    contextMenu,
-    contextMenuRef,
-    openContextMenuAt,
-    openContextMenuFromPointer,
-  } = useSidebarContextMenu<string>()
+  const { closeContextMenu, contextMenu, contextMenuRef, openContextMenuAt, openContextMenuFromPointer } =
+    useSidebarContextMenu<string>()
   const closeCustomize = useCallback(() => setCustomizePos(null), [])
 
   useOutsideClick(customizeRef, !!customizePos, closeCustomize)
@@ -94,40 +97,49 @@ function useViewRenameActions({
     setIsRenaming(true)
   }, [closeContextMenu, closeCustomize, setIsRenaming])
 
-  const handleRenameSubmit = useCallback((nextName: string) => {
+  const handleRenameSubmit = useCallback(
+    (nextName: string) => {
     setIsRenaming(false)
     commitViewRename(view, nextName, onUpdateViewDefinition)
-  }, [onUpdateViewDefinition, setIsRenaming, view])
+    },
+    [onUpdateViewDefinition, setIsRenaming, view],
+  )
 
   return { handleRenameSubmit, startRename }
 }
 
-function useViewMenuActions({
-  view,
-  onEditView,
-  onDeleteView,
-  onUpdateViewDefinition,
-  closeContextMenu,
-  contextMenuPos,
-  openContextMenuAt,
-  openContextMenuFromPointer,
-  rowRef,
-  setCustomizePos,
-}: SidebarViewItemInteractionInput & {
-  closeContextMenu: () => void
-  contextMenuPos: MenuPosition | null
-  openContextMenuAt: (target: string, pos: MenuPosition) => void
-  openContextMenuFromPointer: (target: string, event: MouseEvent) => void
-  rowRef: RefObject<HTMLElement | null>
-  setCustomizePos: Dispatch<SetStateAction<MenuPosition | null>>
-}) {
+function useViewMenuActions(
+  options: SidebarViewItemInteractionInput & {
+    closeContextMenu: () => void
+    contextMenuPos: MenuPosition | null
+    openContextMenuAt: (target: string, pos: MenuPosition) => void
+    openContextMenuFromPointer: (target: string, event: MouseEvent) => void
+    rowRef: RefObject<HTMLElement | null>
+    setCustomizePos: Dispatch<SetStateAction<MenuPosition | null>>
+  },
+) {
+  const {
+    view,
+    onEditView,
+    onDeleteView,
+    onUpdateViewDefinition,
+    closeContextMenu,
+    contextMenuPos,
+    openContextMenuAt,
+    openContextMenuFromPointer,
+    rowRef,
+    setCustomizePos,
+  } = options
   const hasMenuActions = !!(onEditView || onDeleteView || onUpdateViewDefinition)
 
-  const handleContextMenu = useCallback((event: MouseEvent) => {
+  const handleContextMenu = useCallback(
+    (event: MouseEvent) => {
     if (!hasMenuActions) return
     setCustomizePos(null)
     openContextMenuFromPointer(view.filename, event)
-  }, [hasMenuActions, openContextMenuFromPointer, setCustomizePos, view.filename])
+    },
+    [hasMenuActions, openContextMenuFromPointer, setCustomizePos, view.filename],
+  )
 
   const openKeyboardContextMenu = useCallback(() => {
     setCustomizePos(null)
@@ -169,7 +181,8 @@ function useViewRowKeyboardActions({
   openKeyboardContextMenu: () => void
   startRename: () => void
 }) {
-  const runKeyboardAction = useCallback((action: RowKeyboardAction) => {
+  const runKeyboardAction = useCallback(
+    (action: RowKeyboardAction) => {
     switch (action) {
       case 'select':
         onSelect()
@@ -180,24 +193,24 @@ function useViewRowKeyboardActions({
       case 'menu':
         openKeyboardContextMenu()
     }
-  }, [onSelect, openKeyboardContextMenu, startRename])
+    },
+    [onSelect, openKeyboardContextMenu, startRename],
+  )
 
-  return useCallback((event: KeyboardEvent<HTMLElement>) => {
+  return useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
     if (isRenaming) return
     const action = getRowKeyboardAction(event)
     if (!action) return
     event.preventDefault()
     runKeyboardAction(action)
-  }, [isRenaming, runKeyboardAction])
+    },
+    [isRenaming, runKeyboardAction],
+  )
 }
 
-export function useSidebarViewItemInteractions({
-  view,
-  onSelect,
-  onEditView,
-  onDeleteView,
-  onUpdateViewDefinition,
-}: SidebarViewItemInteractionInput) {
+export function useSidebarViewItemInteractions(input: SidebarViewItemInteractionInput) {
+  const { onSelect, onUpdateViewDefinition, view } = input
   const state = useViewInteractionState()
   const rename = useViewRenameActions({
     closeContextMenu: state.closeContextMenu,
@@ -207,11 +220,7 @@ export function useSidebarViewItemInteractions({
     view,
   })
   const menu = useViewMenuActions({
-    view,
-    onSelect,
-    onEditView,
-    onDeleteView,
-    onUpdateViewDefinition,
+    ...input,
     closeContextMenu: state.closeContextMenu,
     contextMenuPos: state.contextMenuPos,
     openContextMenuAt: state.openContextMenuAt,

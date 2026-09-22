@@ -98,6 +98,17 @@ describe('useEditorLinkActivation', () => {
     expect(onNavigateWikilink).toHaveBeenCalledWith('Alpha Project')
   })
 
+  it('navigates wikilinks on Windows Ctrl+click', async () => {
+    const { container, onNavigateWikilink } = renderHarness()
+    const wikilink = appendWikilink(container, 'docs/adr/0031-foo')
+
+    const modifiedClick = dispatchMouseEvent(wikilink, 'click', { ctrlKey: true })
+
+    expect(modifiedClick.defaultPrevented).toBe(true)
+    await Promise.resolve()
+    expect(onNavigateWikilink).toHaveBeenCalledWith('docs/adr/0031-foo')
+  })
+
   it('consumes plain wikilink mousedown and click events before editor internals see stale link nodes', () => {
     const { container, onNavigateWikilink } = renderHarness()
     const wikilink = appendWikilink(container, 'Alpha Project')
@@ -135,6 +146,24 @@ describe('useEditorLinkActivation', () => {
     const modifiedClick = dispatchMouseEvent(link, 'click', { metaKey: true })
     expect(mockOpenExternalUrl).toHaveBeenCalledWith('https://example.com')
     expect(modifiedClick.defaultPrevented).toBe(true)
+  })
+
+  it('opens linked inline code on Cmd+click for either DOM nesting order', () => {
+    const { container } = renderHarness()
+    const nestedCode = document.createElement('code')
+    nestedCode.textContent = 'some-symbol'
+    appendUrl(container, 'https://nested.example.com').replaceChildren(nestedCode)
+    const wrappingCode = document.createElement('code')
+    const wrappedLink = appendUrl(wrappingCode, 'https://wrapped.example.com')
+    container.appendChild(wrappingCode)
+
+    const nestedClick = dispatchMouseEvent(nestedCode, 'click', { metaKey: true })
+    const wrappedClick = dispatchMouseEvent(wrappedLink, 'click', { metaKey: true })
+
+    expect(nestedClick.defaultPrevented).toBe(true)
+    expect(wrappedClick.defaultPrevented).toBe(true)
+    expect(mockOpenExternalUrl).toHaveBeenNthCalledWith(1, 'https://nested.example.com')
+    expect(mockOpenExternalUrl).toHaveBeenNthCalledWith(2, 'https://wrapped.example.com')
   })
 
   it('opens modified URL mousedown before editor internals see stale link nodes', () => {
@@ -183,9 +212,10 @@ describe('useEditorLinkActivation', () => {
     const link = appendUrl(container, 'https://example.com')
     const textNode = link.firstChild
     expect(textNode).toBeInstanceOf(Text)
+    if (!textNode) throw new Error('Expected link text node')
 
-    dispatchMouseEvent(textNode!, 'mousedown', { metaKey: true })
-    const click = dispatchMouseEvent(textNode!, 'click', { metaKey: true })
+    dispatchMouseEvent(textNode, 'mousedown', { metaKey: true })
+    const click = dispatchMouseEvent(textNode, 'click', { metaKey: true })
 
     expect(click.defaultPrevented).toBe(true)
     expect(mockOpenExternalUrl).toHaveBeenCalledOnce()
@@ -233,7 +263,7 @@ describe('useEditorLinkActivation', () => {
   it('normalizes relative markdown note links from the source note path', async () => {
     const { container, onNavigateWikilink } = renderHarness(
       vi.fn(),
-      undefined,
+      '/vault',
       '/vault/areas/current.md',
     )
     const link = appendUrl(container, '../projects/roadmap.md#goals')
@@ -242,7 +272,22 @@ describe('useEditorLinkActivation', () => {
 
     expect(modifiedClick.defaultPrevented).toBe(true)
     await Promise.resolve()
-    expect(onNavigateWikilink).toHaveBeenCalledWith('vault/projects/roadmap')
+    expect(onNavigateWikilink).toHaveBeenCalledWith('projects/roadmap')
+    expect(mockOpenExternalUrl).not.toHaveBeenCalled()
+    expect(mockOpenLocalFile).not.toHaveBeenCalled()
+  })
+
+  it('normalizes Windows relative markdown note links against the active vault', async () => {
+    const vaultPath = String.raw`C:\Users\alex\Documents\Tolaria`
+    const sourcePath = String.raw`C:\Users\alex\Documents\Tolaria\areas\current.md`
+    const { container, onNavigateWikilink } = renderHarness(vi.fn(), vaultPath, sourcePath)
+    const link = appendUrl(container, String.raw`..\projects\roadmap.md#goals`)
+
+    const modifiedClick = dispatchMouseEvent(link, 'click', { ctrlKey: true })
+
+    expect(modifiedClick.defaultPrevented).toBe(true)
+    await Promise.resolve()
+    expect(onNavigateWikilink).toHaveBeenCalledWith('projects/roadmap')
     expect(mockOpenExternalUrl).not.toHaveBeenCalled()
     expect(mockOpenLocalFile).not.toHaveBeenCalled()
   })
@@ -272,8 +317,10 @@ describe('useEditorLinkActivation', () => {
     codeBlock.appendChild(appendWikilink(codeBlock, 'Inside Code'))
     container.appendChild(codeBlock)
     const badLink = appendUrl(container, 'not a url')
+    const codeWikilink = codeBlock.firstElementChild
+    if (!codeWikilink) throw new Error('Expected code-block wikilink')
 
-    fireEvent.click(codeBlock.firstElementChild!, { metaKey: true })
+    fireEvent.click(codeWikilink, { metaKey: true })
     fireEvent.click(badLink, { metaKey: true })
 
     expect(onNavigateWikilink).not.toHaveBeenCalled()

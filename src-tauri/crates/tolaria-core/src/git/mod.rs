@@ -18,6 +18,7 @@ mod remote_status;
 mod remote_url;
 mod status;
 mod upstream;
+mod workspace;
 
 use std::ffi::{OsStr, OsString};
 use std::io;
@@ -30,7 +31,7 @@ use std::sync::OnceLock;
 #[cfg(test)]
 use std::cell::RefCell;
 
-use crate::shell_env::{env_value_from_process_or_user_shell, EnvName};
+use crate::shell_env::{env_bindings_from_process_or_user_shell, EnvName};
 
 pub(crate) use author::ensure_author_config;
 pub use author::{git_author_identity, GitAuthorIdentity};
@@ -46,6 +47,7 @@ pub use conflict::{
     is_merge_in_progress, is_rebase_in_progress,
 };
 pub use connect::{disconnect_all_remotes, git_add_remote, GitAddRemoteResult};
+pub(crate) use dates::get_all_file_dates_for_workspace;
 pub use dates::{get_all_file_dates, GitDates};
 pub use file_url::git_file_url;
 pub use history::{get_file_diff, get_file_diff_at_commit, get_file_history};
@@ -57,6 +59,8 @@ pub use remote_url::validate_user_remote_url;
 pub use status::{
     discard_file_changes, get_modified_files, get_modified_files_with_stats, ModifiedFile,
 };
+pub(crate) use workspace::GitWorkspace;
+pub use workspace::{git_workspace_info, GitWorkspaceInfo};
 
 use serde::Serialize;
 
@@ -139,7 +143,9 @@ pub fn set_git_program_config_provider(provider: GitProgramConfigProvider) {
 }
 
 fn git_program_config() -> Option<GitProgramConfig> {
-    GIT_PROGRAM_CONFIG_PROVIDER.get().and_then(|provider| provider())
+    GIT_PROGRAM_CONFIG_PROVIDER
+        .get()
+        .and_then(|provider| provider())
 }
 
 pub(crate) fn git_command() -> Command {
@@ -212,13 +218,16 @@ fn apply_git_shell_env(command: &mut Command) {
 fn git_shell_env_bindings() -> &'static Vec<GitShellEnvBinding> {
     static BINDINGS: OnceLock<Vec<GitShellEnvBinding>> = OnceLock::new();
     BINDINGS.get_or_init(|| {
-        GIT_SHELL_ENV_NAMES
-            .iter()
-            .filter_map(|name| {
-                env_value_from_process_or_user_shell(*name).map(|value| GitShellEnvBinding {
-                    name: name.as_str(),
-                    value,
-                })
+        env_bindings_from_process_or_user_shell(&GIT_SHELL_ENV_NAMES)
+            .into_iter()
+            .filter_map(|(name, value)| {
+                GIT_SHELL_ENV_NAMES
+                    .iter()
+                    .find(|candidate| candidate.as_str() == name)
+                    .map(|candidate| GitShellEnvBinding {
+                        name: candidate.as_str(),
+                        value,
+                    })
             })
             .collect()
     })

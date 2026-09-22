@@ -74,7 +74,9 @@ function unquoteScalar(value: FrontmatterScalarText): FrontmatterScalarText {
 }
 
 function isNumericScalar(value: FrontmatterScalarText): boolean {
-  return /^-?(?:\d+(?:\.\d+)?|\.\d+)(?:e[+-]?\d+)?$/i.test(value)
+  const numericCharacters = new Set('0123456789.eE+-')
+  return [...value].every((character) => numericCharacters.has(character))
+    && Number.isFinite(Number(value))
 }
 
 function isUnsupportedScalarSyntax(value: FrontmatterScalarText): boolean {
@@ -113,7 +115,7 @@ function parseScalarNode(value: FrontmatterScalarText): SheetFrontmatterNode {
 
 function parseKeyValue(line: FrontmatterLine): { key: FrontmatterKey; value: FrontmatterScalarText } | null {
   const match = line.match(/^["']?([^"':]+)["']?\s*:\s*(.*)$/)
-  return match ? { key: match[1].trim(), value: match[2] ?? '' } : null
+  return match ? { key: match.at(1)?.trim() ?? '', value: match.at(2) ?? '' } : null
 }
 
 function parentForIndent(stack: StackItem[], indent: FrontmatterIndent): SheetFrontmatterMapNode {

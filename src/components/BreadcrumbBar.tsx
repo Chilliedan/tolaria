@@ -20,6 +20,7 @@ import { cn } from '@/lib/utils'
 import { translate, type AppLocale } from '../lib/i18n'
 import { APP_COMMAND_IDS, formatShortcutDisplay, getAppCommandShortcutDisplay } from '../hooks/appCommandCatalog'
 import { extractFrontmatterTitleFromContent, extractH1TitleFromContent } from '../utils/noteTitle'
+import { isHtmlFileEntry } from '../utils/filePreview'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ActionTooltip, type ActionTooltipCopy } from '@/components/ui/action-tooltip'
@@ -29,7 +30,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import {
   GitBranch,
@@ -49,10 +49,13 @@ import {
   ArrowsClockwise,
   ArrowsInLineHorizontal,
   ArrowsOutLineHorizontal,
-  DotsThree,
 } from '@phosphor-icons/react'
 import { slugify } from '../hooks/useNoteCreation'
 import { useDragRegion } from '../hooks/useDragRegion'
+import {
+  BreadcrumbOverflowMenuTrigger,
+  type BreadcrumbOverflowMenuTooltipControl as BreadcrumbTooltipControl,
+} from './BreadcrumbOverflowMenuTrigger'
 
 interface BreadcrumbBarProps {
   entry: VaultEntry
@@ -98,15 +101,6 @@ const TITLE_ACTION_GAP_PX = 24
 interface BreadcrumbTooltipController {
   activeTooltipLabel: string | null
   setActiveTooltipLabel: Dispatch<SetStateAction<string | null>>
-}
-
-interface BreadcrumbTooltipControl {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  onPointerEnter?: () => void
-  onPointerLeave?: () => void
-  onFocus?: () => void
-  onBlur?: () => void
 }
 
 const BreadcrumbTooltipContext = createContext<BreadcrumbTooltipController | null>(null)
@@ -261,16 +255,17 @@ interface TranslatedToggleIconActionProps extends Omit<ToggleIconActionProps, 'a
   locale?: AppLocale
 }
 
-function ToggleIconAction({
-  active,
-  activeClassName,
-  activeLabel,
-  children,
-  inactiveClassName = 'hover:text-foreground',
-  inactiveLabel,
-  onClick,
-  shortcut,
-}: ToggleIconActionProps) {
+function ToggleIconAction(options: ToggleIconActionProps) {
+  const {
+    active,
+    activeClassName,
+    activeLabel,
+    children,
+    inactiveClassName = 'hover:text-foreground',
+    inactiveLabel,
+    onClick,
+    shortcut,
+} = options
   return (
     <IconActionButton
       copy={{
@@ -386,6 +381,7 @@ function NoteWidthAction({
 }
 
 function FavoriteAction({ favorite, locale = 'en', onToggleFavorite }: { favorite: boolean; locale?: AppLocale; onToggleFavorite?: () => void }) {
+  if (!onToggleFavorite) return null
   return <ConfiguredToggleAction active={favorite} config={TOGGLE_ACTION_CONFIGS.favorite} locale={locale} onClick={onToggleFavorite} />
 }
 
@@ -915,37 +911,42 @@ function BreadcrumbTitleSkeleton() {
   )
 }
 
-function BreadcrumbActions({
-  entry,
-  showDiffToggle,
-  onToggleDiff,
-  rawMode,
-  onToggleRaw,
-  forceRawMode,
-  noteWidth,
-  onToggleNoteWidth,
-  showTableOfContents,
-  onToggleTableOfContents,
-  inspectorCollapsed,
-  onToggleInspector,
-  onToggleFavorite,
-  onToggleOrganized,
-  onRevealFile,
-  onCopyFilePath,
-  onCopyDeepLink,
-  onCopyGitUrl,
-  onExportPdf,
-  onDelete,
-  onArchive,
-  onUnarchive,
-  onEnterNeighborhood,
-  actionsRef,
-  overflowCollapsed,
-  locale = 'en',
-}: Omit<BreadcrumbBarProps, 'wordCount' | 'barRef' | 'onRenameFilename'> & {
+function BreadcrumbActions(options: Omit<BreadcrumbBarProps, 'wordCount' | 'barRef' | 'onRenameFilename'> & {
   actionsRef: React.RefObject<HTMLDivElement | null>
   overflowCollapsed: boolean
 }) {
+  const {
+    entry,
+    showDiffToggle,
+    onToggleDiff,
+    rawMode,
+    onToggleRaw,
+    forceRawMode,
+    noteWidth,
+    onToggleNoteWidth,
+    showTableOfContents,
+    onToggleTableOfContents,
+    inspectorCollapsed,
+    onToggleInspector,
+    onToggleFavorite,
+    onToggleOrganized,
+    onRevealFile,
+    onCopyFilePath,
+    onCopyDeepLink,
+    onCopyGitUrl,
+    onExportPdf,
+    onDelete,
+    onArchive,
+    onUnarchive,
+    onEnterNeighborhood,
+    actionsRef,
+    overflowCollapsed,
+    locale = 'en',
+} = options
+  let favoriteAction = onToggleFavorite, organizedAction = onToggleOrganized, neighborhoodAction = onEnterNeighborhood,
+    noteWidthAction = onToggleNoteWidth, tableOfContentsAction = onToggleTableOfContents
+  if (isHtmlFileEntry(entry)) favoriteAction = organizedAction = neighborhoodAction = noteWidthAction = tableOfContentsAction = undefined
+
   return (
     <div
       ref={actionsRef}
@@ -953,20 +954,20 @@ function BreadcrumbActions({
       data-overflow-collapsed={overflowCollapsed}
       style={{ gap: 8 }}
     >
-      <FavoriteAction favorite={entry.favorite} locale={locale} onToggleFavorite={onToggleFavorite} />
-      <OrganizedAction organized={entry.organized} locale={locale} onToggleOrganized={onToggleOrganized} />
+      <FavoriteAction favorite={entry.favorite} locale={locale} onToggleFavorite={favoriteAction} />
+      <OrganizedAction organized={entry.organized} locale={locale} onToggleOrganized={organizedAction} />
       <OverflowToolbarAction>
-        <NeighborhoodAction entry={entry} locale={locale} onEnterNeighborhood={onEnterNeighborhood} />
+        <NeighborhoodAction entry={entry} locale={locale} onEnterNeighborhood={neighborhoodAction} />
       </OverflowToolbarAction>
       {!forceRawMode && <RawToggleButton rawMode={rawMode} locale={locale} onToggleRaw={onToggleRaw} />}
       <OverflowToolbarAction>
-        <NoteWidthAction noteWidth={noteWidth} locale={locale} onToggleNoteWidth={onToggleNoteWidth} />
+        <NoteWidthAction noteWidth={noteWidth} locale={locale} onToggleNoteWidth={noteWidthAction} />
       </OverflowToolbarAction>
       <OverflowToolbarAction>
         <TableOfContentsAction
           showTableOfContents={showTableOfContents}
           locale={locale}
-          onToggleTableOfContents={onToggleTableOfContents}
+          onToggleTableOfContents={tableOfContentsAction}
         />
       </OverflowToolbarAction>
       <OverflowToolbarAction>
@@ -997,26 +998,7 @@ function BreadcrumbActions({
   )
 }
 
-function BreadcrumbOverflowMenu({
-  entry,
-  showDiffToggle,
-  onToggleDiff,
-  noteWidth,
-  onToggleNoteWidth,
-  showTableOfContents,
-  onToggleTableOfContents,
-  onRevealFile,
-  onCopyFilePath,
-  onCopyDeepLink,
-  onCopyGitUrl,
-  onExportPdf,
-  onArchive,
-  onUnarchive,
-  onDelete,
-  onEnterNeighborhood,
-  showResponsiveActions,
-  locale = 'en',
-}: Pick<
+function BreadcrumbOverflowMenu(options: Pick<
   BreadcrumbBarProps,
   | 'entry'
   | 'showDiffToggle'
@@ -1038,6 +1020,28 @@ function BreadcrumbOverflowMenu({
 > & {
   showResponsiveActions: boolean
 }) {
+  const {
+    entry,
+    showDiffToggle,
+    onToggleDiff,
+    noteWidth,
+    onToggleNoteWidth,
+    showTableOfContents,
+    onToggleTableOfContents,
+    onRevealFile,
+    onCopyFilePath,
+    onCopyDeepLink,
+    onCopyGitUrl,
+    onExportPdf,
+    onArchive,
+    onUnarchive,
+    onDelete,
+    onEnterNeighborhood,
+    showResponsiveActions,
+    locale = 'en',
+} = options
+  let showMarkdownActions = true
+  if (isHtmlFileEntry(entry)) showMarkdownActions = false
   const runDiffAction = availableDiffAction(showDiffToggle, onToggleDiff)
   const runRevealAction = pathAction(onRevealFile, entry.path)
   const runCopyPathAction = pathAction(onCopyFilePath, entry.path)
@@ -1051,10 +1055,12 @@ function BreadcrumbOverflowMenu({
   const tableOfContentsLabel = translate(locale, showTableOfContents ? 'editor.toolbar.closeTableOfContents' : 'editor.toolbar.openTableOfContents')
   const neighborhoodLabel = translate(locale, 'editor.toolbar.openNeighborhood')
   const moreActionsLabel = translate(locale, 'editor.toolbar.moreActions')
+  const tooltipControl = useBreadcrumbTooltipControl(moreActionsLabel)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <DropdownMenu>
-      <BreadcrumbOverflowMenuTrigger label={moreActionsLabel} />
+    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+      <BreadcrumbOverflowMenuTrigger label={moreActionsLabel} setMenuOpen={setMenuOpen} tooltipControl={tooltipControl} />
       <DropdownMenuContent align="end" className="min-w-44">
         <DropdownMenuItem disabled={!runDiffAction} onSelect={runDiffAction}>
           <GitBranch size={16} />
@@ -1064,7 +1070,7 @@ function BreadcrumbOverflowMenu({
           <FilePdf size={16} />
           {exportPdfLabel}
         </DropdownMenuItem>
-        {showResponsiveActions && (
+        {showResponsiveActions && showMarkdownActions && (
           <>
             <DropdownMenuItem disabled={!runNeighborhoodAction} onSelect={runNeighborhoodAction}>
               <MapTrifold size={16} />
@@ -1078,6 +1084,10 @@ function BreadcrumbOverflowMenu({
               <ListBullets size={16} />
               {tableOfContentsLabel}
             </DropdownMenuItem>
+          </>
+        )}
+        {showResponsiveActions && (
+          <>
             <DropdownMenuItem disabled={!runRevealAction} onSelect={runRevealAction}>
               <FolderOpen size={16} />
               {translate(locale, 'editor.toolbar.revealFile')}
@@ -1093,47 +1103,18 @@ function BreadcrumbOverflowMenu({
           {translate(locale, 'editor.toolbar.copyNoteDeepLink')}
         </DropdownMenuItem>
         <CopyGitUrlMenuItem action={entryAction(onCopyGitUrl, entry)} locale={locale} />
-        <DropdownMenuItem disabled={!runArchiveAction} onSelect={runArchiveAction}>
-          <ArchiveMenuIcon archived={entry.archived} />
-          {archiveLabel}
-        </DropdownMenuItem>
+        {showMarkdownActions && (
+          <DropdownMenuItem disabled={!runArchiveAction} onSelect={runArchiveAction}>
+            <ArchiveMenuIcon archived={entry.archived} />
+            {archiveLabel}
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem disabled={!onDelete} variant="destructive" onSelect={onDelete}>
           <Trash size={16} />
           {translate(locale, 'editor.toolbar.delete')}
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
-}
-
-function BreadcrumbOverflowMenuTrigger({ label }: { label: string }) {
-  const tooltipControl = useBreadcrumbTooltipControl(label)
-
-  return (
-    <ActionTooltip
-      copy={{ label }}
-      side="bottom"
-      align="end"
-      open={tooltipControl.open}
-      onOpenChange={tooltipControl.onOpenChange}
-    >
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-xs"
-          className="breadcrumb-bar__overflow-menu text-muted-foreground hover:text-foreground"
-          aria-label={label}
-          data-testid="breadcrumb-overflow-menu-trigger"
-          onPointerEnter={tooltipControl.onPointerEnter}
-          onPointerLeave={tooltipControl.onPointerLeave}
-          onFocus={tooltipControl.onFocus}
-          onBlur={tooltipControl.onBlur}
-        >
-          <DotsThree size={18} weight="bold" className={BREADCRUMB_ICON_CLASS} />
-        </Button>
-      </DropdownMenuTrigger>
-    </ActionTooltip>
   )
 }
 
@@ -1204,10 +1185,7 @@ export const BreadcrumbBar = memo(function BreadcrumbBar({
   onRenameFilename,
   ...actionProps
 }: BreadcrumbBarProps) {
-  type DragRegionResult = ReturnType<typeof useDragRegion<HTMLDivElement>> & {
-    dragRegionRef?: React.RefObject<HTMLDivElement | null>
-  }
-  const { dragRegionRef, onMouseDown } = useDragRegion<HTMLDivElement>() as DragRegionResult
+  const { dragRegionRef, onMouseDown } = useDragRegion<HTMLDivElement>()
   const fallbackDragRegionRef = useRef<HTMLDivElement>(null)
   const breadcrumbDragRegionRef = dragRegionRef ?? fallbackDragRegionRef
   const actionsRef = useRef<HTMLDivElement | null>(null)

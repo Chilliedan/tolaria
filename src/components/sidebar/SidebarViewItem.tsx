@@ -27,6 +27,41 @@ interface SidebarViewItemProps {
   locale?: AppLocale
 }
 
+type SidebarViewInteractions = ReturnType<typeof useSidebarViewItemInteractions>
+
+interface SidebarViewRowProps {
+  view: ViewFile
+  isActive: boolean
+  onSelect: () => void
+  dragHandleProps?: ButtonHTMLAttributes<HTMLButtonElement>
+  count: number
+  locale: AppLocale
+  accent: ViewAccent | null
+  rowRef: SidebarViewInteractions['rowRef']
+  isRenaming: boolean
+  setIsRenaming: SidebarViewInteractions['setIsRenaming']
+  handleRenameSubmit: SidebarViewInteractions['handleRenameSubmit']
+  handleContextMenu: SidebarViewInteractions['handleContextMenu']
+  startRename: SidebarViewInteractions['startRename']
+  handleRowKeyDown: SidebarViewInteractions['handleRowKeyDown']
+}
+
+interface SidebarViewMenusProps {
+  view: ViewFile
+  locale: AppLocale
+  onEditView?: SidebarViewItemProps['onEditView']
+  onDeleteView?: SidebarViewItemProps['onDeleteView']
+  onUpdateViewDefinition?: SidebarViewItemProps['onUpdateViewDefinition']
+  contextMenuPos: SidebarViewInteractions['contextMenuPos']
+  contextMenuRef: SidebarViewInteractions['contextMenuRef']
+  customizePos: SidebarViewInteractions['customizePos']
+  customizeRef: SidebarViewInteractions['customizeRef']
+  closeCustomize: SidebarViewInteractions['closeCustomize']
+  handleCustomize: SidebarViewInteractions['handleCustomize']
+  handleDelete: SidebarViewInteractions['handleDelete']
+  handleEdit: SidebarViewInteractions['handleEdit']
+}
+
 function resolveViewAccent(color: string | null): ViewAccent | null {
   const colorKey = color?.trim().toLowerCase()
   if (!colorKey) return null
@@ -46,52 +81,104 @@ function getViewRowStyle(showCount: boolean, isActive: boolean, accent: ViewAcce
   }
 }
 
-function ViewIcon({
-  icon,
-  isActive,
-  accent,
-}: {
-  icon: string | null
-  isActive: boolean
-  accent: ViewAccent | null
-}) {
+function ViewIcon({ icon, isActive, accent }: { icon: string | null; isActive: boolean; accent: ViewAccent | null }) {
   if (icon) return <NoteTitleIcon icon={icon} size={16} color={accent?.color} />
-  return <Funnel size={16} weight={isActive ? 'fill' : 'regular'} style={accent ? { color: accent.color } : undefined} />
+  return (
+    <Funnel size={16} weight={isActive ? 'fill' : 'regular'} style={accent ? { color: accent.color } : undefined} />
+  )
 }
 
-function ViewCountChip({
-  count,
-  isActive,
-  accent,
-}: {
-  count: number
-  isActive: boolean
-  accent: ViewAccent | null
-}) {
+function ViewCountChip({ count, isActive, accent }: { count: number; isActive: boolean; accent: ViewAccent | null }) {
   if (count <= 0) return null
   return (
     <SidebarCountPill
       count={count}
       className="text-muted-foreground"
-      style={isActive && accent ? { background: accent.color, color: 'var(--text-inverse)' } : { background: 'var(--muted)' }}
+      style={
+        isActive && accent ? { background: accent.color, color: 'var(--text-inverse)' } : { background: 'var(--muted)' }
+      }
       testId="view-count-chip"
     />
   )
 }
 
-export function SidebarViewItem({
-  view,
-  isActive,
-  onSelect,
-  onEditView,
-  onDeleteView,
-  onUpdateViewDefinition,
-  dragHandleProps,
-  entries,
-  locale = 'en',
-}: SidebarViewItemProps) {
-  const count = useMemo(() => filterEntriesForViewFile(entries, view).length, [entries, view])
+function SidebarViewRowAsHtml(options: SidebarViewRowProps) {
+  const { view, isActive, onSelect, dragHandleProps, count, locale, accent, rowRef, isRenaming, setIsRenaming, handleRenameSubmit, handleContextMenu, startRename, handleRowKeyDown } = options
   const showCount = count > 0
+  const rowClassName = `flex cursor-pointer select-none items-center gap-2 rounded transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent'}`
+  const rowStyle = getViewRowStyle(showCount, isActive, accent)
+  if (isRenaming) {
+    return (
+      <div ref={rowRef as RefObject<HTMLDivElement>} className={rowClassName} style={rowStyle}>
+        <ViewIcon icon={view.definition.icon} isActive={isActive} accent={accent} />
+        <ViewRenameInput
+          initialValue={view.definition.name}
+          locale={locale}
+          onCancel={() => setIsRenaming(false)}
+          onSubmit={handleRenameSubmit}
+        />
+      </div>
+    )
+  }
+  return (
+    <button
+      ref={(node) => { rowRef.current = node }}
+      type="button"
+      className={`${rowClassName} w-full border-0 bg-transparent text-left`}
+      style={rowStyle}
+      {...dragHandleProps}
+      onClick={onSelect}
+      onContextMenu={handleContextMenu}
+      onDoubleClick={startRename}
+      onKeyDown={handleRowKeyDown}
+    >
+      <ViewIcon icon={view.definition.icon} isActive={isActive} accent={accent} />
+      <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{view.definition.name}</span>
+      <ViewCountChip count={count} isActive={isActive} accent={accent} />
+    </button>
+  )
+}
+
+function SidebarViewMenus(options: SidebarViewMenusProps) {
+  const { view, locale, onEditView, onDeleteView, onUpdateViewDefinition, contextMenuPos, contextMenuRef, customizePos, customizeRef, closeCustomize, handleCustomize, handleDelete, handleEdit } = options
+  return (
+    <>
+      <ViewContextMenu
+        pos={contextMenuPos}
+        canCustomize={!!onUpdateViewDefinition}
+        canDelete={!!onDeleteView}
+        canEdit={!!onEditView}
+        innerRef={contextMenuRef}
+        locale={locale}
+        onCustomize={handleCustomize}
+        onDelete={handleDelete}
+        onEdit={handleEdit}
+      />
+      <ViewCustomizePanel
+        pos={customizePos}
+        view={view}
+        innerRef={customizeRef}
+        locale={locale}
+        onClose={closeCustomize}
+        onUpdateViewDefinition={onUpdateViewDefinition}
+      />
+    </>
+  )
+}
+
+export function SidebarViewItem(options: SidebarViewItemProps) {
+  const {
+    view,
+    isActive,
+    onSelect,
+    onEditView,
+    onDeleteView,
+    onUpdateViewDefinition,
+    dragHandleProps,
+    entries,
+    locale = 'en',
+  } = options
+  const count = useMemo(() => filterEntriesForViewFile(entries, view).length, [entries, view])
   const accent = resolveViewAccent(view.definition.color)
   const interactions = useSidebarViewItemInteractions({
     view,
@@ -118,61 +205,10 @@ export function SidebarViewItem({
     startRename,
   } = interactions
 
-  const rowClassName = `flex cursor-pointer select-none items-center gap-2 rounded transition-colors ${isActive ? 'bg-primary/10 text-primary' : 'text-foreground hover:bg-accent'}`
-  const rowStyle = getViewRowStyle(showCount, isActive, accent)
-
   return (
     <div className="relative">
-      {isRenaming ? (
-        <div
-          ref={rowRef as RefObject<HTMLDivElement>}
-          className={rowClassName}
-          style={rowStyle}
-        >
-          <ViewIcon icon={view.definition.icon} isActive={isActive} accent={accent} />
-          <ViewRenameInput
-            initialValue={view.definition.name}
-            locale={locale}
-            onCancel={() => setIsRenaming(false)}
-            onSubmit={handleRenameSubmit}
-          />
-        </div>
-      ) : (
-        <button
-          ref={(node) => { rowRef.current = node }}
-          type="button"
-          className={`${rowClassName} w-full border-0 bg-transparent text-left`}
-          style={rowStyle}
-          {...dragHandleProps}
-          onClick={onSelect}
-          onContextMenu={handleContextMenu}
-          onDoubleClick={startRename}
-          onKeyDown={handleRowKeyDown}
-        >
-          <ViewIcon icon={view.definition.icon} isActive={isActive} accent={accent} />
-          <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{view.definition.name}</span>
-          <ViewCountChip count={count} isActive={isActive} accent={accent} />
-        </button>
-      )}
-      <ViewContextMenu
-        pos={contextMenuPos}
-        canCustomize={!!onUpdateViewDefinition}
-        canDelete={!!onDeleteView}
-        canEdit={!!onEditView}
-        innerRef={contextMenuRef}
-        locale={locale}
-        onCustomize={handleCustomize}
-        onDelete={handleDelete}
-        onEdit={handleEdit}
-      />
-      <ViewCustomizePanel
-        pos={customizePos}
-        view={view}
-        innerRef={customizeRef}
-        locale={locale}
-        onClose={closeCustomize}
-        onUpdateViewDefinition={onUpdateViewDefinition}
-      />
+      <SidebarViewRowAsHtml {...{ view, isActive, onSelect, dragHandleProps, count, locale, accent, rowRef, isRenaming, setIsRenaming, handleRenameSubmit, handleContextMenu, startRename, handleRowKeyDown }} />
+      <SidebarViewMenus {...{ view, locale, onEditView, onDeleteView, onUpdateViewDefinition, contextMenuPos, contextMenuRef, customizePos, customizeRef, closeCustomize, handleCustomize, handleDelete, handleEdit }} />
     </div>
   )
 }

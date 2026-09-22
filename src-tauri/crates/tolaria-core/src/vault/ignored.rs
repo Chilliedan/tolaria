@@ -2,7 +2,8 @@ use super::{FolderNode, VaultEntry};
 use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::process::{ChildStdin, Stdio};
+use std::thread::JoinHandle;
 use walkdir::{DirEntry, WalkDir};
 
 fn normalize_relative_path(path: &str) -> String {
@@ -35,14 +36,30 @@ fn has_gitignore_file(vault_path: &Path) -> bool {
         return true;
     }
 
-    WalkDir::new(vault_path)
+    let has_nested_gitignore = WalkDir::new(vault_path)
         .follow_links(false)
         .into_iter()
         .filter_entry(should_descend_for_gitignore)
         .filter_map(Result::ok)
         .any(|entry| {
             entry.file_type().is_file() && entry.file_name().to_string_lossy() == ".gitignore"
-        })
+        });
+    if has_nested_gitignore {
+        return true;
+    }
+
+    let Ok(Some(workspace)) = crate::git::GitWorkspace::resolve(vault_path) else {
+        return false;
+    };
+    let Ok(resolved_vault_path) = vault_path.canonicalize() else {
+        return false;
+    };
+
+    resolved_vault_path
+        .ancestors()
+        .skip(1)
+        .take_while(|ancestor| ancestor.starts_with(workspace.git_root()))
+        .any(|ancestor| ancestor.join(".gitignore").is_file())
 }
 
 fn run_git_check_ignore(vault_path: &Path, relative_paths: &[String]) -> Option<String> {
@@ -55,14 +72,7 @@ fn run_git_check_ignore(vault_path: &Path, relative_paths: &[String]) -> Option<
         .spawn()
         .ok()?;
 
-    let mut stdin = child.stdin.take()?;
-    let paths = relative_paths.to_vec();
-    let writer = std::thread::spawn(move || -> std::io::Result<()> {
-        for path in paths {
-            writeln!(stdin, "{path}")?;
-        }
-        Ok(())
-    });
+    let writer = spawn_ignore_writer(child.stdin.take()?, relative_paths.to_vec());
 
     let output = child.wait_with_output().ok()?;
     writer.join().ok()?.ok()?;
@@ -70,6 +80,18 @@ fn run_git_check_ignore(vault_path: &Path, relative_paths: &[String]) -> Option<
         return Some(String::from_utf8_lossy(&output.stdout).to_string());
     }
     None
+}
+
+fn spawn_ignore_writer(
+    mut stdin: ChildStdin,
+    paths: Vec<String>,
+) -> JoinHandle<std::io::Result<()>> {
+    std::thread::spawn(move || {
+        for path in paths {
+            writeln!(stdin, "{path}")?;
+        }
+        Ok(())
+    })
 }
 
 fn ignored_relative_paths(vault_path: &Path, relative_paths: &[String]) -> HashSet<String> {
@@ -259,6 +281,25 @@ mod tests {
             entry_paths(dir.path(), &filtered),
             vec!["visible.md", "ignored/keep.md"]
         );
+    }
+
+    #[test]
+    fn filters_entries_ignored_by_parent_repository() {
+        let dir = TempDir::new().unwrap();
+        init_git_repo(dir.path());
+        let vault = dir.path().join("vault");
+        fs::create_dir(&vault).unwrap();
+        write_file(dir.path(), ".gitignore", "vault/ignored.md\n");
+        write_file(&vault, "visible.md", "# Visible\n");
+        write_file(&vault, "ignored.md", "# Hidden\n");
+
+        let filtered = filter_gitignored_entries(
+            &vault,
+            vec![entry(&vault, "visible.md"), entry(&vault, "ignored.md")],
+            true,
+        );
+
+        assert_eq!(entry_paths(&vault, &filtered), vec!["visible.md"]);
     }
 
     #[test]

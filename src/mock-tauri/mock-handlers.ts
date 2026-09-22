@@ -425,8 +425,14 @@ function handleMoveNoteToWorkspace(args: {
   return { new_path: newPath, updated_files: updatedFiles, failed_updates: 0 }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mock handler map accepts heterogeneous arg types
-export const mockHandlers: Record<string, (args: any) => any> = {
+export const mockHandlers = {
+  read_vault_snapshot: () => MOCK_ENTRIES,
+  record_startup_milestone: ({ name, detail }: { name: string; detail?: number | null }) => ({
+    name,
+    detail: detail ?? null,
+    elapsed_ms: 0,
+  }),
+  get_startup_trace: () => [],
   list_vault: () => MOCK_ENTRIES,
   list_vault_folders: () => [],
   list_views: () => [],
@@ -466,6 +472,13 @@ export const mockHandlers: Record<string, (args: any) => any> = {
   should_use_external_media_preview: () => false,
   get_last_commit_info: (): LastCommitInfo => ({ shortHash: 'a1b2c3d', commitUrl: 'https://github.com/lucaong/laputa-vault/commit/a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0' }),
   is_git_repo: () => true,
+  git_workspace_info: ({ vaultPath }: { vaultPath?: string } = {}) => ({
+    vaultRoot: vaultPath ?? '/mock-vault',
+    gitRoot: vaultPath ?? '/mock-vault',
+    vaultPathspec: '',
+    gitRootRelation: 'vault',
+    resolutionFailure: null,
+  }),
   init_git_repo: () => null,
   git_pull: (): GitPullResult => ({ status: 'up_to_date', message: 'Already up to date', updatedFiles: [], conflictFiles: [] }),
   git_push: (): GitPushResult => ({ status: 'ok', message: 'Pushed to remote' }),
@@ -560,6 +573,23 @@ export const mockHandlers: Record<string, (args: any) => any> = {
     kiro: { installed: false, version: null },
     hermes: { installed: false, version: null },
   }),
+  get_ai_agent_model_catalog: () => ([
+    {
+      agent: 'claude_code',
+      models: [
+        { id: 'sonnet', label: 'Sonnet' },
+        { id: 'opus', label: 'Opus' },
+        { id: 'haiku', label: 'Haiku' },
+      ],
+    },
+    {
+      agent: 'codex',
+      models: [
+        { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+        { id: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+      ],
+    },
+  ]),
   get_agent_docs_path: () => '/mock/Tolaria/resources/agent-docs',
   get_vault_ai_guidance_status: () => ({ ...mockVaultAiGuidanceStatus }),
   restore_vault_ai_guidance: () => {
@@ -587,6 +617,11 @@ export const mockHandlers: Record<string, (args: any) => any> = {
   copy_image_to_vault: (args: { vault_path?: string; source_path: string }) => {
     const vault = args.vault_path ?? '/Users/luca/Laputa'
     const filename = args.source_path.split('/').pop() ?? 'image.png'
+    return `${vault}/attachments/${Date.now()}-${filename}`
+  },
+  download_remote_image_to_vault: (args: { vault_path?: string; url: string }) => {
+    const vault = args.vault_path ?? '/Users/luca/Laputa'
+    const filename = new URL(args.url).pathname.split('/').pop() || 'remote-image.png'
     return `${vault}/attachments/${Date.now()}-${filename}`
   },
   get_settings: () => ({ ...mockSettings }),
@@ -726,7 +761,7 @@ export const mockHandlers: Record<string, (args: any) => any> = {
     return 'Vault repaired'
   },
   reinit_telemetry: (): null => null,
-}
+} satisfies Record<string, (...args: never[]) => unknown>
 
 export function addMockEntry(_entry: VaultEntry, content: string): void {
   writeMockContent({ path: _entry.path, content })

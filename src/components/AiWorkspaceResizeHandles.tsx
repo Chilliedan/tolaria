@@ -1,4 +1,5 @@
-import { type MouseEvent as ReactMouseEvent } from 'react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
+import { Button } from '@/components/ui/button'
 import type { AiWorkspaceMode } from './aiWorkspaceSizing'
 
 function startResizeDrag(
@@ -45,14 +46,20 @@ export function WorkspaceResizeHandles({
 
   return (
     <>
-      <div
-        className="absolute inset-y-0 left-0 z-30 w-1 cursor-col-resize bg-transparent transition-colors hover:bg-border"
+      <Button
+        type="button"
+        variant="ghost"
+        aria-label="Resize AI workspace horizontally"
+        className="absolute inset-y-0 left-0 z-30 h-auto min-h-0 w-2 cursor-col-resize rounded-none bg-transparent p-0 transition-colors hover:bg-border"
         data-testid="ai-workspace-left-resize"
         onMouseDown={(event) => startResizeDrag(event, 'col-resize', (deltaX) => onResize(-deltaX, 0))}
       />
       {mode === 'docked' && (
-        <div
-          className="absolute top-0 right-0 left-0 z-30 h-1 cursor-row-resize bg-transparent transition-colors hover:bg-border"
+        <Button
+          type="button"
+          variant="ghost"
+          aria-label="Resize AI workspace vertically"
+          className="absolute top-0 right-0 left-0 z-30 h-2 min-h-0 w-auto cursor-row-resize rounded-none bg-transparent p-0 transition-colors hover:bg-border"
           data-testid="ai-workspace-top-resize"
           onMouseDown={(event) => startResizeDrag(event, 'row-resize', (_deltaX, deltaY) => onResize(0, -deltaY))}
         />

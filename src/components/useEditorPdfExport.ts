@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState, type MutableRefObject } from 'react'
 import { translate, type AppLocale } from '../lib/i18n'
 import { trackNotePdfExportFailed } from '../lib/productAnalytics'
-import {
-  notePdfExportFilename,
-  printActiveNoteAsPdf,
-  type NotePdfExportSource,
-} from '../utils/notePdfExport'
+import { notePdfExportFilename, printActiveNoteAsPdf, type NotePdfExportSource } from '../utils/notePdfExport'
 import type { VaultEntry } from '../types'
 import { isMarkdownEntry } from '../utils/typeDefinitions'
+import { isHtmlFileEntry } from '../utils/filePreview'
 
 interface EditorPdfExportTab {
   entry: VaultEntry
@@ -49,8 +46,8 @@ interface PendingPdfExportParams {
   setPendingSource: (source: NotePdfExportSource | null) => void
 }
 
-function isMarkdownTab(activeTab: EditorPdfExportTab | null): activeTab is EditorPdfExportTab {
-  return Boolean(activeTab && isMarkdownEntry(activeTab.entry))
+function isPdfExportableTab(activeTab: EditorPdfExportTab | null): activeTab is EditorPdfExportTab {
+  return Boolean(activeTab && (isMarkdownEntry(activeTab.entry) || isHtmlFileEntry(activeTab.entry)))
 }
 
 function errorMessage(error: unknown): string {
@@ -58,7 +55,11 @@ function errorMessage(error: unknown): string {
 }
 
 function reportPdfExportError({ error, locale, onToast }: PdfExportErrorParams): void {
-  onToast?.(translate(locale, 'editor.exportPdf.failed', { error: errorMessage(error) }))
+  onToast?.(
+    translate(locale, 'editor.exportPdf.failed', {
+      error: errorMessage(error),
+    }),
+  )
 }
 
 async function preparePdfExportMode({
@@ -84,13 +85,13 @@ function usePendingPdfExport({
   setPendingSource,
 }: PendingPdfExportParams): void {
   useEffect(() => {
-    if (!pendingSource || diffMode || rawMode || !isMarkdownTab(activeTab)) return
+    if (!pendingSource || diffMode || rawMode || !isPdfExportableTab(activeTab)) return
 
     let cancelled = false
     const defaultFilename = notePdfExportFilename(activeTab.entry.filename)
 
     void printActiveNoteAsPdf({ defaultFilename, source: pendingSource })
-      .catch((error) => {
+      .catch((error: unknown) => {
         if (!cancelled) reportPdfExportError({ error, locale, onToast })
       })
       .finally(() => {
@@ -119,20 +120,22 @@ function useRegisteredPdfExportHandler(
   }, [exportNoteAsPdf, pdfExportRef])
 }
 
-export function useEditorPdfExport({
-  activeTab,
-  diffMode,
-  handleToggleDiffExclusive,
-  handleToggleRawExclusive,
-  locale = 'en',
-  onToast,
-  pdfExportRef,
-  rawMode,
-}: UseEditorPdfExportParams): (source?: NotePdfExportSource) => void {
+export function useEditorPdfExport(options: UseEditorPdfExportParams): (source?: NotePdfExportSource) => void {
+  const {
+    activeTab,
+    diffMode,
+    handleToggleDiffExclusive,
+    handleToggleRawExclusive,
+    locale = 'en',
+    onToast,
+    pdfExportRef,
+    rawMode,
+  } = options
   const [pendingSource, setPendingSource] = useState<NotePdfExportSource | null>(null)
 
-  const exportNoteAsPdf = useCallback((source: NotePdfExportSource = 'breadcrumb') => {
-    if (!isMarkdownTab(activeTab)) {
+  const exportNoteAsPdf = useCallback(
+    (source: NotePdfExportSource = 'breadcrumb') => {
+    if (!isPdfExportableTab(activeTab)) {
       trackNotePdfExportFailed(source, 'export_unavailable')
       onToast?.(translate(locale, 'editor.exportPdf.unavailable'))
       return
@@ -145,12 +148,22 @@ export function useEditorPdfExport({
       rawMode,
       setPendingSource,
       source,
-    }).catch((error) => {
+      }).catch((error: unknown) => {
       reportPdfExportError({ error, locale, onToast })
     })
-  }, [activeTab, diffMode, handleToggleDiffExclusive, handleToggleRawExclusive, locale, onToast, rawMode])
+    },
+    [activeTab, diffMode, handleToggleDiffExclusive, handleToggleRawExclusive, locale, onToast, rawMode],
+  )
 
-  usePendingPdfExport({ activeTab, diffMode, locale, onToast, pendingSource, rawMode, setPendingSource })
+  usePendingPdfExport({
+    activeTab,
+    diffMode,
+    locale,
+    onToast,
+    pendingSource,
+    rawMode,
+    setPendingSource,
+  })
   useRegisteredPdfExportHandler(pdfExportRef, exportNoteAsPdf)
 
   return exportNoteAsPdf

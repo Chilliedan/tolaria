@@ -1,7 +1,7 @@
 import type { NoteStatus, VaultEntry } from '../../types'
 import { extractH1TitleFromContent } from '../../utils/noteTitle'
 import { noteDisplaysAsSheet } from '../../utils/noteFormat'
-import { countWords } from '../../utils/wikilinks'
+import { isHtmlFileEntry } from '../../utils/filePreview'
 
 export interface EditorContentTab {
   entry: VaultEntry
@@ -18,6 +18,7 @@ interface EditorContentStateInput {
 interface VisibilityState {
   effectiveRawMode: boolean
   isDeletedPreview: boolean
+  isHtmlPreview: boolean
   isNonMarkdownText: boolean
   isSheet: boolean
   showEditor: boolean
@@ -43,6 +44,7 @@ export interface EditorContentState {
   isArchived: boolean
   hasH1: boolean
   isDeletedPreview: boolean
+  isHtmlPreview: boolean
   isNonMarkdownText: boolean
   isSheet: boolean
   effectiveRawMode: boolean
@@ -85,16 +87,23 @@ function deriveVisibilityState(input: {
   } = input
   const isDeletedPreview = !!activeTab && !freshEntry
   const isSheet = resolveIsSheet(activeTab, freshEntry)
-  const isNonMarkdownText = activeTab?.entry.fileKind === 'text' && !isSheet
+  const isHtmlPreview = !!activeTab && isHtmlFileEntry(activeTab.entry)
+  const isNonMarkdownText = activeTab?.entry.fileKind === 'text' && !isSheet && !isHtmlPreview
   const effectiveRawMode = rawMode || isNonMarkdownText
 
   return {
     isDeletedPreview,
+    isHtmlPreview,
     isNonMarkdownText,
     isSheet,
     effectiveRawMode,
     showEditor: !effectiveRawMode,
   }
+}
+
+function resolveWordCount(activeTab: EditorContentTab | null, freshEntry: VaultEntry | undefined): number {
+  if (freshEntry) return freshEntry.wordCount
+  return activeTab?.entry.wordCount ?? 0
 }
 
 export function deriveEditorContentState(input: EditorContentStateInput): EditorContentState {
@@ -113,6 +122,6 @@ export function deriveEditorContentState(input: EditorContentStateInput): Editor
     hasH1,
     ...visibilityState,
     path: activeTab?.entry.path ?? '',
-    wordCount: activeTab ? countWords(activeTab.content) : 0,
+    wordCount: resolveWordCount(activeTab, freshEntry),
   }
 }

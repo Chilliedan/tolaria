@@ -1,22 +1,14 @@
-import { useCallback, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react'
-import {
-  AiPanelComposer,
-  AiPanelHeader,
-  AiPanelMessageHistory,
-} from './AiPanelChrome'
-import {
-  DEFAULT_AI_AGENT,
-  getAiAgentDefinition,
-  type AiAgentId,
-  type AiAgentReadiness,
-} from '../lib/aiAgents'
+import { useCallback, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from 'react'
+import { AiPanelComposer, AiPanelHeader, AiPanelMessageHistory } from './AiPanelChrome'
+import { DEFAULT_AI_AGENT, getAiAgentDefinition, type AiAgentId, type AiAgentReadiness } from '../lib/aiAgents'
 import type { AiTarget } from '../lib/aiTargets'
 import type { AppLocale } from '../lib/i18n'
-import { type NoteListItem } from '../utils/ai-context'
+import type { NoteListItem } from '../utils/ai-context'
 import type { VaultEntry } from '../types'
 import { useAiPanelController, type AiPanelController } from './useAiPanelController'
 import { useAiPanelPromptQueue } from './useAiPanelPromptQueue'
 import { useAiPanelFocus } from './useAiPanelFocus'
+import { resumeEditorFocus, useInspectorFocusBoundary } from '../hooks/editorFocusOwnership'
 
 export type { AiAgentMessage } from '../hooks/useCliAiAgent'
 
@@ -71,6 +63,22 @@ function readinessFromReadyFlag(ready: boolean | undefined): AiAgentReadiness {
   return (ready ?? true) ? 'ready' : 'missing'
 }
 
+function resolveDefaultAgent(agent: AiAgentId | undefined): AiAgentId {
+  return agent ?? DEFAULT_AI_AGENT
+}
+
+function resolveDefaultReadiness(
+  readiness: AiAgentReadiness | undefined,
+  ready: boolean | undefined,
+): AiAgentReadiness {
+  return readiness ?? readinessFromReadyFlag(ready)
+}
+
+function resolveDefaultTarget(target: AiTarget | undefined, agent: AiAgentId) {
+  if (target) return { label: target.label, kind: target.kind }
+  return { label: getAiAgentDefinition(agent).label, kind: 'agent' as const }
+}
+
 interface AiPanelViewModel {
   agentLabel: string
   defaultAiAgent: AiAgentId
@@ -89,28 +97,32 @@ function resolveAiPanelViewModel({
   defaultAiAgentReady?: boolean
   defaultAiTarget?: AiTarget
 }): AiPanelViewModel {
-  const resolvedAgent = defaultAiAgent ?? DEFAULT_AI_AGENT
-  const resolvedReadiness = defaultAiAgentReadiness ?? readinessFromReadyFlag(defaultAiAgentReady)
+  const resolvedAgent = resolveDefaultAgent(defaultAiAgent)
+  const resolvedReadiness = resolveDefaultReadiness(defaultAiAgentReadiness, defaultAiAgentReady)
+  const resolvedTarget = resolveDefaultTarget(defaultAiTarget, resolvedAgent)
 
   return {
-    agentLabel: defaultAiTarget?.label ?? getAiAgentDefinition(resolvedAgent).label,
+    agentLabel: resolvedTarget.label,
     defaultAiAgent: resolvedAgent,
     defaultAiAgentReadiness: resolvedReadiness,
-    targetKind: defaultAiTarget?.kind ?? 'agent',
+    targetKind: resolvedTarget.kind,
   }
 }
 
 function aiPanelFrameStyle(isActive: boolean, showLeftBorder: boolean): CSSProperties {
   return {
     outline: 'none',
-    borderLeft: showLeftBorder
-      ? isActive
-        ? '2px solid var(--accent-blue)'
-        : '1px solid var(--border)'
-      : undefined,
+    borderLeft: showLeftBorder ? (isActive ? '2px solid var(--accent-blue)' : '1px solid var(--border)') : undefined,
     animation: showLeftBorder && isActive ? 'ai-border-pulse 2s ease-in-out infinite' : undefined,
     transition: showLeftBorder ? 'border-color 0.3s ease' : undefined,
   }
+}
+
+function useReleaseEditorFocusOnUnmount(panelRef: RefObject<HTMLElement | null>): void {
+  useLayoutEffect(() => () => {
+    const panel = panelRef.current
+    if (panel?.contains(document.activeElement)) resumeEditorFocus()
+  }, [panelRef])
 }
 
 function AiPanelFrame({
@@ -126,6 +138,9 @@ function AiPanelFrame({
   showLeftBorder: boolean
   surface: 'default' | 'sidebar'
 }) {
+  useInspectorFocusBoundary(panelRef)
+  useReleaseEditorFocusOnUnmount(panelRef)
+
   return (
     <aside
       ref={panelRef}
@@ -140,28 +155,29 @@ function AiPanelFrame({
   )
 }
 
-export function AiPanelView({
-  controller,
-  onClose,
-  onOpenNote,
-  onUnsupportedAiPaste,
-  defaultAiAgent: providedDefaultAiAgent,
-  defaultAiTarget,
-  defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
-  defaultAiAgentReady: providedDefaultAiAgentReady,
-  locale = 'en',
-  entries,
-  interactive = true,
-  showHeader = true,
-  showLeftBorder = true,
-  surface = 'default',
-  composerControls,
-  onForkMessage,
-  onQueuedPromptTarget,
-  onSendPrompt,
-  onMessageHistoryScrollStateChange,
-  targetId,
-}: AiPanelViewProps) {
+export function AiPanelView(options: AiPanelViewProps) {
+  const {
+    controller,
+    onClose,
+    onOpenNote,
+    onUnsupportedAiPaste,
+    defaultAiAgent: providedDefaultAiAgent,
+    defaultAiTarget,
+    defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
+    defaultAiAgentReady: providedDefaultAiAgentReady,
+    locale = 'en',
+    entries,
+    interactive = true,
+    showHeader = true,
+    showLeftBorder = true,
+    surface = 'default',
+    composerControls,
+    onForkMessage,
+    onQueuedPromptTarget,
+    onSendPrompt,
+    onMessageHistoryScrollStateChange,
+    targetId,
+  } = options
   const view = resolveAiPanelViewModel({
     defaultAiAgent: providedDefaultAiAgent,
     defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
@@ -171,111 +187,114 @@ export function AiPanelView({
   const inputRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLElement>(null)
   const {
-    agent,
-    input,
-    setInput,
-    hasContext,
-    isActive,
-    permissionMode,
-    handleSend,
-    handleStop,
-    handleNavigateWikilink,
-    handlePermissionModeChange,
-    handleNewChat,
-  } = controller
+        agent,
+        input,
+        setInput,
+        hasContext,
+        isActive,
+        permissionMode,
+        handleSend,
+        handleStop,
+        handleNavigateWikilink,
+        handlePermissionModeChange,
+        handleNewChat,
+      } = controller
 
-  useAiPanelPromptQueue({
-    agent,
-    currentTargetId: targetId,
-    input,
-    isActive,
-    onTargetChange: onQueuedPromptTarget,
-    setInput,
-    enabled: interactive,
-  })
-  useAiPanelFocus({
-    inputRef,
-    panelRef,
-    hasMessages: agent.messages.length > 0,
-    isActive,
-    onClose,
-    enabled: interactive,
-  })
-  const handleComposerSend = useCallback((text: string, references: Parameters<typeof handleSend>[1]) => {
-    if (!text.trim() || isActive) return
-    onSendPrompt?.(text)
-    handleSend(text, references)
-  }, [handleSend, isActive, onSendPrompt])
+      useAiPanelPromptQueue({
+        agent,
+        currentTargetId: targetId,
+        input,
+        isActive,
+        onTargetChange: onQueuedPromptTarget,
+        setInput,
+        enabled: interactive,
+      })
+      useAiPanelFocus({
+        inputRef,
+        panelRef,
+        hasMessages: agent.messages.length > 0,
+        isActive,
+        onClose,
+        enabled: interactive,
+      })
+      const handleComposerSend = useCallback(
+        (text: string, references: Parameters<typeof handleSend>[1]) => {
+        if (!text.trim() || isActive) return
+        onSendPrompt?.(text)
+        handleSend(text, references)
+        },
+        [handleSend, isActive, onSendPrompt],
+      )
 
-  return (
-    <AiPanelFrame panelRef={panelRef} isActive={isActive} showLeftBorder={showLeftBorder} surface={surface}>
-      {showHeader && (
-        <AiPanelHeader
-          agentLabel={view.agentLabel}
-          agentReadiness={view.defaultAiAgentReadiness}
-          targetKind={view.targetKind}
-          locale={locale}
-          permissionMode={permissionMode}
-          permissionModeDisabled={isActive}
-          onPermissionModeChange={handlePermissionModeChange}
-          onClose={onClose}
-          onNewChat={handleNewChat}
-        />
-      )}
-      <AiPanelMessageHistory
-        agentLabel={view.agentLabel}
-        agentReadiness={view.defaultAiAgentReadiness}
-        locale={locale}
-        messages={agent.messages}
-        isActive={isActive}
-        onForkMessage={onForkMessage}
-        onOpenNote={onOpenNote}
-        onNavigateWikilink={handleNavigateWikilink}
-        onRegenerateMessage={agent.regenerateMessage}
-        onScrollStateChange={onMessageHistoryScrollStateChange}
-        hasContext={hasContext}
-      />
-      <AiPanelComposer
-        entries={entries ?? []}
-        agentLabel={view.agentLabel}
-        agentReadiness={view.defaultAiAgentReadiness}
-        locale={locale}
-        input={input}
-        inputRef={inputRef}
-        isActive={isActive}
-        controls={composerControls}
-        onChange={setInput}
-        onSend={handleComposerSend}
-        onStop={handleStop}
-        onUnsupportedAiPaste={onUnsupportedAiPaste}
-      />
-    </AiPanelFrame>
-  )
-}
+      return (
+        <AiPanelFrame panelRef={panelRef} isActive={isActive} showLeftBorder={showLeftBorder} surface={surface}>
+          {showHeader && (
+            <AiPanelHeader
+              agentLabel={view.agentLabel}
+              agentReadiness={view.defaultAiAgentReadiness}
+              targetKind={view.targetKind}
+              locale={locale}
+              permissionMode={permissionMode}
+              permissionModeDisabled={isActive}
+              onPermissionModeChange={handlePermissionModeChange}
+              onClose={onClose}
+              onNewChat={handleNewChat}
+            />
+          )}
+          <AiPanelMessageHistory
+            agentLabel={view.agentLabel}
+            agentReadiness={view.defaultAiAgentReadiness}
+            locale={locale}
+            messages={agent.messages}
+            isActive={isActive}
+            onForkMessage={onForkMessage}
+            onOpenNote={onOpenNote}
+            onNavigateWikilink={handleNavigateWikilink}
+            onRegenerateMessage={agent.regenerateMessage}
+            onScrollStateChange={onMessageHistoryScrollStateChange}
+            hasContext={hasContext}
+          />
+          <AiPanelComposer
+            entries={entries ?? []}
+            agentLabel={view.agentLabel}
+            agentReadiness={view.defaultAiAgentReadiness}
+            locale={locale}
+            input={input}
+            inputRef={inputRef}
+            isActive={isActive}
+            controls={composerControls}
+            onChange={setInput}
+            onSend={handleComposerSend}
+            onStop={handleStop}
+            onUnsupportedAiPaste={onUnsupportedAiPaste}
+          />
+        </AiPanelFrame>
+      )
+    }
 
-export function AiPanel({
-  onClose,
-  onOpenNote,
-  onUnsupportedAiPaste,
-  defaultAiAgent: providedDefaultAiAgent,
-  defaultAiTarget,
-  defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
-  defaultAiAgentReady: providedDefaultAiAgentReady,
-  locale = 'en',
-  onFileCreated,
-  onFileModified,
-  onVaultChanged,
-  vaultPath,
-  vaultPaths,
-  activeEntry,
-  activeNoteContent,
-  entries,
-  openTabs,
-  noteList,
-  noteListFilter,
-}: AiPanelProps) {
-  const defaultAiAgentReadiness = providedDefaultAiAgentReadiness
-    ?? readinessFromReadyFlag(providedDefaultAiAgentReady)
+    export function AiPanel(options: AiPanelProps) {
+      const {
+      onClose,
+      onOpenNote,
+      onUnsupportedAiPaste,
+      defaultAiAgent: providedDefaultAiAgent,
+      defaultAiTarget,
+      defaultAiAgentReadiness: providedDefaultAiAgentReadiness,
+      defaultAiAgentReady: providedDefaultAiAgentReady,
+      locale = 'en',
+      onFileCreated,
+      onFileModified,
+      onVaultChanged,
+      vaultPath,
+      vaultPaths,
+      activeEntry,
+      activeNoteContent,
+      entries,
+      openTabs,
+      noteList,
+      noteListFilter,
+  } = options
+  const defaultAiAgentReadiness = providedDefaultAiAgentReadiness ?? readinessFromReadyFlag(providedDefaultAiAgentReady)
   const controller = useAiPanelController({
     vaultPath,
     vaultPaths,

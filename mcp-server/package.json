@@ -6,7 +6,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "node --test test.js tool-service.test.js"
+    "test": "node --test test.js tool-service.test.js vault-lifecycle.test.js vault-lifecycle-stdio.test.js vault-path.test.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
@@ -14,10 +14,10 @@
     "ws": "^8.20.1"
   },
   "overrides": {
-    "@hono/node-server": "1.19.13",
+    "@hono/node-server": "2.0.12",
     "express-rate-limit": "8.2.2",
-    "fast-uri": "3.1.2",
-    "hono": "4.12.25",
+    "fast-uri": "3.1.4",
+    "hono": "4.12.34",
     "qs": "6.15.2",
     "ip-address": "10.1.1",
     "path-to-regexp": "8.4.0"

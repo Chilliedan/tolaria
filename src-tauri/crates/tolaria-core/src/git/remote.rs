@@ -5,6 +5,7 @@ use super::command::{git_output, stderr_text, stdout_text};
 use super::conflict::{get_conflict_files, is_merge_in_progress};
 use super::remote_config::has_configured_remote;
 use super::upstream::{missing_upstream_message, sync_target};
+use super::GitWorkspace;
 
 const NO_REMOTE_STATUS: &str = "no_remote";
 const NO_REMOTE_MESSAGE: &str = "No remote configured";
@@ -19,10 +20,19 @@ pub struct GitPullResult {
     pub conflict_files: Vec<String>,
 }
 
+struct PullCommandOutput<'a> {
+    succeeded: bool,
+    stdout: &'a str,
+    stderr: &'a str,
+}
+
 /// Check whether the vault repo has at least one remote configured.
 pub fn has_remote(vault_path: impl AsRef<Path>) -> Result<bool, String> {
     let vault = vault_path.as_ref();
-    has_configured_remote(vault)
+    let Some(workspace) = GitWorkspace::resolve(vault)? else {
+        return Ok(false);
+    };
+    has_configured_remote(workspace.git_root())
 }
 
 /// Pull latest changes from remote. Uses --no-rebase to merge, and --no-edit
@@ -32,102 +42,122 @@ pub fn has_remote(vault_path: impl AsRef<Path>) -> Result<bool, String> {
 /// Returns a structured result with status and affected files.
 pub fn git_pull(vault_path: impl AsRef<Path>) -> Result<GitPullResult, String> {
     let vault = vault_path.as_ref();
+    let workspace = GitWorkspace::resolve(vault)?
+        .ok_or_else(|| "Vault is not inside a Git work tree".to_string())?;
+    let git_root = workspace.git_root();
 
-    if !has_remote(vault)? {
-        return Ok(GitPullResult {
-            status: NO_REMOTE_STATUS.to_string(),
-            message: NO_REMOTE_MESSAGE.to_string(),
-            updated_files: vec![],
-            conflict_files: vec![],
-        });
+    if !has_configured_remote(git_root)? {
+        return Ok(pull_result(NO_REMOTE_STATUS, NO_REMOTE_MESSAGE));
     }
 
-    // A merge left unconcluded by a prior pull (MERGE_HEAD present) makes
-    // `git pull` fail with a cryptic "You have not concluded your merge" error.
-    // Detect that state up front and report it cleanly and actionably instead.
-    let vault_text = vault.to_string_lossy();
-    if is_merge_in_progress(vault_text.as_ref()) {
-        let conflicts = get_conflict_files(vault_text.as_ref()).unwrap_or_default();
-        if !conflicts.is_empty() {
-            return Ok(GitPullResult {
-                status: "conflict".to_string(),
-                message: format!("Merge conflict in {} file(s)", conflicts.len()),
-                updated_files: vec![],
-                conflict_files: conflicts,
-            });
-        }
-        return Ok(GitPullResult {
-            status: "error".to_string(),
-            message:
-                "A previous merge is still in progress. Resolve or abort it (git merge --abort) before pulling."
-                    .to_string(),
-            updated_files: vec![],
-            conflict_files: vec![],
-        });
+    if let Some(result) = unconcluded_merge_result(vault) {
+        return Ok(result);
     }
 
-    let target = match sync_target(vault)? {
+    let target = match sync_target(git_root)? {
         Some(target) => target,
         None => {
-            return Ok(GitPullResult {
-                status: "error".to_string(),
-                message: missing_upstream_message(vault)?,
-                updated_files: vec![],
-                conflict_files: vec![],
-            });
+            return Ok(pull_result("error", &missing_upstream_message(git_root)?));
         }
     };
 
     let output = git_output(
-        vault,
-        &["pull", "--no-rebase", "--no-edit", &target.remote, &target.branch],
+        git_root,
+        &[
+            "pull",
+            "--no-rebase",
+            "--no-edit",
+            &target.remote,
+            &target.branch,
+        ],
     )
     .map_err(|e| format!("Failed to run git pull: {}", e))?;
 
-    let stdout = stdout_text(&output);
-    let stderr = stderr_text(&output);
+    Ok(pull_output_result(
+        vault,
+        &workspace,
+        PullCommandOutput {
+            succeeded: output.status.success(),
+            stdout: &stdout_text(&output),
+            stderr: &stderr_text(&output),
+        },
+    ))
+}
 
-    if output.status.success() {
-        if stdout.contains("Already up to date") || stdout.contains("Already up-to-date") {
-            return Ok(GitPullResult {
-                status: "up_to_date".to_string(),
-                message: "Already up to date".to_string(),
-                updated_files: vec![],
-                conflict_files: vec![],
-            });
-        }
-        let updated = parse_updated_files(&stdout);
-        return Ok(GitPullResult {
-            status: "updated".to_string(),
-            message: format!("{} file(s) updated", updated.len()),
-            updated_files: updated,
-            conflict_files: vec![],
-        });
+/// A merge left unconcluded by a prior pull (MERGE_HEAD present) makes
+/// `git pull` fail with a cryptic "You have not concluded your merge" error.
+/// Detect that state up front and report it cleanly and actionably instead.
+fn unconcluded_merge_result(vault: &Path) -> Option<GitPullResult> {
+    if !is_merge_in_progress(vault) {
+        return None;
     }
-
-    // Check for merge conflicts
-    let conflicts = get_conflict_files(vault_text.as_ref()).unwrap_or_default();
+    let conflicts = get_conflict_files(vault.to_string_lossy().as_ref()).unwrap_or_default();
     if !conflicts.is_empty() {
-        return Ok(GitPullResult {
+        return Some(GitPullResult {
             status: "conflict".to_string(),
             message: format!("Merge conflict in {} file(s)", conflicts.len()),
             updated_files: vec![],
             conflict_files: conflicts,
         });
     }
+    Some(pull_result(
+        "error",
+        "A previous merge is still in progress. Resolve or abort it (git merge --abort) before pulling.",
+    ))
+}
 
-    // Network error or other failure — report as error
-    let detail = if stderr.trim().is_empty() {
-        stdout.trim().to_string()
+fn pull_output_result(
+    vault: &Path,
+    workspace: &GitWorkspace,
+    output: PullCommandOutput<'_>,
+) -> GitPullResult {
+    if output.succeeded {
+        if output.stdout.contains("Already up to date")
+            || output.stdout.contains("Already up-to-date")
+        {
+            return pull_result(
+                "up_to_date",
+                &repository_scope_message(workspace, "Already up to date"),
+            );
+        }
+        let updated = scope_updated_files(parse_updated_files(output.stdout), workspace);
+        return GitPullResult {
+            status: "updated".to_string(),
+            message: repository_scope_message(
+                workspace,
+                &format!("{} vault file(s) updated", updated.len()),
+            ),
+            updated_files: updated,
+            conflict_files: vec![],
+        };
+    }
+
+    let vault_text = vault.to_string_lossy();
+    let conflicts = get_conflict_files(vault_text.as_ref()).unwrap_or_default();
+    if !conflicts.is_empty() {
+        return GitPullResult {
+            status: "conflict".to_string(),
+            message: format!("Merge conflict in {} file(s)", conflicts.len()),
+            updated_files: vec![],
+            conflict_files: conflicts,
+        };
+    }
+
+    let detail = if output.stderr.trim().is_empty() {
+        output.stdout.trim().to_string()
     } else {
-        stderr.trim().to_string()
+        output.stderr.trim().to_string()
     };
-    Ok(GitPullResult {
-        status: "error".to_string(),
-        message: detail,
+    pull_result("error", &detail)
+}
+
+fn pull_result(status: &str, message: &str) -> GitPullResult {
+    GitPullResult {
+        status: status.to_string(),
+        message: message.to_string(),
         updated_files: vec![],
         conflict_files: vec![],
-    })
+    }
 }
 
 /// Parse `git pull` output to extract updated file paths.
@@ -146,6 +176,20 @@ fn parse_updated_files(stdout: &str) -> Vec<String> {
             None
         })
         .collect()
+}
+
+fn scope_updated_files(files: Vec<String>, workspace: &GitWorkspace) -> Vec<String> {
+    files
+        .into_iter()
+        .filter_map(|path| workspace.vault_relative_path(&path))
+        .collect()
+}
+
+fn repository_scope_message(workspace: &GitWorkspace, message: &str) -> String {
+    if workspace.uses_parent_repository() {
+        return format!("Parent repository: {message}");
+    }
+    message.to_string()
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
@@ -294,26 +338,29 @@ fn push_error_detail(stderr: &str) -> String {
 /// Push to remote.
 pub fn git_push(vault_path: impl AsRef<Path>) -> Result<GitPushResult, String> {
     let vault = vault_path.as_ref();
+    let workspace = GitWorkspace::resolve(vault)?
+        .ok_or_else(|| "Vault is not inside a Git work tree".to_string())?;
+    let git_root = workspace.git_root();
 
-    if !has_remote(vault)? {
+    if !has_configured_remote(git_root)? {
         return Ok(GitPushResult {
             status: NO_REMOTE_STATUS.to_string(),
             message: NO_REMOTE_MESSAGE.to_string(),
         });
     }
 
-    let target = match sync_target(vault)? {
+    let target = match sync_target(git_root)? {
         Some(target) => target,
         None => {
             return Ok(GitPushResult {
                 status: "error".to_string(),
-                message: missing_upstream_message(vault)?,
+                message: missing_upstream_message(git_root)?,
             });
         }
     };
 
     let push_refspec = format!("HEAD:refs/heads/{}", target.branch);
-    let output = git_output(vault, &["push", &target.remote, &push_refspec])
+    let output = git_output(git_root, &["push", &target.remote, &push_refspec])
         .map_err(|e| format!("Failed to run git push: {}", e))?;
 
     if !output.status.success() {
@@ -323,7 +370,7 @@ pub fn git_push(vault_path: impl AsRef<Path>) -> Result<GitPushResult, String> {
 
     Ok(GitPushResult {
         status: "ok".to_string(),
-        message: "Pushed to remote".to_string(),
+        message: repository_scope_message(&workspace, "Pushed to remote"),
     })
 }
 

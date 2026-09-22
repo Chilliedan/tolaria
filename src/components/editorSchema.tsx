@@ -33,8 +33,10 @@ import { MermaidDiagram } from './MermaidDiagram'
 import { SafeHtmlSpan } from './SafeMarkup'
 import { updateTldrawBlockPropsSafely } from './tldrawBlockProps'
 import { useExternalMediaPreview } from '../utils/mediaPreviewRuntime'
+import { Button } from './ui/button'
 import { Textarea } from './ui/textarea'
 import { dispatchRichEditorExternalChange } from './editorExternalChangeEvents'
+import { CalloutBlockSpec } from './CalloutBlock'
 import {
   isStaleBlockReferenceError,
   reportRecoveredEditorTransformError,
@@ -64,16 +66,16 @@ function resolveWikilinkColor(target: string) {
  *  Priority: pipe display text → entry title → humanised path stem */
 function resolveDisplayInfo(target: string): { text: string; icon: string | null } {
   const pipeIdx = target.indexOf('|')
-  if (pipeIdx !== -1) {
-    const entry = resolveEntry(_wikilinkEntriesRef.current, target.slice(0, pipeIdx))
-    return { text: target.slice(pipeIdx + 1), icon: entry?.icon ?? null }
-  }
+  if (pipeIdx !== -1) return pipedDisplayInfo(target, pipeIdx)
   const entry = resolveEntry(_wikilinkEntriesRef.current, target)
-  if (entry) {
-    return { text: entry.title, icon: entry.icon ?? null }
-  }
+  if (entry) return { text: entry.title, icon: entry.icon ?? null }
   const last = target.split('/').pop() ?? target
   return { text: last.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()), icon: null }
+}
+
+function pipedDisplayInfo(target: string, pipeIndex: number): { text: string; icon: string | null } {
+  const entry = resolveEntry(_wikilinkEntriesRef.current, target.slice(0, pipeIndex))
+  return { text: target.slice(pipeIndex + 1), icon: entry?.icon ?? null }
 }
 
 export const WikiLink = createReactInlineContentSpec(
@@ -214,13 +216,10 @@ export function MathBlockEditor({ block, editor }: MathBlockEditorProps) {
     }
   }
 
-  return (
-    <div
-      className={editing ? 'math-block-shell math-block-shell--editing' : 'math-block-shell'}
-      onDoubleClick={editing ? stopMathEditorEvent : startEditing}
-    >
-      {editing ? (
-        <div contentEditable={false} onMouseDown={stopMathEditorEvent}>
+  if (editing) {
+    return (
+      <div className="math-block-shell math-block-shell--editing">
+        <div contentEditable={false}>
           <Textarea
             ref={textareaRef}
             aria-label={`Math: ${currentLatex}`}
@@ -229,12 +228,22 @@ export function MathBlockEditor({ block, editor }: MathBlockEditorProps) {
             onBlur={finishEditing}
             onChange={(event) => setDraftLatex(event.target.value)}
             onKeyDown={handleKeyDown}
+            onMouseDown={stopMathEditorEvent}
           />
         </div>
-      ) : (
-        <MathRender latex={currentLatex} displayMode />
-      )}
-    </div>
+      </div>
+    )
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      className="math-block-shell h-auto min-h-9"
+      onDoubleClick={startEditing}
+    >
+      <MathRender latex={currentLatex} displayMode />
+    </Button>
   )
 }
 
@@ -455,6 +464,8 @@ const mermaidBlock = MermaidBlock()
 const tldrawBlock = TldrawBlock()
 const videoBlock = VideoBlockSpec()
 
+const calloutBlock = CalloutBlockSpec()
+
 function markdownHighlightElement(): { dom: HTMLElement; contentDOM: HTMLElement } {
   const mark = document.createElement('mark')
   mark.className = 'markdown-highlight'
@@ -485,6 +496,7 @@ export const schema = BlockNoteSchema.create({
   },
   blockSpecs: {
     audio: audioBlock,
+    calloutBlock,
     htmlBlock,
     mathBlock,
     mermaidBlock,

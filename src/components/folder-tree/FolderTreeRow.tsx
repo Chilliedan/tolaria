@@ -77,10 +77,7 @@ function FolderCreateRow({
   onCreateFolderSubmit: (value: string) => Promise<boolean>
 }) {
   return (
-    <div
-      data-testid={`folder-create-parent:${node.path}`}
-      style={{ paddingLeft: getFolderDepthIndent(depth + 1) }}
-    >
+    <div data-testid={`folder-create-parent:${node.path}`} style={{ paddingLeft: getFolderDepthIndent(depth + 1) }}>
       <FolderNameInput
         ariaLabel={translate(locale, 'sidebar.folder.newName')}
         initialValue=""
@@ -95,17 +92,7 @@ function FolderCreateRow({
   )
 }
 
-function FolderCreateRowSlot({
-  contentInset,
-  creationParent,
-  depth,
-  isCreating,
-  node,
-  locale,
-  onCancelCreateFolder,
-  onCreateFolderSubmit,
-  rootPath,
-}: {
+function FolderCreateRowSlot(options: {
   contentInset: number
   creationParent?: FolderCreationParent
   depth: number
@@ -116,6 +103,17 @@ function FolderCreateRowSlot({
   onCreateFolderSubmit?: (value: string) => Promise<boolean>
   rootPath?: string
 }) {
+  const {
+    contentInset,
+    creationParent,
+    depth,
+    isCreating,
+    node,
+    locale,
+    onCancelCreateFolder,
+    onCreateFolderSubmit,
+    rootPath,
+  } = options
   if (!isCreating) return null
   if (!creationParentMatchesNode(creationParent, node, rootPath)) return null
   if (!onCancelCreateFolder || !onCreateFolderSubmit) return null
@@ -132,28 +130,29 @@ function FolderCreateRowSlot({
   )
 }
 
-function FolderChildren({
-  creationParent,
-  depth,
-  expanded,
-  isCreating,
-  node,
-  onCancelCreateFolder,
-  onCreateFolderSubmit,
-  onDeleteFolder,
-  onOpenMenu,
-  onRenameFolder,
-  onSelect,
-  onStartRenameFolder,
-  onToggle,
-  onCancelRenameFolder,
-  onCanDropNote,
-  onMoveNoteToFolder,
-  locale,
-  renamingFolderPath,
-  rootPath,
-  selection,
-}: FolderTreeRowProps) {
+function FolderChildren(options: FolderTreeRowProps) {
+  const {
+    creationParent,
+    depth,
+    expanded,
+    isCreating,
+    node,
+    onCancelCreateFolder,
+    onCreateFolderSubmit,
+    onDeleteFolder,
+    onOpenMenu,
+    onRenameFolder,
+    onSelect,
+    onStartRenameFolder,
+    onToggle,
+    onCancelRenameFolder,
+    onCanDropNote,
+    onMoveNoteToFolder,
+    locale,
+    renamingFolderPath,
+    rootPath,
+    selection,
+  } = options
   const isExpanded = expanded[folderNodeKey({ path: node.path, rootPath: node.rootPath ?? rootPath })] ?? false
   const hasChildren = node.children.length > 0
   if (!isExpanded || !hasChildren) return null
@@ -167,7 +166,10 @@ function FolderChildren({
       />
       {node.children.map((child) => (
         <FolderTreeRow
-          key={folderNodeKey({ path: child.path, rootPath: child.rootPath ?? rootPath })}
+          key={folderNodeKey({
+            path: child.path,
+            rootPath: child.rootPath ?? rootPath,
+          })}
           depth={depth + 1}
           expanded={expanded}
           node={child}
@@ -205,11 +207,7 @@ function creationParentMatchesNode(
   return nodeRootPath === creationRootPath
 }
 
-function folderSelectionMatches(
-  selection: SidebarSelection,
-  node: FolderNode,
-  defaultRootPath?: string,
-): boolean {
+function folderSelectionMatches(selection: SidebarSelection, node: FolderNode, defaultRootPath?: string): boolean {
   if (selection.kind !== 'folder' || selection.path !== node.path) return false
 
   const nodeRootPath = node.rootPath ?? defaultRootPath
@@ -218,41 +216,38 @@ function folderSelectionMatches(
   return nodeRootPath === defaultRootPath
 }
 
-export const FolderTreeRow = memo(function FolderTreeRow({
-  creationParent,
-  depth,
-  expanded,
-  isCreating = false,
-  node,
-  onCancelCreateFolder,
-  onCreateFolderSubmit,
-  onDeleteFolder,
-  onOpenMenu,
-  onRenameFolder,
-  onSelect,
-  onStartRenameFolder,
-  onToggle,
-  onCancelRenameFolder,
-  onCanDropNote,
-  onMoveNoteToFolder,
-  locale = 'en',
-  renamingFolderPath,
-  rootPath,
-  selection,
-}: FolderTreeRowProps) {
-  const nodeKey = folderNodeKey({ path: node.path, rootPath: node.rootPath ?? rootPath })
-  const nodeRootPath = node.rootPath ?? rootPath
-  const isExpanded = expanded[nodeKey] ?? false
-  const isSelected = folderSelectionMatches(selection, { ...node, rootPath: nodeRootPath }, rootPath)
-  const canUseDefaultFolderActions = !nodeRootPath || nodeRootPath === rootPath
-  const canMutateFolder = node.path.length > 0 && canUseDefaultFolderActions
-  const isRenaming = canMutateFolder && renamingFolderPath === node.path
+function selectionForFolder(path: string, rootPath?: string): SidebarSelection {
+  return rootPath ? { kind: 'folder', path, rootPath } : { kind: 'folder', path }
+}
+
+export const FolderTreeRow = memo(function FolderTreeRow(options: FolderTreeRowProps) {
+  const {
+    creationParent,
+    depth,
+    expanded,
+    isCreating = false,
+    node,
+    onCancelCreateFolder,
+    onCreateFolderSubmit,
+    onDeleteFolder,
+    onOpenMenu,
+    onRenameFolder,
+    onSelect,
+    onStartRenameFolder,
+    onToggle,
+    onCancelRenameFolder,
+    onCanDropNote,
+    onMoveNoteToFolder,
+    locale = 'en',
+    renamingFolderPath,
+    rootPath,
+    selection,
+  } = options
+  const { nodeKey, nodeRootPath, isExpanded, isSelected, canUseDefaultFolderActions, canMutateFolder, isRenaming } = resolveFolderTreeRowState(options)
   const depthIndent = getFolderDepthIndent(depth)
   const contentInset = FOLDER_ROW_CONTENT_INSET
   const selectFolder = useCallback(() => {
-    onSelect(nodeRootPath
-      ? { kind: 'folder', path: node.path, rootPath: nodeRootPath }
-      : { kind: 'folder', path: node.path })
+    onSelect(selectionForFolder(node.path, nodeRootPath))
   }, [node.path, nodeRootPath, onSelect])
   const row = (
     <FolderItemRow
@@ -282,7 +277,9 @@ export const FolderTreeRow = memo(function FolderTreeRow({
           onCancelRenameFolder={onCancelRenameFolder}
           onRenameFolder={onRenameFolder}
         />
-      ) : row}
+      ) : (
+        row
+      )}
       <FolderCreateRowSlot
         contentInset={contentInset}
         creationParent={creationParent}
@@ -319,3 +316,20 @@ export const FolderTreeRow = memo(function FolderTreeRow({
     </>
   )
 })
+
+function resolveFolderTreeRowState(options: Pick<FolderTreeRowProps, 'expanded' | 'node' | 'renamingFolderPath' | 'rootPath' | 'selection'>) {
+  const { expanded, node, renamingFolderPath, rootPath, selection } = options
+  const nodeRootPath = node.rootPath ?? rootPath
+  const nodeKey = folderNodeKey({ path: node.path, rootPath: nodeRootPath })
+  const canUseDefaultFolderActions = !nodeRootPath || nodeRootPath === rootPath
+  const canMutateFolder = node.path.length > 0 && canUseDefaultFolderActions
+  return {
+    nodeKey,
+    nodeRootPath,
+    isExpanded: (Reflect.get(expanded, nodeKey) as boolean | undefined) ?? false,
+    isSelected: folderSelectionMatches(selection, { ...node, rootPath: nodeRootPath }, rootPath),
+    canUseDefaultFolderActions,
+    canMutateFolder,
+    isRenaming: canMutateFolder && renamingFolderPath === node.path,
+  }
+}

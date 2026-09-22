@@ -5,9 +5,9 @@ import type { AiTarget } from '../lib/aiTargets'
 import type { AppLocale } from '../lib/i18n'
 import { getAgentDocsPath } from '../lib/agentDocsPath'
 import type { NoteReference } from '../utils/ai-context'
-import {
-  type AgentStatus,
-  type AiAgentMessage,
+import type {
+  AgentStatus,
+  AiAgentMessage,
 } from '../lib/aiAgentConversation'
 import type { AgentFileCallbacks } from '../lib/aiAgentFileOperations'
 import {
@@ -31,6 +31,7 @@ export type { AiAgentMessage } from '../lib/aiAgentConversation'
 
 interface UseCliAiAgentOptions {
   agent: AiAgentId
+  model?: string
   target?: AiTarget
   locale?: AppLocale
   agentReady: boolean
@@ -120,7 +121,7 @@ export function useCliAiAgent(
   fileCallbacks: AgentFileCallbacks | undefined,
   options: UseCliAiAgentOptions,
 ) {
-  const { agent, agentReady, sessionId, target } = options
+  const { agent, agentReady, model, sessionId, target } = options
   const locale = options.locale ?? 'en'
   const { permissionMode } = options
   const localRuntime = useCliAiAgentRuntime(fileCallbacks)
@@ -133,6 +134,7 @@ export function useCliAiAgent(
 
     return {
       agent,
+      model,
       agentDocsPath,
       locale,
       target,

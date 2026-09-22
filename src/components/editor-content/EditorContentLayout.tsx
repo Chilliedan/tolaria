@@ -7,6 +7,7 @@ import { useEditorFocusScope } from '../../hooks/editorFocusOwnership'
 import { dispatchEditorFindAvailability } from '../../utils/editorFindEvents'
 import { DiffView } from '../DiffView'
 import { BreadcrumbBar } from '../BreadcrumbBar'
+import { HtmlFilePreview } from '../HtmlFilePreview'
 import { ArchivedNoteBanner } from '../ArchivedNoteBanner'
 import { ConflictNoteBanner } from '../ConflictNoteBanner'
 import { RawEditorView } from '../RawEditorView'
@@ -84,18 +85,30 @@ const LazySheetEditor = lazy(() => import('../SheetEditor').then((module) => ({ 
 
 function SheetEditorLoading({ locale = 'en' }: { locale?: AppLocale }) {
   return (
-    <div className="flex flex-1 items-center justify-center px-6 py-5 text-sm text-muted-foreground" data-testid="sheet-editor-loading">
+    <div
+      className="flex flex-1 items-center justify-center px-6 py-5 text-sm text-muted-foreground"
+      data-testid="sheet-editor-loading"
+    >
       {translate(locale, 'editor.sheet.loading')}
     </div>
   )
 }
 
-function DiffModeView({ diffContent, locale = 'en', onToggleDiff }: { diffContent: string | null; locale?: AppLocale; onToggleDiff: () => void }) {
+function DiffModeView({
+  diffContent,
+  locale = 'en',
+  onToggleDiff,
+}: {
+  diffContent: string | null
+  locale?: AppLocale
+  onToggleDiff: () => void
+}) {
   const label = translate(locale, 'editor.toolbar.rawReturn')
 
   return (
     <div className="flex-1 overflow-auto">
-      <button type="button"
+      <button
+        type="button"
         className="flex items-center gap-1.5 px-4 py-2 text-xs text-primary bg-muted border-b border-border cursor-pointer hover:bg-accent transition-colors w-full border-t-0 border-l-0 border-r-0"
         onClick={onToggleDiff}
         title={label}
@@ -108,24 +121,36 @@ function DiffModeView({ diffContent, locale = 'en', onToggleDiff }: { diffConten
   )
 }
 
-function RawModeEditorSection({
-  activeTab,
-  entries,
-  findRequest,
-  rawMode,
-  rawModeContent,
-  onRawContentChange,
-  onSave,
-  rawLatestContentRef,
-  vaultPath,
-  locale,
-}: Pick<
-  EditorContentModel,
-  'activeTab' | 'entries' | 'findRequest' | 'onRawContentChange' | 'onSave' | 'rawLatestContentRef' | 'rawModeContent' | 'vaultPath'
-> & {
-  rawMode: boolean
-  locale?: AppLocale
-}) {
+function RawModeEditorSection(
+  options: Pick<
+    EditorContentModel,
+    | 'activeTab'
+    | 'entries'
+    | 'findRequest'
+    | 'onImageImportError'
+    | 'onRawContentChange'
+    | 'onSave'
+    | 'rawLatestContentRef'
+    | 'rawModeContent'
+    | 'vaultPath'
+  > & {
+    rawMode: boolean
+    locale?: AppLocale
+  },
+) {
+  const {
+    activeTab,
+    entries,
+    findRequest,
+    rawMode,
+    rawModeContent,
+    onRawContentChange,
+    onImageImportError,
+    onSave,
+    rawLatestContentRef,
+    vaultPath,
+    locale,
+  } = options
   if (!rawMode || !activeTab) return null
 
   return (
@@ -138,6 +163,15 @@ function RawModeEditorSection({
         sourceEntry={activeTab.entry}
         findRequest={findRequest}
         onContentChange={onRawContentChange ?? (() => {})}
+        onImageImportResult={({ failedCount, totalCount }) => {
+          if (failedCount > 0) {
+            onImageImportError?.({
+              failedCount,
+              kind: 'remote-download',
+              totalCount,
+            })
+          }
+        }}
         onSave={onSave ?? (() => {})}
         latestContentRef={rawLatestContentRef}
         vaultPath={vaultPath}
@@ -306,30 +340,36 @@ function EditorBreadcrumbArea({
 
   if (!isVaultLoading) return null
 
-  return (
-    <EditorLoadingBreadcrumb
-      actions={actions}
-      barRef={barRef}
-      locale={locale}
-    />
-  )
+  return <EditorLoadingBreadcrumb actions={actions} barRef={barRef} locale={locale} />
 }
 
-function EditorChrome({
-  isArchived,
-  onUnarchiveNote,
-  path,
-  isConflicted,
-  onKeepMine,
-  onKeepTheirs,
-  diffMode,
-  diffContent,
-  onToggleDiff,
-  locale,
-}: Pick<
-  EditorContentModel,
-  'isArchived' | 'onUnarchiveNote' | 'path' | 'isConflicted' | 'onKeepMine' | 'onKeepTheirs' | 'diffMode' | 'diffContent' | 'onToggleDiff' | 'locale'
->) {
+function EditorChrome(
+  options: Pick<
+    EditorContentModel,
+    | 'isArchived'
+    | 'onUnarchiveNote'
+    | 'path'
+    | 'isConflicted'
+    | 'onKeepMine'
+    | 'onKeepTheirs'
+    | 'diffMode'
+    | 'diffContent'
+    | 'onToggleDiff'
+    | 'locale'
+  >,
+) {
+  const {
+    isArchived,
+    onUnarchiveNote,
+    path,
+    isConflicted,
+    onKeepMine,
+    onKeepTheirs,
+    diffMode,
+    diffContent,
+    onToggleDiff,
+    locale,
+  } = options
   return (
     <>
       {isArchived && onUnarchiveNote && (
@@ -347,25 +387,10 @@ function EditorChrome({
   )
 }
 
-function EditorCanvas({
-  showEditor,
-  isSheet,
-  richEditorContentReady,
-  cssVars,
-  editor,
-  activeTab,
-  entries,
-  onNavigateWikilink,
-  onEditorChange,
-  onRawContentChange,
-  sheetFlushRef,
-  isDeletedPreview,
-  vaultPath,
-  locale,
-  onImageImportError,
-}: Pick<
+type EditorCanvasProps = Pick<
   EditorContentModel,
   | 'showEditor'
+  | 'isHtmlPreview'
   | 'isSheet'
   | 'richEditorContentReady'
   | 'cssVars'
@@ -380,16 +405,45 @@ function EditorCanvas({
   | 'vaultPath'
   | 'locale'
   | 'onImageImportError'
->) {
-  if (!showEditor) return null
+>
+
+function EditorCanvas(props: EditorCanvasProps) {
+  if (!props.showEditor) return null
+  if (props.isHtmlPreview && props.activeTab) {
+    return (
+      <HtmlFilePreview
+        content={props.activeTab.content}
+        path={props.activeTab.entry.path}
+        title={props.activeTab.entry.title}
+        vaultPath={props.vaultPath ?? ''}
+      />
+    )
+  }
+  return <StandardEditorCanvas {...props} />
+}
+
+function StandardEditorCanvas(options: EditorCanvasProps) {
+  const {
+    isSheet,
+    richEditorContentReady,
+    cssVars,
+    editor,
+    activeTab,
+    entries,
+    onNavigateWikilink,
+    onEditorChange,
+    onRawContentChange,
+    sheetFlushRef,
+    isDeletedPreview,
+    vaultPath,
+    locale,
+    onImageImportError,
+  } = options
   if (!isSheet && !richEditorContentReady) return null
 
   if (isSheet && activeTab) {
     return (
-      <EditorFindScope
-        className="editor-scroll-area editor-scroll-area--sheet"
-        style={cssVars as React.CSSProperties}
-      >
+      <EditorFindScope className="editor-scroll-area editor-scroll-area--sheet" style={cssVars as React.CSSProperties}>
         <Suspense fallback={<SheetEditorLoading locale={locale} />}>
           <LazySheetEditor
             key={activeTab.entry.path}
@@ -409,10 +463,7 @@ function EditorCanvas({
   }
 
   return (
-    <EditorFindScope
-      className="editor-scroll-area"
-      style={cssVars as React.CSSProperties}
-    >
+    <EditorFindScope className="editor-scroll-area" style={cssVars as React.CSSProperties}>
       <div className="editor-content-wrapper" data-note-pdf-export-root="true">
         <SingleEditorView
           currentContent={activeTab?.content ?? ''}
@@ -444,8 +495,7 @@ function EditorFindScope({
   useEditorFocusScope(scopeRef)
   const syncAvailability = useCallback(() => {
     const activeElement = document.activeElement
-    const enabled = activeElement instanceof Node
-      && scopeRef.current?.contains(activeElement) === true
+    const enabled = activeElement instanceof Node && scopeRef.current?.contains(activeElement) === true
     dispatchEditorFindAvailability(enabled)
   }, [])
 
@@ -495,6 +545,7 @@ export function EditorContentLayout(model: EditorContentModel) {
     rawModeContent,
     sheetFlushRef,
     noteWidth,
+    isHtmlPreview,
     isSheet,
     richEditorContentReady,
     findRequest,
@@ -504,7 +555,7 @@ export function EditorContentLayout(model: EditorContentModel) {
   } = model
   const rootClassName = cn(
     'flex flex-1 flex-col min-w-0 min-h-0',
-    isSheet || noteWidth === 'wide' ? 'editor-content-width--wide' : 'editor-content-width--normal',
+    isHtmlPreview || isSheet || noteWidth === 'wide' ? 'editor-content-width--wide' : 'editor-content-width--normal',
   )
   const chromeTab = activeTab ?? loadingTab
   const chromePath = chromeTab?.entry.path ?? path
@@ -544,6 +595,7 @@ export function EditorContentLayout(model: EditorContentModel) {
             rawMode={effectiveRawMode}
             rawModeContent={rawModeContent}
             onRawContentChange={onRawContentChange}
+            onImageImportError={onImageImportError}
             onSave={onSave}
             rawLatestContentRef={rawLatestContentRef}
             vaultPath={vaultPath}
@@ -551,6 +603,7 @@ export function EditorContentLayout(model: EditorContentModel) {
           />
           <EditorCanvas
             showEditor={showEditor}
+            isHtmlPreview={isHtmlPreview}
             richEditorContentReady={richEditorContentReady}
             cssVars={cssVars}
             activeTab={activeTab}

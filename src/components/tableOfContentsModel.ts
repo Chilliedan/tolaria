@@ -1,3 +1,5 @@
+import { stripInlineMarkdown } from '../utils/inlineMarkdown'
+
 type TocLevel = 1 | 2 | 3
 
 interface TocInlineText {
@@ -92,7 +94,9 @@ function nearestParent(stack: TocItem[], level: TocLevel): TocItem {
     const item = stack.at(index)
     if (item && item.level < level) return item
   }
-  return stack.at(0)!
+  const root = stack.at(0)
+  if (!root) throw new Error('Table of contents stack must contain a root item')
+  return root
 }
 
 function appendTocHeading(stack: TocItem[], item: TocItem) {
@@ -116,7 +120,8 @@ function visibleHeadingsForEntry(entryTitle: string, headings: MarkdownHeading[]
       level: heading.level,
       headingIndex: index,
     })) {
-      return { ...result, titleBlockId: heading.blockId }
+      result.titleBlockId = heading.blockId
+      return result
     }
     result.headings.push(heading)
     return result
@@ -165,37 +170,11 @@ function stripFrontmatter({ markdown }: { markdown: string }): string {
   return afterDelimiter === -1 ? '' : markdown.slice(afterDelimiter + 1)
 }
 
-function stripInlineMarkdown({ text }: { text: string }): string {
-  return text
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-    .replace(/\[\[[^|\]]+\|([^\]]+)\]\]/g, '$1')
-    .replace(/\[\[([^\]]+)\]\]/g, '$1')
-    .replace(/[*_`~]/g, '')
-    .trim()
-}
-
 function codeFenceForLine(line: string): MarkdownCodeFence | null {
   const match = line.match(/^ {0,3}(`{3,}|~{3,})/)
   const fence = match?.at(1)
   if (!fence) return null
   return { marker: fence.charAt(0), size: fence.length }
-}
-
-function closesCodeFence(line: string, codeFence: MarkdownCodeFence): boolean {
-  const match = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/)
-  const fence = match?.at(1)
-  return fence !== undefined
-    && fence.charAt(0) === codeFence.marker
-    && fence.length >= codeFence.size
-}
-
-function parseMarkdownHeading(line: string): MarkdownHeading | null {
-  const match = line.match(/^(#{1,3})\s+(.+?)\s*#*\s*$/)
-  if (!match) return null
-  const title = stripInlineMarkdown({ text: match.at(2)! })
-  return title.length > 0
-    ? { level: match.at(1)!.length as TocLevel, title }
-    : null
 }
 
 function parseMarkdownHeadings({ markdown }: { markdown: string }): MarkdownHeading[] {
@@ -308,4 +287,22 @@ export function buildTableOfContentsFromMarkdown(entryTitle: string, markdown: s
 
 export function buildTableOfContentsFromMarkdownOnly(entryTitle: string, markdown: string): TocItem {
   return buildTableOfContentsFromMarkdown(entryTitle, markdown)
+}
+
+function closesCodeFence(line: string, codeFence: MarkdownCodeFence): boolean {
+  const match = line.match(/^ {0,3}(`{3,}|~{3,})\s*$/)
+  const fence = match?.at(1)
+  return fence !== undefined
+    && fence.charAt(0) === codeFence.marker
+    && fence.length >= codeFence.size
+}
+
+function parseMarkdownHeading(line: string): MarkdownHeading | null {
+  const match = line.match(/^(#{1,3})\s+(.+?)\s*#*\s*$/)
+  if (!match) return null
+  const marker = match.at(1)
+  const headingText = match.at(2)
+  if (!marker || !headingText) return null
+  const title = stripInlineMarkdown(headingText)
+  return title.length > 0 ? { level: marker.length as TocLevel, title } : null
 }

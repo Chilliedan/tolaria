@@ -1,11 +1,15 @@
 const BLOCKNOTE_MISSING_ID_ERROR = "Block doesn't have id"
 const BLOCKNOTE_BLOCK_TYPE_MISMATCH_ERROR = 'Block type does not match'
 const BLOCKNOTE_EMPTY_FRAGMENT_INDEX_ERROR = /^Index \d+ out of range for <>$/
-const BLOCKNOTE_TABLE_ROW_INDEX_ERROR = /^Index \d+ out of range for <tableRow\(/
+const BLOCKNOTE_TABLE_INDEX_ERROR = /^Index \d+ out of range for <table(?:Row)?\(/
 const BLOCKNOTE_PARAGRAPH_INDEX_ERROR = /^Index \d+ out of range for <paragraph\(/
 const PROSEMIRROR_POSITION_OUT_OF_RANGE_ERROR = /^Position \d+ out of range$/
+const PROSEMIRROR_SELECTION_OUTSIDE_DOCUMENT_ERROR = 'Selection points outside of document'
+const PROSEMIRROR_SELECTION_CURRENT_DOCUMENT_ERROR = 'Selection passed to setSelection must point at the current document'
 const NULL_APPEND_PROPERTY_ERROR = "Cannot read properties of null (reading 'append')"
 const NULL_FIRST_CHILD_PROPERTY_ERROR = "Cannot read properties of null (reading 'firstChild')"
+const WEBKIT_NULL_COMPARE_DOCUMENT_POSITION_ERROR = /^null is not an object \(evaluating '[A-Za-z_$][\w$]*\.compareDocumentPosition'\)$/
+const UNDEFINED_NODE_TYPE_PROPERTY_ERROR = "Cannot read properties of undefined (reading 'type')"
 const REACT_UPDATE_DEPTH_EXCEEDED_ERROR = 'Maximum update depth exceeded'
 const REACT_MINIFIED_UPDATE_DEPTH_ERROR = /\b(?:React error #185|errors\/185|#185)\b/
 const WEBKIT_DOM_NOT_FOUND_MESSAGES = [
@@ -13,44 +17,53 @@ const WEBKIT_DOM_NOT_FOUND_MESSAGES = [
   'A requested file or directory could not be found at the time an operation was processed',
 ]
 
-export type BlockNoteRenderRecoveryReason =
-  | 'block_type_mismatch'
-  | 'block_missing_id'
-  | 'dom_not_found'
-  | 'empty_fragment_index_out_of_range'
-  | 'paragraph_index_out_of_range'
-  | 'prosemirror_position_out_of_range'
-  | 'react_update_depth_exceeded'
-  | 'stale_block_reference'
-  | 'table_row_index_out_of_range'
+export const SHARED_RICH_EDITOR_RECOVERY_REASONS = [
+  'block_type_mismatch',
+  'block_missing_id',
+  'dom_not_found',
+  'empty_fragment_index_out_of_range',
+  'paragraph_index_out_of_range',
+  'prosemirror_position_out_of_range',
+  'stale_block_reference',
+  'table_row_index_out_of_range',
+  'undefined_node_type',
+] as const
 
-export type RichEditorTransformRecoveryReason =
-  | 'block_type_mismatch'
-  | 'block_missing_id'
+export type RichEditorSharedRecoveryReason = typeof SHARED_RICH_EDITOR_RECOVERY_REASONS[number]
+type BlockNoteRenderOnlyRecoveryReason = 'react_update_depth_exceeded'
+type RichEditorTransformOnlyRecoveryReason =
   | 'dom_index_size'
-  | 'dom_not_found'
-  | 'empty_fragment_index_out_of_range'
   | 'invalid_block_join'
   | 'invalid_insertion_depth'
   | 'mismatched_transaction'
   | 'null_fragment_append'
-  | 'paragraph_index_out_of_range'
-  | 'prosemirror_position_out_of_range'
-  | 'stale_block_reference'
   | 'stale_transaction'
-  | 'table_row_index_out_of_range'
   | 'transform_error'
+
+export type BlockNoteRenderRecoveryReason =
+  | RichEditorSharedRecoveryReason
+  | BlockNoteRenderOnlyRecoveryReason
+
+export type RichEditorTransformRecoveryReason =
+  | RichEditorSharedRecoveryReason
+  | RichEditorTransformOnlyRecoveryReason
 
 type RichEditorRecoverySurface = 'render' | 'transform'
 type StaticTransformRecoveryReason = Exclude<RichEditorTransformRecoveryReason, 'stale_transaction'>
+type StaticTransformOnlyRecoveryReason = Exclude<RichEditorTransformOnlyRecoveryReason, 'stale_transaction'>
 type RichEditorRecoveryReason = BlockNoteRenderRecoveryReason | StaticTransformRecoveryReason
 
-interface RecoveryErrorMatcher {
+interface RecoveryErrorMatcherBase<Reason, Surfaces extends readonly RichEditorRecoverySurface[]> {
   matches: (error: unknown) => boolean
-  reason: RichEditorRecoveryReason
+  reason: Reason
   repairsDocument?: boolean
-  surfaces: RichEditorRecoverySurface[]
+  surfaces: Surfaces
 }
+
+type RecoveryErrorMatcher =
+  | RecoveryErrorMatcherBase<RichEditorSharedRecoveryReason, readonly ['render', 'transform']>
+  | RecoveryErrorMatcherBase<BlockNoteRenderOnlyRecoveryReason, readonly ['render']>
+  | RecoveryErrorMatcherBase<StaticTransformOnlyRecoveryReason, readonly ['transform']>
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -104,6 +117,10 @@ function isNullFirstChildError(error: unknown): boolean {
   return error instanceof TypeError && error.message === NULL_FIRST_CHILD_PROPERTY_ERROR
 }
 
+function isWebKitNullCompareDocumentPositionError(error: unknown): boolean {
+  return error instanceof TypeError && WEBKIT_NULL_COMPARE_DOCUMENT_POSITION_ERROR.test(error.message)
+}
+
 export function isStaleBlockReferenceError(error: unknown): boolean {
   return error instanceof Error && /^Block with ID .+ not found$/.test(error.message)
 }
@@ -132,7 +149,7 @@ const RECOVERY_ERROR_MATCHERS: RecoveryErrorMatcher[] = [
     surfaces: ['render', 'transform'],
   },
   {
-    matches: (error) => messageIncludes(error, BLOCKNOTE_MISSING_ID_ERROR),
+    matches: (error) => isMessage(error, BLOCKNOTE_MISSING_ID_ERROR),
     reason: 'block_missing_id',
     repairsDocument: true,
     surfaces: ['render', 'transform'],
@@ -144,7 +161,7 @@ const RECOVERY_ERROR_MATCHERS: RecoveryErrorMatcher[] = [
     surfaces: ['render', 'transform'],
   },
   {
-    matches: (error) => messageMatches(error, BLOCKNOTE_TABLE_ROW_INDEX_ERROR),
+    matches: (error) => messageMatches(error, BLOCKNOTE_TABLE_INDEX_ERROR),
     reason: 'table_row_index_out_of_range',
     repairsDocument: true,
     surfaces: ['render', 'transform'],
@@ -158,7 +175,11 @@ const RECOVERY_ERROR_MATCHERS: RecoveryErrorMatcher[] = [
   {
     matches: (error) => (
       error instanceof RangeError
-      && messageMatches(error, PROSEMIRROR_POSITION_OUT_OF_RANGE_ERROR)
+      && (
+        messageMatches(error, PROSEMIRROR_POSITION_OUT_OF_RANGE_ERROR)
+        || isMessage(error, PROSEMIRROR_SELECTION_OUTSIDE_DOCUMENT_ERROR)
+        || isMessage(error, PROSEMIRROR_SELECTION_CURRENT_DOCUMENT_ERROR)
+      )
     ),
     reason: 'prosemirror_position_out_of_range',
     surfaces: ['render', 'transform'],
@@ -181,6 +202,16 @@ const RECOVERY_ERROR_MATCHERS: RecoveryErrorMatcher[] = [
   {
     matches: isNullFirstChildError,
     reason: 'dom_not_found',
+    surfaces: ['render', 'transform'],
+  },
+  {
+    matches: isWebKitNullCompareDocumentPositionError,
+    reason: 'dom_not_found',
+    surfaces: ['render', 'transform'],
+  },
+  {
+    matches: (error) => error instanceof TypeError && isMessage(error, UNDEFINED_NODE_TYPE_PROPERTY_ERROR),
+    reason: 'undefined_node_type',
     surfaces: ['render', 'transform'],
   },
   {
@@ -237,7 +268,7 @@ export function classifyRichEditorRecoveryError(
   surface: RichEditorRecoverySurface,
 ): RichEditorRecoveryReason | null {
   return RECOVERY_ERROR_MATCHERS.find((matcher) => (
-    matcher.surfaces.includes(surface) && matcher.matches(error)
+    matcher.surfaces.some((candidate) => candidate === surface) && matcher.matches(error)
   ))?.reason ?? null
 }
 

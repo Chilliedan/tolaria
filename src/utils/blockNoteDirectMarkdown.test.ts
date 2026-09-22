@@ -1,11 +1,17 @@
+import { BlockNoteEditor } from '@blocknote/core'
 import { describe, expect, it, vi } from 'vitest'
+import { schema } from '../components/editorSchema'
 import {
   blocksToMarkdownDirect,
   installBlockNoteDirectMarkdown,
   serializeBlockNoteMarkdown,
   type DirectMarkdownCapableSerializer,
 } from './blockNoteDirectMarkdown'
-import { serializeRichEditorBodyToMarkdown } from './richEditorMarkdown'
+import {
+  injectRichEditorMarkdownBlocks,
+  preProcessRichEditorMarkdown,
+  serializeRichEditorBodyToMarkdown,
+} from './richEditorMarkdown'
 
 function makeEditor(document: unknown[]): DirectMarkdownCapableSerializer & { document: unknown[] } {
   return {
@@ -14,7 +20,39 @@ function makeEditor(document: unknown[]): DirectMarkdownCapableSerializer & { do
   }
 }
 
+async function roundTripRichMarkdown(markdown: string): Promise<string> {
+  const editor = BlockNoteEditor.create({ schema })
+  const parsed = await editor.tryParseMarkdownToBlocks(preProcessRichEditorMarkdown(markdown))
+  const blocks = injectRichEditorMarkdownBlocks(parsed)
+  return blocksToMarkdownDirect(blocks).markdown
+}
+
 describe('BlockNote direct Markdown serialization', () => {
+  it('keeps fenced code and continuation paragraphs inside their ordered list item', async () => {
+    const markdown = [
+      '1. This is a multi-paragraph point in Markdown.',
+      '',
+      '   ```typescript',
+      '   "just a codeblock for illustration"',
+      '   ```',
+      '',
+      '   This continuation is still part of point 1.',
+      '',
+      '2. Second item.',
+    ].join('\n')
+    const editor = BlockNoteEditor.create({ schema })
+    const blocks = await editor.tryParseMarkdownToBlocks(markdown)
+
+    expect(blocks[0]).toMatchObject({
+      type: 'numberedListItem',
+      children: [
+        { type: 'codeBlock', props: { language: 'typescript' } },
+        { type: 'paragraph' },
+      ],
+    })
+    expect(blocksToMarkdownDirect(blocks).markdown).toBe(markdown)
+  })
+
   it('serializes common Tolaria BlockNote blocks without the HTML exporter', () => {
     const blocks = [
       {
@@ -81,6 +119,64 @@ describe('BlockNote direct Markdown serialization', () => {
     ].join('\n'))
   })
 
+  it('serializes saved attachment media blocks with portable Markdown labels and destinations', () => {
+    const blocks = [
+      {
+        type: 'image',
+        props: { name: 'Launch shot.png', url: 'attachments/Launch shot.png' },
+        children: [],
+      },
+      {
+        type: 'file',
+        props: { name: 'Briefing.pdf', url: 'attachments/Briefing (final).pdf' },
+        children: [],
+      },
+      {
+        type: 'video',
+        props: { url: 'attachments/demo.mov' },
+        children: [],
+      },
+    ]
+
+    expect(blocksToMarkdownDirect(blocks).markdown).toBe([
+      '![Launch shot.png](<attachments/Launch shot.png>)',
+      '',
+      '[Briefing.pdf](<attachments/Briefing (final).pdf>)',
+      '',
+      '[demo.mov](attachments/demo.mov)',
+    ].join('\n'))
+  })
+
+  it('preserves an intentionally empty image label', () => {
+    expect(blocksToMarkdownDirect([{
+      type: 'image',
+      props: { name: '', url: 'attachments/photo2.png' },
+      children: [],
+    }]).markdown).toBe('![](attachments/photo2.png)')
+  })
+
+  it('serializes empty paragraph blocks as intentional vertical spacing', () => {
+    const blocks = [
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'First paragraph.', styles: {} }],
+        children: [],
+      },
+      {
+        type: 'paragraph',
+        content: [],
+        children: [],
+      },
+      {
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'Second paragraph.', styles: {} }],
+        children: [],
+      },
+    ]
+
+    expect(blocksToMarkdownDirect(blocks).markdown).toBe('First paragraph.\n\n\nSecond paragraph.')
+  })
+
   it('falls back to BlockNote legacy Markdown for unsupported block types', () => {
     const editor = makeEditor([{ type: 'unsupportedWidget', children: [] }])
     installBlockNoteDirectMarkdown(editor)
@@ -88,6 +184,50 @@ describe('BlockNote direct Markdown serialization', () => {
     expect(serializeBlockNoteMarkdown(editor, editor.document)).toBe('legacy markdown\n')
     expect(editor.blocksToMarkdownLossy).toHaveBeenCalledWith(editor.document)
     expect(editor.__tolariaLastDirectMarkdownMetrics?.fallbackReason).toBe('unsupported:unsupportedWidget')
+  })
+
+  it('normalizes unsafe table cardinalities before BlockNote fallback serialization', () => {
+    const document = [
+      { type: 'unsupportedWidget', children: [] },
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          headerRows: Number.POSITIVE_INFINITY,
+          headerCols: -1,
+          rows: [{
+            cells: [{
+              type: 'tableCell',
+              props: { colspan: 1.5, rowspan: Number.POSITIVE_INFINITY },
+              content: [{ type: 'text', text: 'Safe', styles: {} }],
+            }],
+          }],
+        },
+        children: [],
+      },
+    ]
+    const editor = makeEditor(document)
+    installBlockNoteDirectMarkdown(editor)
+
+    expect(serializeBlockNoteMarkdown(editor, document)).toBe('legacy markdown\n')
+    expect(editor.blocksToMarkdownLossy).toHaveBeenCalledWith([
+      document[0],
+      {
+        ...document[1],
+        content: {
+          ...document[1].content,
+          headerRows: 0,
+          headerCols: 0,
+          rows: [{
+            cells: [{
+              type: 'tableCell',
+              props: { colspan: 1, rowspan: 1 },
+              content: [{ type: 'text', text: 'Safe', styles: {} }],
+            }],
+          }],
+        },
+      },
+    ])
   })
 
   it('keeps plain hash references and punctuation literal while escaping formatting syntax', () => {
@@ -115,6 +255,24 @@ describe('BlockNote direct Markdown serialization', () => {
       '| A\\|B |',
       '| --- |',
     ].join('\n'))
+  })
+
+  it('keeps table-cell aliased wikilinks stable and repairs accumulated alias escapes', async () => {
+    const stableMarkdown = [
+      '| Link | Literal | Plain |',
+      '| --- | --- | --- |',
+      '| [[project/alpha|Project Alpha]] | A\\|B | [[project/beta]] |',
+    ].join('\n')
+    let markdown = stableMarkdown
+
+    for (let cycle = 0; cycle < 3; cycle++) {
+      markdown = await roundTripRichMarkdown(markdown)
+      expect(markdown).toBe('| Link | Literal | Plain |\n| --- | --- | --- |\n| [[project/alpha|Project Alpha]] | A\\|B | [[project/beta]] |')
+    }
+
+    await expect(roundTripRichMarkdown(
+      '| Link |\n| --- |\n| [[project/alpha\\\\\\|Project Alpha]] |',
+    )).resolves.toBe('| Link |\n| --- |\n| [[project/alpha|Project Alpha]] |')
   })
 
   it('does not escape hash references inside saved heading titles', () => {
@@ -291,6 +449,34 @@ describe('BlockNote direct Markdown serialization', () => {
       '',
       '- Second parent',
       '  1. Fresh child step',
+    ].join('\n'))
+  })
+
+  it('indents nested list items by the ordered parent marker width', () => {
+    const nestedList = (start: number) => [{
+      type: 'numberedListItem',
+      props: { start },
+      content: [{ type: 'text', text: 'Parent', styles: {} }],
+      children: [{
+        type: 'numberedListItem',
+        content: [{ type: 'text', text: 'Child', styles: {} }],
+        children: [{
+          type: 'bulletListItem',
+          content: [{ type: 'text', text: 'Grandchild', styles: {} }],
+          children: [],
+        }],
+      }],
+    }]
+
+    expect(blocksToMarkdownDirect(nestedList(1)).markdown).toBe([
+      '1. Parent',
+      '   1. Child',
+      '      - Grandchild',
+    ].join('\n'))
+    expect(blocksToMarkdownDirect(nestedList(10)).markdown).toBe([
+      '10. Parent',
+      '    1. Child',
+      '       - Grandchild',
     ].join('\n'))
   })
 })

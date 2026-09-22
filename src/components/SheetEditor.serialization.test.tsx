@@ -1,12 +1,13 @@
 import {
   activateWorkbookRoot,
+  deferred,
   getIronCalcMock,
   markWorkbookDirtyForTest,
   resetSheetEditorTestState,
 } from './SheetEditor.testUtils'
 import { init as initIronCalc } from '@ironcalc/workbook'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import type { ComponentProps } from 'react'
+import { Suspense, type ComponentProps } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { SheetEditor } from './SheetEditor'
 
@@ -54,6 +55,17 @@ function sheetWithA1Metadata(metadataLines: string[], body = 'Metric,January'): 
     '---',
     body,
   ].join('\n')
+}
+
+function selectSheetCell(row: number, column: number): void {
+  ironCalcMock.state.selectedView = {
+    column,
+    left_column: 1,
+    range: [row, column, row, column],
+    row,
+    sheet: 0,
+    top_row: 1,
+  }
 }
 
 async function renderLoadedSheet(content: string, options: SheetHarnessOptions = {}) {
@@ -111,6 +123,26 @@ describe('SheetEditor serialization', () => {
     expect(ironCalcInitMock).toHaveBeenCalledTimes(2)
   })
 
+  it('contains IronCalc wasm bridge render crashes inside the sheet fallback', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    ironCalcMock.state.workbookRenderError = new TypeError(
+      "undefined is not an object (evaluating 'B.__wbindgen_add_to_stack_pointer')",
+    )
+
+    try {
+      renderSheetHarness('---\n_display: sheet\n---\nMetric,January')
+
+      await screen.findByText(
+        "IronCalc workbook unavailable: undefined is not an object (evaluating 'B.__wbindgen_add_to_stack_pointer')",
+      )
+      expect(screen.queryByTestId('ironcalc-workbook')).not.toBeInTheDocument()
+    } finally {
+      consoleError.mockRestore()
+      consoleWarn.mockRestore()
+    }
+  })
+
   it('flushes the current workbook content when unmounted before debounce runs', async () => {
     await expectSaveAfterDirtyEdit({
       content: '---\ntype: Sheet\n---\nMetric,January',
@@ -160,6 +192,57 @@ describe('SheetEditor serialization', () => {
 
     expect(ironCalcMock.state.freedModels.has(firstModel!)).toBe(true)
     expect(() => firstModel?.getSelectedSheet()).toThrow('null pointer passed to rust')
+  })
+
+  it('keeps the displayed workbook model alive while its replacement is suspended', async () => {
+    const onContentChange = vi.fn()
+    const replacementCommit = deferred<void>()
+    const rendered = render(
+      <Suspense fallback={<div>Replacing workbook</div>}>
+        <SheetEditor
+          content={'---\n_display: sheet\n---\nMetric,January'}
+          path="/vault/budget.md"
+          onContentChange={onContentChange}
+        />
+      </Suspense>,
+    )
+    await screen.findByTestId('ironcalc-workbook')
+    const firstModel = ironCalcMock.state.lastModel
+    expect(firstModel).not.toBeNull()
+    if (!firstModel) throw new Error('Expected the initial workbook model')
+
+    vi.useFakeTimers()
+    ironCalcMock.state.workbookRenderGate = replacementCommit.promise
+    rendered.rerender(
+      <Suspense fallback={<div>Replacing workbook</div>}>
+        <SheetEditor
+          content={'---\n_display: sheet\n---\nMetric,February'}
+          path="/vault/budget.md"
+          onContentChange={onContentChange}
+        />
+      </Suspense>,
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(ironCalcMock.state.modelConstructs).toBe(2)
+    expect(screen.getByTestId('ironcalc-workbook')).toBeInTheDocument()
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
+
+    expect(firstModel.getSelectedSheet()).toBe(0)
+
+    ironCalcMock.state.workbookRenderGate = null
+    await act(async () => {
+      replacementCommit.resolve()
+    })
+    act(() => {
+      vi.runOnlyPendingTimers()
+    })
+    expect(ironCalcMock.state.freedModels.has(firstModel)).toBe(true)
   })
 
   it('does not surface workbook release failures when a stale model is already freed', async () => {
@@ -295,6 +378,65 @@ describe('SheetEditor serialization', () => {
     expect(onContentChange).toHaveBeenCalledWith(
       '/vault/budget.md',
       '---\n_display: sheet\n---\n=SUM(B2:D2),January\nRevenue,1200,1300,1400',
+    )
+    unmount()
+  })
+
+  it.each([
+    ['Enter', 'Enter'],
+    ['Tab', 'Tab'],
+    ['ArrowDown', 'ArrowDown'],
+  ])('preserves destination cell contents when %s moves selection before editor blur', async (key, code) => {
+    const flushContentRef = { current: null as ((path: string) => void) | null }
+    const { onContentChange, unmount } = await renderLoadedSheet(
+      '---\n_display: sheet\n---\nMetric,old\nRevenue,foo',
+      { props: { flushContentRef } },
+    )
+    selectSheetCell(1, 2)
+    await activateWorkbookRoot()
+    const cellEditor = screen.getByLabelText<HTMLTextAreaElement>('Cell editor')
+    cellEditor.focus()
+
+    fireEvent.input(cellEditor, { target: { value: 'bar' } })
+    fireEvent.keyDown(cellEditor, { key, code })
+    selectSheetCell(2, 2)
+    fireEvent.blur(cellEditor)
+
+    act(() => {
+      flushContentRef.current?.('/vault/budget.md')
+    })
+    expect(onContentChange).toHaveBeenCalledWith(
+      '/vault/budget.md',
+      '---\n_display: sheet\n---\nMetric,bar\nRevenue,foo',
+    )
+    expect(onContentChange).not.toHaveBeenCalledWith(
+      '/vault/budget.md',
+      '---\n_display: sheet\n---\nMetric,old\nRevenue,bar',
+    )
+    unmount()
+  })
+
+  it('commits cell input to its original cell when pointer selection moves before blur', async () => {
+    const flushContentRef = { current: null as ((path: string) => void) | null }
+    const { onContentChange, unmount } = await renderLoadedSheet(
+      '---\n_display: sheet\n---\nMetric,old\nRevenue,foo',
+      { props: { flushContentRef } },
+    )
+    selectSheetCell(1, 2)
+    await activateWorkbookRoot()
+    const cellEditor = screen.getByLabelText<HTMLTextAreaElement>('Cell editor')
+    cellEditor.focus()
+
+    fireEvent.input(cellEditor, { target: { value: 'saved by pointer' } })
+    selectSheetCell(2, 2)
+    fireEvent.blur(cellEditor)
+
+    act(() => {
+      flushContentRef.current?.('/vault/budget.md')
+    })
+    expect(onContentChange).toHaveBeenCalledWith(
+      '/vault/budget.md',
+      '---\n_display: sheet\n---\nMetric,saved by pointer\nRevenue,foo',
     )
     unmount()
   })

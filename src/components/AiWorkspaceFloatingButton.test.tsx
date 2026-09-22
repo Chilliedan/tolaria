@@ -48,6 +48,13 @@ describe('AiWorkspaceFloatingButton', () => {
     expect(screen.getByTestId('ai-workspace-floating-button')).toHaveClass('bottom-[80px]')
   })
 
+  it('anchors the launcher at the bottom-right of the app window', () => {
+    renderButton()
+
+    expect(screen.getByTestId('ai-workspace-floating-button')).toHaveClass('right-5')
+    expect(screen.getByTestId('ai-workspace-floating-button')).not.toHaveClass('right-80')
+  })
+
   it('uses the selected agent icon when that agent is installed', () => {
     renderButton()
 

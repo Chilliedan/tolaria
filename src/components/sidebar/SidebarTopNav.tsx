@@ -14,16 +14,8 @@ interface SidebarTopNavProps {
   loading?: boolean
 }
 
-export function SidebarTopNav({
-  selection,
-  onSelect,
-  showInbox,
-  inboxCount,
-  activeCount,
-  archivedCount,
-  locale = 'en',
-  loading = false,
-}: SidebarTopNavProps) {
+export function SidebarTopNav(options: SidebarTopNavProps) {
+  const { selection, onSelect, showInbox, inboxCount, activeCount, archivedCount, locale = 'en', loading = false } = options
   return (
     <div className="border-b border-border" data-testid="sidebar-top-nav" style={{ padding: '4px 6px' }}>
       {showInbox && (
@@ -32,7 +24,10 @@ export function SidebarTopNav({
           label={translate(locale, 'sidebar.nav.inbox')}
           count={inboxCount}
           countLoading={loading}
-          isActive={isSelectionActive(selection, { kind: 'filter', filter: 'inbox' })}
+          isActive={isSelectionActive(selection, {
+            kind: 'filter',
+            filter: 'inbox',
+          })}
           badgeClassName="text-muted-foreground"
           badgeStyle={{ background: 'var(--muted)' }}
           activeBadgeClassName="bg-primary text-primary-foreground"
@@ -44,7 +39,10 @@ export function SidebarTopNav({
         label={translate(locale, 'sidebar.nav.allNotes')}
         count={activeCount}
         countLoading={loading}
-        isActive={isSelectionActive(selection, { kind: 'filter', filter: 'all' })}
+        isActive={isSelectionActive(selection, {
+          kind: 'filter',
+          filter: 'all',
+        })}
         badgeClassName="text-muted-foreground"
         badgeStyle={{ background: 'var(--muted)' }}
         activeBadgeClassName="bg-primary text-primary-foreground"
@@ -55,7 +53,10 @@ export function SidebarTopNav({
         label={translate(locale, 'sidebar.nav.archive')}
         count={archivedCount}
         countLoading={loading}
-        isActive={isSelectionActive(selection, { kind: 'filter', filter: 'archived' })}
+        isActive={isSelectionActive(selection, {
+          kind: 'filter',
+          filter: 'archived',
+        })}
         badgeClassName="text-muted-foreground"
         badgeStyle={{ background: 'var(--muted)' }}
         activeBadgeClassName="bg-primary text-primary-foreground"

@@ -6,10 +6,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 use uuid::Uuid;
 
-use crate::git::{get_all_file_dates, GitDates};
+use crate::git::{get_all_file_dates_for_workspace, GitDates, GitWorkspace};
 use std::collections::HashMap;
 #[cfg(test)]
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use super::path_identity::{
     normalize_path_for_identity, push_unique_relative_path, relative_path_key,
@@ -27,6 +27,10 @@ const CACHE_WRITE_LOCK_STALE_SECS: u64 = 30;
 
 #[cfg(test)]
 static PANIC_ON_GIT_DATE_LOOKUP: AtomicBool = AtomicBool::new(false);
+#[cfg(test)]
+static GIT_WORKSPACE_RESOLUTION_COUNT: AtomicUsize = AtomicUsize::new(0);
+#[cfg(test)]
+static CACHE_WRITE_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(test)]
 struct GitDateLookupPanicGuard;
@@ -144,8 +148,15 @@ fn legacy_cache_path(vault: &Path) -> PathBuf {
     vault.join(".laputa-cache.json")
 }
 
-fn git_head_hash(vault: &Path) -> Option<String> {
-    run_git(vault, &["rev-parse", "HEAD"]).map(|s| s.trim().to_string())
+fn resolve_git_workspace(vault: &Path) -> Option<GitWorkspace> {
+    #[cfg(test)]
+    GIT_WORKSPACE_RESOLUTION_COUNT.fetch_add(1, Ordering::SeqCst);
+
+    crate::git::GitWorkspace::resolve(vault).ok().flatten()
+}
+
+fn git_head_hash(workspace: &GitWorkspace) -> Option<String> {
+    run_git(workspace.git_root(), &["rev-parse", "HEAD"]).map(|s| s.trim().to_string())
 }
 
 /// Run a git command in the given directory and return stdout if successful.
@@ -159,13 +170,13 @@ fn run_git(vault: &Path, args: &[&str]) -> Option<String> {
     Some(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-fn load_git_dates(vault_path: &Path) -> HashMap<String, GitDates> {
+fn load_git_dates(workspace: &GitWorkspace) -> HashMap<String, GitDates> {
     #[cfg(test)]
     if PANIC_ON_GIT_DATE_LOOKUP.load(Ordering::SeqCst) {
         panic!("warm cache hit must not load full git date history");
     }
 
-    get_all_file_dates(vault_path)
+    get_all_file_dates_for_workspace(workspace)
 }
 
 /// Parse a git status porcelain line into (status_code, file_path).
@@ -201,10 +212,16 @@ fn push_changed_path_prefer_existing(paths: &mut Vec<String>, vault: &Path, path
 /// Extract file paths from git diff --name-only output.
 /// Includes all non-hidden files (not just .md) so the cache picks up
 /// view files (.yml), binary assets, etc.
-fn collect_paths_from_diff(vault: &Path, stdout: &str) -> Vec<String> {
+fn collect_paths_from_diff(
+    vault: &Path,
+    workspace: &crate::git::GitWorkspace,
+    stdout: &str,
+) -> Vec<String> {
     let mut paths = Vec::new();
     for line in stdout.lines() {
-        push_changed_path_prefer_existing(&mut paths, vault, line);
+        if let Some(path) = workspace.vault_relative_path(line) {
+            push_changed_path_prefer_existing(&mut paths, vault, &path);
+        }
     }
     paths
 }
@@ -212,22 +229,38 @@ fn collect_paths_from_diff(vault: &Path, stdout: &str) -> Vec<String> {
 /// Extract file paths from git status --porcelain output.
 /// Includes all non-hidden files so incremental cache updates cover
 /// every file type the vault scanner recognises.
-fn collect_paths_from_porcelain(stdout: &str) -> Vec<String> {
+fn collect_paths_from_porcelain(workspace: &crate::git::GitWorkspace, stdout: &str) -> Vec<String> {
     let mut paths = Vec::new();
     for (_, path) in stdout.lines().filter_map(parse_porcelain_line) {
-        push_unique_relative_path(&mut paths, path);
+        if let Some(path) = workspace.vault_relative_path(&path) {
+            push_unique_relative_path(&mut paths, path);
+        }
     }
     paths
 }
 
-fn git_changed_files(vault: &Path, from_hash: &str, to_hash: &str) -> Vec<String> {
+fn git_changed_files(
+    vault: &Path,
+    workspace: &GitWorkspace,
+    from_hash: &str,
+    to_hash: &str,
+) -> Vec<String> {
     let diff_arg = format!("{}..{}", from_hash, to_hash);
-    let mut files = run_git(vault, &["diff", &diff_arg, "--name-only"])
-        .map(|s| collect_paths_from_diff(vault, &s))
-        .unwrap_or_default();
+    let mut files = run_git(
+        workspace.git_root(),
+        &[
+            "diff",
+            &diff_arg,
+            "--name-only",
+            "--",
+            workspace.vault_pathspec(),
+        ],
+    )
+    .map(|s| collect_paths_from_diff(vault, workspace, &s))
+    .unwrap_or_default();
 
     // Include uncommitted changes (modified, staged, and untracked files).
-    let uncommitted = git_uncommitted_files(vault);
+    let uncommitted = git_uncommitted_files(workspace);
 
     for path in uncommitted.into_iter() {
         push_unique_relative_path(&mut files, path);
@@ -236,24 +269,38 @@ fn git_changed_files(vault: &Path, from_hash: &str, to_hash: &str) -> Vec<String
     files
 }
 
-fn git_uncommitted_files(vault: &Path) -> Vec<String> {
+fn git_uncommitted_files(workspace: &GitWorkspace) -> Vec<String> {
     // Modified/staged tracked files from git status --porcelain
-    let mut files: Vec<String> = run_git(vault, &["status", "--porcelain"])
-        .map(|s| collect_paths_from_porcelain(&s))
-        .unwrap_or_default();
+    let mut files: Vec<String> = run_git(
+        workspace.git_root(),
+        &["status", "--porcelain", "--", workspace.vault_pathspec()],
+    )
+    .map(|s| collect_paths_from_porcelain(workspace, &s))
+    .unwrap_or_default();
 
     // Untracked files via ls-files (lists individual files, not just directories).
     // git status --porcelain shows `?? dir/` for new directories, hiding individual
     // files inside — ls-files resolves them so the cache picks up all new files.
-    let untracked = run_git(vault, &["ls-files", "--others", "--exclude-standard"])
-        .map(|s| {
-            let mut paths = Vec::new();
-            for line in s.lines() {
-                push_unique_relative_path(&mut paths, line);
+    let untracked = run_git(
+        workspace.git_root(),
+        &[
+            "ls-files",
+            "--others",
+            "--exclude-standard",
+            "--",
+            workspace.vault_pathspec(),
+        ],
+    )
+    .map(|s| {
+        let mut paths = Vec::new();
+        for line in s.lines() {
+            if let Some(path) = workspace.vault_relative_path(line) {
+                push_unique_relative_path(&mut paths, path);
             }
-            paths
-        })
-        .unwrap_or_default();
+        }
+        paths
+    })
+    .unwrap_or_default();
 
     for path in untracked {
         push_unique_relative_path(&mut files, path);
@@ -427,6 +474,9 @@ fn write_cache(
     cache: &VaultCache,
     expected_previous: Option<CacheFileFingerprint>,
 ) -> Result<CacheWriteOutcome, String> {
+    #[cfg(test)]
+    CACHE_WRITE_COUNT.fetch_add(1, Ordering::SeqCst);
+
     let final_path = cache_path(vault);
     let lock_path = cache_lock_path(vault);
     let Some(_lock) = acquire_cache_write_lock(&lock_path)? else {
@@ -622,31 +672,38 @@ fn finalize_and_cache(
 /// Handle same-commit cache hit: re-parse any uncommitted changes (new or modified files).
 /// Always prunes stale entries even when git reports no changes, so that files
 /// deleted outside git (e.g., via Finder) are removed from the cache on vault open.
-fn update_same_commit(vault: &Path, loaded_cache: LoadedCache) -> Vec<VaultEntry> {
+fn update_same_commit(
+    vault: &Path,
+    workspace: &GitWorkspace,
+    loaded_cache: LoadedCache,
+) -> Vec<VaultEntry> {
     let LoadedCache { cache, fingerprint } = loaded_cache;
-    let changed = git_uncommitted_files(vault);
+    let changed = git_uncommitted_files(workspace);
     let mut entries = cache.entries;
     if !changed.is_empty() {
-        let git_dates = load_git_dates(vault);
+        let git_dates = load_git_dates(workspace);
         let changed_set: std::collections::HashSet<String> =
             changed.iter().map(|path| relative_path_key(path)).collect();
         entries.retain(|e| !changed_set.contains(&to_relative_path_key(&e.path, vault)));
         entries.extend(parse_files_at(vault, &changed, &git_dates));
     }
-    // Always finalize: prune_stale_entries inside finalize_and_cache removes
-    // entries for files deleted outside git (e.g., via Finder or another app).
+    let pruned = prune_stale_entries(vault, &mut entries);
+    if changed.is_empty() && !pruned {
+        return entries;
+    }
     finalize_and_cache(vault, entries, cache.commit_hash, Some(fingerprint))
 }
 
 /// Handle different-commit cache: incremental update via git diff.
 fn update_different_commit(
     vault: &Path,
+    workspace: &GitWorkspace,
     loaded_cache: LoadedCache,
     current_hash: String,
     git_dates: &HashMap<String, GitDates>,
 ) -> Vec<VaultEntry> {
     let LoadedCache { cache, fingerprint } = loaded_cache;
-    let changed_files = git_changed_files(vault, &cache.commit_hash, &current_hash);
+    let changed_files = git_changed_files(vault, workspace, &cache.commit_hash, &current_hash);
     let changed_set: std::collections::HashSet<String> = changed_files
         .iter()
         .map(|path| relative_path_key(path))
@@ -692,6 +749,24 @@ pub fn invalidate_cache(vault_path: &Path) {
     remove_cache_file(&path, "cache file");
 }
 
+/// Read a structurally valid cache without consulting Git or touching vault files.
+/// The caller must reconcile this potentially stale snapshot in the background.
+pub fn read_vault_snapshot(vault_path: &Path) -> Result<Option<Vec<VaultEntry>>, String> {
+    match load_cache(vault_path) {
+        CacheLoadState::Loaded(loaded) => {
+            if cache_requires_full_rescan(&loaded.cache, vault_path) {
+                return Ok(None);
+            }
+            Ok(Some(loaded.cache.entries))
+        }
+        CacheLoadState::Missing => Ok(None),
+        CacheLoadState::Invalid(error) | CacheLoadState::Unreadable(error) => {
+            log::warn!("{error}");
+            Ok(None)
+        }
+    }
+}
+
 /// Scan vault with incremental caching via git.
 /// Falls back to full scan if cache is missing/corrupt or git is unavailable.
 pub fn scan_vault_cached(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {
@@ -705,7 +780,10 @@ pub fn scan_vault_cached(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {
     // Migrate legacy in-vault cache to external location on first run
     migrate_legacy_cache(vault_path);
 
-    let current_hash = match git_head_hash(vault_path) {
+    let Some(workspace) = resolve_git_workspace(vault_path) else {
+        return scan_vault(vault_path, &HashMap::new());
+    };
+    let current_hash = match git_head_hash(&workspace) {
         Some(h) => h,
         None => return scan_vault(vault_path, &HashMap::new()),
     };
@@ -719,7 +797,7 @@ pub fn scan_vault_cached(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {
         }
         CacheLoadState::Loaded(loaded_cache) => {
             if cache_requires_full_rescan(&loaded_cache.cache, vault_path) {
-                let git_dates = load_git_dates(vault_path);
+                let git_dates = load_git_dates(&workspace);
                 return scan_and_cache_full(
                     vault_path,
                     &git_dates,
@@ -728,11 +806,12 @@ pub fn scan_vault_cached(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {
                 );
             }
             return if loaded_cache.cache.commit_hash == current_hash {
-                Ok(update_same_commit(vault_path, loaded_cache))
+                Ok(update_same_commit(vault_path, &workspace, loaded_cache))
             } else {
-                let git_dates = load_git_dates(vault_path);
+                let git_dates = load_git_dates(&workspace);
                 Ok(update_different_commit(
                     vault_path,
+                    &workspace,
                     loaded_cache,
                     current_hash,
                     &git_dates,
@@ -742,8 +821,34 @@ pub fn scan_vault_cached(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {
     }
 
     // No cache — full scan and write cache
-    let git_dates = load_git_dates(vault_path);
+    let git_dates = load_git_dates(&workspace);
     scan_and_cache_full(vault_path, &git_dates, current_hash, None)
+}
+
+/// Rebuild a vault from disk while keeping the previous snapshot readable until
+/// the replacement is complete. This makes explicit reloads crash-safe: an app
+/// exit during the scan cannot leave the next startup without a usable cache.
+pub fn refresh_vault_cache(vault_path: &Path) -> Result<Vec<VaultEntry>, String> {
+    if !vault_path.is_dir() {
+        return Err(format!(
+            "Vault path does not exist or is not a directory: {}",
+            vault_path.display()
+        ));
+    }
+
+    migrate_legacy_cache(vault_path);
+    // Fingerprint the bytes directly so even an invalid cache can be replaced
+    // transactionally. Parsing it first would lose the expected fingerprint
+    // and make `write_cache` treat the same corrupt file as a concurrent write.
+    let expected_previous = read_cache_fingerprint(&cache_path(vault_path))?;
+    let Some(workspace) = resolve_git_workspace(vault_path) else {
+        return scan_vault(vault_path, &HashMap::new());
+    };
+    let Some(current_hash) = git_head_hash(&workspace) else {
+        return scan_vault(vault_path, &HashMap::new());
+    };
+    let git_dates = load_git_dates(&workspace);
+    scan_and_cache_full(vault_path, &git_dates, current_hash, expected_previous)
 }
 
 #[cfg(test)]
@@ -990,10 +1095,66 @@ mod tests {
         assert_eq!(entries.len(), 1);
 
         let _dates_guard = panic_on_git_date_lookup();
+        CACHE_WRITE_COUNT.store(0, Ordering::SeqCst);
         let entries2 = scan_vault_cached(vault).unwrap();
 
         assert_eq!(entries2.len(), 1);
         assert_eq!(entries2[0].title, "Note");
+        assert_eq!(CACHE_WRITE_COUNT.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn test_snapshot_returns_cached_entries_without_reconciling_deleted_files() {
+        let (_lock, _cache_tmp, dir) = setup_git_vault();
+        let vault = dir.path();
+
+        create_test_file(vault, "note.md", "# Note\n\nCached content.");
+        git_add_commit(vault, "init");
+        scan_vault_cached(vault).unwrap();
+        fs::remove_file(vault.join("note.md")).unwrap();
+
+        let snapshot = read_vault_snapshot(vault).unwrap().unwrap();
+
+        assert_eq!(snapshot.len(), 1);
+        assert_eq!(snapshot[0].title, "Note");
+        assert!(scan_vault_cached(vault).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_snapshot_returns_none_when_cache_is_missing_or_invalid() {
+        let (_lock, _cache_tmp, dir) = setup_git_vault();
+        let vault = dir.path();
+
+        assert!(read_vault_snapshot(vault).unwrap().is_none());
+
+        fs::write(cache_path(vault), "not-json").unwrap();
+        assert!(read_vault_snapshot(vault).unwrap().is_none());
+    }
+
+    #[test]
+    fn test_nested_vault_cache_resolves_git_workspace_once_per_scan() {
+        let (_lock, _cache_tmp, repository) = setup_git_vault();
+        let vault = repository.path().join("docs");
+        fs::create_dir(&vault).unwrap();
+        create_test_file(&vault, "guide.md", "# Guide\n");
+        git_add_commit(repository.path(), "initial");
+
+        scan_vault_cached(&vault).unwrap();
+
+        GIT_WORKSPACE_RESOLUTION_COUNT.store(0, Ordering::SeqCst);
+        scan_vault_cached(&vault).unwrap();
+        let same_commit_resolutions = GIT_WORKSPACE_RESOLUTION_COUNT.swap(0, Ordering::SeqCst);
+
+        create_test_file(&vault, "guide.md", "# Guide\n\nUpdated.\n");
+        git_add_commit(repository.path(), "update guide");
+        scan_vault_cached(&vault).unwrap();
+        let different_commit_resolutions = GIT_WORKSPACE_RESOLUTION_COUNT.swap(0, Ordering::SeqCst);
+
+        assert_eq!(
+            (same_commit_resolutions, different_commit_resolutions),
+            (1, 1),
+            "each cache scan should resolve the nested Git workspace exactly once"
+        );
     }
 
     #[test]
@@ -1101,9 +1262,30 @@ mod tests {
         git_add_commit(vault, "init");
         create_test_file(vault, relative_path, "# 初始\n\n更新\n");
 
-        let changed = git_uncommitted_files(vault);
+        let workspace = resolve_git_workspace(vault).unwrap();
+        let changed = git_uncommitted_files(&workspace);
 
         assert_eq!(changed, vec![relative_path.to_string()]);
+    }
+
+    #[test]
+    fn test_nested_vault_incremental_changes_exclude_parent_files() {
+        let (_lock, _cache_tmp, dir) = setup_git_vault();
+        let repository = dir.path();
+        let vault = repository.join("docs");
+        fs::create_dir(&vault).unwrap();
+        create_test_file(&vault, "guide.md", "# Guide\n");
+        create_test_file(repository, "outside.md", "# Outside\n");
+        git_add_commit(repository, "initial");
+
+        create_test_file(&vault, "guide.md", "# Guide\n\nUpdated\n");
+        create_test_file(&vault, "new.yml", "name: new\n");
+        create_test_file(repository, "outside.md", "# Outside changed\n");
+
+        let workspace = resolve_git_workspace(&vault).unwrap();
+        let changed = git_uncommitted_files(&workspace);
+
+        assert_eq!(changed, vec!["guide.md", "new.yml"]);
     }
 
     #[test]
@@ -1333,6 +1515,40 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_refresh_replaces_snapshot_without_invalidating_first() {
+        let (_lock, _cache_tmp, dir) = setup_git_vault();
+        let vault = dir.path();
+
+        create_test_file(vault, "note.md", "---\n_archived: false\n---\n# Note\n");
+        git_add_commit(vault, "init");
+        let initial = scan_vault_cached(vault).unwrap();
+        assert!(!initial[0].archived);
+        assert!(read_vault_snapshot(vault).unwrap().is_some());
+
+        create_test_file(vault, "note.md", "---\n_archived: true\n---\n# Note\n");
+        let refreshed = refresh_vault_cache(vault).unwrap();
+
+        assert!(refreshed[0].archived);
+        let snapshot = read_vault_snapshot(vault).unwrap().unwrap();
+        assert!(snapshot[0].archived);
+    }
+
+    #[test]
+    fn test_refresh_replaces_invalid_snapshot() {
+        let (_lock, _cache_tmp, dir) = setup_git_vault();
+        let vault = dir.path();
+
+        create_test_file(vault, "note.md", "# Note\n");
+        git_add_commit(vault, "init");
+        fs::write(cache_path(vault), b"not valid json").unwrap();
+
+        let refreshed = refresh_vault_cache(vault).unwrap();
+
+        assert_eq!(refreshed.len(), 1);
+        assert_eq!(read_vault_snapshot(vault).unwrap().unwrap().len(), 1);
+    }
+
     /// Integration test: a note with `Archived: Yes` (string, not boolean)
     /// must be recognized as archived through the full cached vault load path.
     /// This catches the scenario where a stale cache stores `archived: false`
@@ -1367,7 +1583,8 @@ mod tests {
         create_test_file(vault, "note.md", "---\nArchived: Yes\n---\n# Note\n");
         git_add_commit(vault, "init");
 
-        let hash = git_head_hash(vault).unwrap();
+        let workspace = resolve_git_workspace(vault).unwrap();
+        let hash = git_head_hash(&workspace).unwrap();
 
         // Simulate a stale cache written by old code that parsed Archived: Yes as false
         let stale_entry = {

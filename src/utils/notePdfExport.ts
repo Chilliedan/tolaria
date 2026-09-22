@@ -1,7 +1,4 @@
-import {
-  trackNotePdfExportFailed,
-  trackNotePdfExportStarted,
-} from '../lib/productAnalytics'
+import { trackNotePdfExportFailed, trackNotePdfExportStarted } from '../lib/productAnalytics'
 import { isTauri } from '../mock-tauri'
 
 export const NOTE_PDF_EXPORT_CLASS = 'tolaria-note-pdf-exporting'
@@ -42,20 +39,18 @@ type PdfExportResolution = ResolvedPdfExport | 'cancelled' | null
 function waitForPrintStyles(windowObject: Window): Promise<void> {
   return new Promise((resolve) => {
     windowObject.requestAnimationFrame(() => {
-      windowObject.requestAnimationFrame(() => resolve())
+      windowObject.requestAnimationFrame(() => {
+        resolve()
+      })
     })
   })
 }
 
 export function cleanupNotePdfExportPrintMode(documentObject: Document = document): void {
-  documentObject.body?.classList.remove(NOTE_PDF_EXPORT_CLASS)
+  documentObject.body.classList.remove(NOTE_PDF_EXPORT_CLASS)
 }
 
-function schedulePrintModeCleanup(
-  documentObject: Document,
-  windowObject: Window,
-  cleanupDelayMs: number,
-): () => void {
+function schedulePrintModeCleanup(documentObject: Document, windowObject: Window, cleanupDelayMs: number): () => void {
   let cleaned = false
   let timeoutId: number | null = null
 
@@ -74,13 +69,16 @@ function schedulePrintModeCleanup(
 
 function resolvePrintFunction(
   windowObject: Window,
-  {
-    print,
-  }: Pick<NotePdfExportOptions, 'print'>,
+  { print }: Pick<NotePdfExportOptions, 'print'>,
 ): PdfExportResolution {
   if (print) return { cleanupAfterRun: false, run: print }
   return typeof windowObject.print === 'function'
-    ? { cleanupAfterRun: false, run: () => windowObject.print() }
+    ? {
+        cleanupAfterRun: false,
+        run: () => {
+          windowObject.print()
+        },
+      }
     : null
 }
 
@@ -88,8 +86,8 @@ function ensurePdfExtension(path: string): string {
   return path.toLowerCase().endsWith(PDF_EXTENSION) ? path : `${path}${PDF_EXTENSION}`
 }
 
-function stripMarkdownExtension(filename: string): string {
-  return filename.replace(/\.(md|markdown)$/i, '')
+function stripExportableExtension(filename: string): string {
+  return filename.replace(/\.(?:html?|markdown|md)$/i, '')
 }
 
 function sanitizeFilenameStem(filename: string): string {
@@ -100,7 +98,7 @@ function sanitizeFilenameStem(filename: string): string {
 }
 
 export function notePdfExportFilename(filename = 'Untitled Note'): string {
-  const stem = sanitizeFilenameStem(stripMarkdownExtension(filename)).trim()
+  const stem = sanitizeFilenameStem(stripExportableExtension(filename)).trim()
   return `${stem || 'Untitled Note'}${PDF_EXTENSION}`
 }
 
@@ -138,7 +136,7 @@ async function resolveNativePdfExport({
   NotePdfExportOptions,
   'canSaveNativePdf' | 'defaultFilename' | 'nativePrint' | 'nativeSavePdf' | 'saveDialog'
 >): Promise<PdfExportResolution> {
-  if (!await canSaveNativePdf()) {
+  if (!(await canSaveNativePdf())) {
     return { cleanupAfterRun: false, run: nativePrint }
   }
 
@@ -162,18 +160,19 @@ async function resolvePdfExport(
   return resolvePrintFunction(windowObject, options)
 }
 
-export async function printActiveNoteAsPdf({
-  cleanupDelayMs = DEFAULT_CLEANUP_DELAY_MS,
-  canSaveNativePdf,
-  defaultFilename,
-  documentObject = document,
-  nativePrint,
-  nativeSavePdf,
-  print,
-  saveDialog,
-  source,
-  windowObject = window,
-}: NotePdfExportOptions): Promise<void> {
+export async function printActiveNoteAsPdf(options: NotePdfExportOptions): Promise<void> {
+  const {
+    cleanupDelayMs = DEFAULT_CLEANUP_DELAY_MS,
+    canSaveNativePdf,
+    defaultFilename,
+    documentObject = document,
+    nativePrint,
+    nativeSavePdf,
+    print,
+    saveDialog,
+    source,
+    windowObject = window,
+  } = options
   const exportDocument = await resolvePdfExport(windowObject, {
     canSaveNativePdf,
     defaultFilename,

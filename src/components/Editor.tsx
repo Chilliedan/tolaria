@@ -30,32 +30,31 @@ import { FilePreview } from './FilePreview'
 import { schema } from './editorSchema'
 import { useRightPanelExclusion } from './useRightPanelExclusion'
 import type { RawEditorFindRequest } from './RawEditorFindBar'
-import {
-  resolvePendingRawExitContent,
-  resolveRawModeContent,
-} from './editorRawModeSync'
+import { resolvePendingRawExitContent, resolveRawModeContent } from './editorRawModeSync'
 import { useRegisterEditorContentFlushes } from './editorContentFlushRegistration'
 import { useRawModeWithFlush } from './useRawModeWithFlush'
 import { createImeCompositionKeyGuardExtension } from './imeCompositionKeyGuardExtension'
 import { createMarkdownHighlightShortcutExtension } from './markdownHighlightShortcutExtension'
-import { handleRichEditorPaste } from './richEditorPaste'
+import { handleRemoteRichEditorPaste } from './richEditorPaste'
 import { createRichEditorMarkdownInputTransformExtension } from './richEditorInputTransformExtension'
 import { createRichEditorTextDirectionExtension } from './richEditorTextDirection'
 import { createRichEditorTransformErrorRecoveryExtension } from './richEditorTransformErrorRecoveryExtension'
 import { createRichEditorBlockSelectionExtension } from './richEditorBlockSelectionExtension'
 import { createTodoBlockShortcutExtension } from './todoBlockShortcutExtension'
 import { createRichEditorCodeBlockTabExtension } from './richEditorCodeBlockTabExtension'
+import { createRichEditorCodeBlockShortcutExtension } from './richEditorCodeBlockShortcutExtension'
+import { createRichEditorCodeBlockArrowNavigationExtension } from './richEditorCodeBlockArrowNavigationExtension'
+import { createRichEditorEmptyListNavigationExtension } from './richEditorEmptyListNavigationExtension'
+import { createRichEditorListTabExtension } from './richEditorListTabExtension'
 import { useFilenameAutolinkGuard } from './useFilenameAutolinkGuard'
 import { useEditorPdfExport } from './useEditorPdfExport'
 import type { NotePdfExportSource } from '../utils/notePdfExport'
 import type { RichEditorBlockTypeDefinition } from '../utils/richEditorBlockTypes'
-import {
-  useRichEditorContentReadiness,
-  useRichEditorSheetSwapState,
-} from './useRichEditorSheetTransition'
+import { useRichEditorContentReadiness, useRichEditorSheetSwapState } from './useRichEditorSheetTransition'
 import { installRichEditorMarkdownSerializer } from '../utils/richEditorMarkdown'
 import { installRichEditorDispatchPerformanceProbe } from './richEditorDispatchPerformance'
 import { RICH_EDITOR_BLOCKNOTE_PERFORMANCE_OPTIONS } from './richEditorBlockNoteOptions'
+import { markStartupPhase } from '../lib/startupPerformance'
 import { useTurnCurrentBlockIntoCommand } from './useTurnCurrentBlockIntoCommand'
 import './Editor.css'
 import './EditorTheme.css'
@@ -70,7 +69,7 @@ interface Tab {
   content: string
 }
 
-interface EditorProps {
+export interface EditorProps {
   tabs: Tab[]
   activeTabPath: string | null
   isVaultLoading?: boolean
@@ -94,10 +93,15 @@ interface EditorProps {
   inspectorEntry: VaultEntry | null
   inspectorContent: string | null
   gitHistory: GitCommit[]
-  onUpdateFrontmatter?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
+  onUpdateFrontmatter?: (
+    path: string,
+    key: string,
+    value: FrontmatterValue,
+    options?: FrontmatterOpOptions,
+  ) => Promise<void>
   onDeleteProperty?: (path: string, key: string, options?: FrontmatterOpOptions) => Promise<void>
   onAddProperty?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
-  onCreateMissingType?: (path: string, missingType: string, nextTypeName: string) => Promise<boolean | void>
+  onCreateMissingType?: (path: string, missingType: string, nextTypeName: string) => Promise<boolean | undefined>
   onCreateAndOpenNote?: (title: string) => Promise<boolean>
   onChangeWorkspace?: (entry: VaultEntry, workspace: WorkspaceIdentity) => Promise<void> | void
   onInitializeProperties?: (path: string) => void
@@ -164,7 +168,12 @@ interface EditorProps {
 type ImageImportErrorHandler = (error: ImageImportError) => void
 
 function useEditorModeExclusion({
-  diffMode, rawMode, handleToggleDiff, handleToggleRaw, rawToggleRef, diffToggleRef,
+  diffMode,
+  rawMode,
+  handleToggleDiff,
+  handleToggleRaw,
+  rawToggleRef,
+  diffToggleRef,
 }: {
   diffMode: boolean
   rawMode: boolean
@@ -212,7 +221,12 @@ function EditorEmptyState({ locale = 'en' }: { locale?: AppLocale }) {
       />
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-muted-foreground">
         <p className="m-0 text-[15px]">{translate(locale, 'editor.empty.selectNote')}</p>
-        <span className="text-xs text-muted-foreground">{translate(locale, 'editor.empty.shortcuts', { quickOpen: quickOpenShortcut, newNote: newNoteShortcut })}</span>
+        <span className="text-xs text-muted-foreground">
+          {translate(locale, 'editor.empty.shortcuts', {
+            quickOpen: quickOpenShortcut,
+            newNote: newNoteShortcut,
+          })}
+        </span>
       </div>
     </div>
   )
@@ -234,10 +248,15 @@ interface EditorSetupParams {
 }
 
 function imageImportErrorMessage(error: ImageImportError, locale: AppLocale | undefined): string {
-  if (error.kind === 'unsupported-heic') {
-    return translate(locale ?? 'en', 'editor.imageImport.unsupportedHeic', { filename: error.fileName })
+  if (error.kind === 'remote-download') {
+    return translate(locale ?? 'en', 'editor.imageImport.remoteDownloadFailed', {
+      failedCount: error.failedCount,
+      totalCount: error.totalCount,
+    })
   }
-  return translate(locale ?? 'en', 'editor.imageImport.unsupported', { filename: error.fileName, format: error.format })
+  return translate(locale ?? 'en', 'editor.imageImport.unsupportedHeic', {
+    filename: error.fileName,
+  })
 }
 
 function handleEditorImageUploadFailure(
@@ -251,19 +270,35 @@ function handleEditorImageUploadFailure(
   return emptyImageUploadResult(file)
 }
 
-function useEditorSetup({
-  tabs, activeTabPath, vaultPath, onContentChange,
-  onLoadDiff, onLoadDiffAtCommit, pendingCommitDiffRequest, onPendingCommitDiffHandled, getNoteStatus,
-  rawToggleRef, diffToggleRef, onImageImportError,
-}: EditorSetupParams) {
+function useEditorSetup(options: EditorSetupParams) {
+  const {
+    tabs,
+    activeTabPath,
+    vaultPath,
+    onContentChange,
+    onLoadDiff,
+    onLoadDiffAtCommit,
+    pendingCommitDiffRequest,
+    onPendingCommitDiffHandled,
+    getNoteStatus,
+    rawToggleRef,
+    diffToggleRef,
+    onImageImportError,
+  } = options
   const vaultPathRef = useRef(vaultPath)
   const activeTabPathRef = useRef(activeTabPath)
   const onImageImportErrorRef = useRef(onImageImportError)
   const flushPendingEditorChangeRef = useRef<(() => boolean) | null>(null)
   const sheetFlushRef = useRef<((path: string) => void) | null>(null)
-  useEffect(() => { vaultPathRef.current = vaultPath }, [vaultPath])
-  useEffect(() => { activeTabPathRef.current = activeTabPath }, [activeTabPath])
-  useEffect(() => { onImageImportErrorRef.current = onImageImportError }, [onImageImportError])
+  useEffect(() => {
+    vaultPathRef.current = vaultPath
+  }, [vaultPath])
+  useEffect(() => {
+    activeTabPathRef.current = activeTabPath
+  }, [activeTabPath])
+  useEffect(() => {
+    onImageImportErrorRef.current = onImageImportError
+  }, [onImageImportError])
 
   const editor = useCreateBlockNote({
     ...RICH_EDITOR_BLOCKNOTE_PERFORMANCE_OPTIONS,
@@ -276,13 +311,32 @@ function useEditorSetup({
         return handleEditorImageUploadFailure(file, error, onImageImportErrorRef.current)
       }
     },
-    pasteHandler: handleRichEditorPaste,
+    pasteHandler: (context) => {
+      const pastePath = activeTabPathRef.current
+      return handleRemoteRichEditorPaste(context, {
+        canApply: () => activeTabPathRef.current === pastePath,
+        vaultPath: vaultPathRef.current,
+        onImportResult: ({ failedCount, totalCount }) => {
+          if (failedCount > 0) {
+            onImageImportErrorRef.current?.({
+              failedCount,
+              kind: 'remote-download',
+              totalCount,
+            })
+          }
+        },
+      })
+    },
     tabBehavior: 'prefer-indent',
     _tiptapOptions: { injectNonce: RUNTIME_STYLE_NONCE },
     extensions: [
       createRichEditorTransformErrorRecoveryExtension(),
       createImeCompositionKeyGuardExtension(),
+      createRichEditorCodeBlockArrowNavigationExtension(),
+      createRichEditorEmptyListNavigationExtension(),
       createRichEditorCodeBlockTabExtension(),
+      createRichEditorListTabExtension(),
+      createRichEditorCodeBlockShortcutExtension(),
       createMarkdownHighlightShortcutExtension(),
       createTodoBlockShortcutExtension(),
       createRichEditorMarkdownInputTransformExtension(),
@@ -297,298 +351,323 @@ function useEditorSetup({
   useFilenameAutolinkGuard(editor)
   const activeTab = tabs.find((t) => t.entry.path === activeTabPath) ?? null
   const {
-    rawMode,
-    handleToggleRaw,
-    rawLatestContentRef,
-    pendingRawExitContent,
-    setPendingRawExitContent,
-    rawModeContentOverride,
-  } = useRawModeWithFlush(
-    editor,
-    activeTabPath,
-    activeTab?.content ?? null,
-    onContentChange,
-    vaultPath,
-    flushPendingEditorChangeRef,
-  )
-  const rawModeContent = resolveRawModeContent({ activeTab, rawModeContentOverride })
+        rawMode,
+        handleToggleRaw,
+        rawLatestContentRef,
+        pendingRawExitContent,
+        setPendingRawExitContent,
+        rawModeContentOverride,
+      } = useRawModeWithFlush(
+        editor,
+        activeTabPath,
+        activeTab?.content ?? null,
+        onContentChange,
+        vaultPath,
+        flushPendingEditorChangeRef,
+      )
+      const rawModeContent = resolveRawModeContent({
+        activeTab,
+        rawModeContentOverride,
+      })
 
-  useEffect(() => {
-    setPendingRawExitContent((current) => resolvePendingRawExitContent({
-      activeTabPath,
+      useEffect(() => {
+        setPendingRawExitContent((current) =>
+          resolvePendingRawExitContent({
+          activeTabPath,
+          tabs,
+          pendingRawExitContent: current,
+          }),
+        )
+      }, [activeTabPath, setPendingRawExitContent, tabs])
+
+      const { activeTabIsSheet, richEditorActiveTabPath, tabsForEditorSwap } = useRichEditorSheetSwapState({
+        activeTab,
+        activeTabPath,
+        tabs,
+        pendingRawExitContent,
+      })
+
+      const { editorContentPath, handleEditorChange, flushPendingEditorChange, editorMountedRef } = useEditorTabSwap({
+        tabs: tabsForEditorSwap,
+        activeTabPath: richEditorActiveTabPath,
+        editor,
+        onContentChange,
+        rawMode,
+        vaultPath,
+      })
+      const richEditorContentReady = useRichEditorContentReadiness({
+        activeTab,
+        activeTabIsSheet,
+        editorContentPath,
+      })
+      useEffect(() => {
+        if (richEditorContentReady) markStartupPhase('editor_interactive')
+      }, [richEditorContentReady])
+      useEffect(() => {
+        flushPendingEditorChangeRef.current = flushPendingEditorChange
+        return () => {
+          if (flushPendingEditorChangeRef.current === flushPendingEditorChange) {
+            flushPendingEditorChangeRef.current = null
+          }
+        }
+      }, [flushPendingEditorChange])
+      useEditorFocus(editor, editorMountedRef)
+
+      const { diffMode, diffContent, diffLoading, handleToggleDiff, handleViewCommitDiff } = useDiffMode({
+        activeTabPath,
+        onLoadDiff,
+        onLoadDiffAtCommit,
+        pendingCommitDiffRequest,
+        onPendingCommitDiffHandled,
+      })
+
+      const { handleToggleDiffExclusive, handleToggleRawExclusive } = useEditorModeExclusion({
+        diffMode,
+        rawMode,
+        handleToggleDiff,
+        handleToggleRaw,
+        rawToggleRef,
+        diffToggleRef,
+      })
+
+      const isLoadingNewTab = activeTabPath !== null && !activeTab
+      const activeStatus = activeTab ? (getNoteStatus?.(activeTab.entry.path) ?? 'clean') : 'clean'
+      const showDiffToggle = !!(activeTab && (diffMode || activeStatus === 'modified'))
+
+      return {
+        editor,
+        activeTab,
+        rawLatestContentRef,
+        rawModeContent,
+        rawMode,
+        diffMode,
+        diffContent,
+        diffLoading,
+        handleToggleDiffExclusive,
+        handleToggleRawExclusive,
+        handleEditorChange,
+        flushPendingEditorChange,
+        handleViewCommitDiff,
+        isLoadingNewTab,
+        activeStatus,
+        showDiffToggle,
+        sheetFlushRef,
+        richEditorContentReady,
+      }
+    }
+
+    function useEditorFindCommand({
+      activeTab,
+      findInNoteRef,
+      handleToggleRawExclusive,
+      rawMode,
+    }: {
+      activeTab: Tab | null
+      findInNoteRef?: EditorProps['findInNoteRef']
+      handleToggleRawExclusive: () => void
+      rawMode: boolean
+    }): RawEditorFindRequest | null {
+      const [findRequest, setFindRequest] = useState<RawEditorFindRequest | null>(null)
+      const handleFindInNote = useCallback(
+        (options: { replace?: boolean } = {}) => {
+        if (!activeTab || activeTab.entry.fileKind === 'binary') return
+        if (!rawMode) handleToggleRawExclusive()
+
+        setFindRequest((current) => ({
+          id: (current?.id ?? 0) + 1,
+          path: activeTab.entry.path,
+          replace: options.replace === true,
+        }))
+        },
+        [activeTab, handleToggleRawExclusive, rawMode],
+      )
+
+      useEffect(() => {
+        if (!findInNoteRef) return
+
+        findInNoteRef.current = handleFindInNote
+        return () => {
+          if (findInNoteRef.current === handleFindInNote) {
+            findInNoteRef.current = null
+          }
+        }
+      }, [findInNoteRef, handleFindInNote])
+
+      return findRequest
+    }
+
+    function EditorLayout(options: {
+      tabs: Tab[]
+      activeTabPath: string | null
+      activeTab: Tab | null
+      isLoadingNewTab: boolean
+      isVaultLoading?: boolean
+      entries: VaultEntry[]
+      editor: ReturnType<typeof useCreateBlockNote>
+      diffMode: boolean
+      diffContent: string | null
+      diffLoading: boolean
+      richEditorContentReady: boolean
+      handleToggleDiffExclusive: () => void | Promise<void>
+      rawMode: boolean
+      handleToggleRawExclusive: () => void
+      onContentChange?: (path: string, content: string) => void
+      onSave?: () => void
+      activeStatus: NoteStatus
+      showDiffToggle: boolean
+      showAIChat?: boolean
+      onToggleAIChat?: () => void
+      aiWorkspaceSurface?: ReactNode
+      showTableOfContents?: boolean
+      onToggleTableOfContents?: () => void
+      inspectorCollapsed: boolean
+      onToggleInspector: () => void
+      onNavigateWikilink: (target: string) => void
+      handleEditorChange: () => void
+      onToggleFavorite?: (path: string) => void
+      onToggleOrganized?: (path: string) => void
+      onEnterNeighborhood?: (entry: VaultEntry) => void
+      onRevealFile?: (path: string) => void
+      onCopyFilePath?: (path: string) => void
+      onCopyDeepLink?: (entry: VaultEntry) => void
+      onCopyGitUrl?: (entry: VaultEntry) => void
+      onOpenExternalFile?: (path: string) => void
+      onDeleteNote?: (path: string) => void
+      onArchiveNote?: (path: string) => void
+      onUnarchiveNote?: (path: string) => void
+      vaultPath?: string
+      vaultPaths?: string[]
+      rawModeContent: string | null
+      findRequest?: RawEditorFindRequest | null
+      rawLatestContentRef: React.MutableRefObject<string | null>
+      sheetFlushRef: React.MutableRefObject<((path: string) => void) | null>
+      onRenameFilename?: (path: string, newFilenameStem: string) => void
+      noteWidth?: NoteWidthMode
+      onToggleNoteWidth?: () => void
+      isConflicted?: boolean
+      onKeepMine?: (path: string) => void
+      onKeepTheirs?: (path: string) => void
+      onInspectorResize: (delta: number) => void
+      inspectorWidth: number
+      defaultAiAgent: AiAgentId
+      defaultAiTarget?: AiTarget
+      defaultAiAgentReadiness?: AiAgentReadiness
+      defaultAiAgentReady: boolean
+      inspectorEntry: VaultEntry | null
+      inspectorContent: string | null
+      gitHistory: GitCommit[]
+      noteList?: NoteListItem[]
+      noteListFilter?: { type: string | null; query: string }
+      handleViewCommitDiff: (commitHash: string) => Promise<void>
+      onUpdateFrontmatter?: (
+        path: string,
+        key: string,
+        value: FrontmatterValue,
+        options?: FrontmatterOpOptions,
+      ) => Promise<void>
+      onDeleteProperty?: (path: string, key: string, options?: FrontmatterOpOptions) => Promise<void>
+      onAddProperty?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
+      onCreateMissingType?: (path: string, missingType: string, nextTypeName: string) => Promise<boolean | undefined>
+      onCreateAndOpenNote?: (title: string) => Promise<boolean>
+      onChangeWorkspace?: (entry: VaultEntry, workspace: WorkspaceIdentity) => Promise<void> | void
+      onInitializeProperties?: (path: string) => void
+      onFileCreated?: (relativePath: string) => void
+      onFileModified?: (relativePath: string) => void
+      onVaultChanged?: () => void
+      workspaces?: WorkspaceIdentity[]
+      onUnsupportedAiPaste?: (message: string) => void
+      onImageImportError?: ImageImportErrorHandler
+      locale?: AppLocale
+      onExportPdf?: (source?: NotePdfExportSource) => void
+    }) {
+      const {
       tabs,
-      pendingRawExitContent: current,
-    }))
-  }, [activeTabPath, setPendingRawExitContent, tabs])
-
-  const {
-    activeTabIsSheet,
-    richEditorActiveTabPath,
-    tabsForEditorSwap,
-  } = useRichEditorSheetSwapState({
-    activeTab,
-    activeTabPath,
-    tabs,
-    pendingRawExitContent,
-  })
-
-  const {
-    editorContentPath,
-    handleEditorChange,
-    flushPendingEditorChange,
-    editorMountedRef,
-  } = useEditorTabSwap({
-    tabs: tabsForEditorSwap,
-    activeTabPath: richEditorActiveTabPath,
-    editor,
-    onContentChange,
-    rawMode,
-    vaultPath,
-  })
-  const richEditorContentReady = useRichEditorContentReadiness({
-    activeTab,
-    activeTabIsSheet,
-    editorContentPath,
-  })
-  useEffect(() => {
-    flushPendingEditorChangeRef.current = flushPendingEditorChange
-    return () => {
-      if (flushPendingEditorChangeRef.current === flushPendingEditorChange) {
-        flushPendingEditorChangeRef.current = null
-      }
-    }
-  }, [flushPendingEditorChange])
-  useEditorFocus(editor, editorMountedRef)
-
-  const { diffMode, diffContent, diffLoading, handleToggleDiff, handleViewCommitDiff } = useDiffMode({
-    activeTabPath,
-    onLoadDiff,
-    onLoadDiffAtCommit,
-    pendingCommitDiffRequest,
-    onPendingCommitDiffHandled,
-  })
-
-  const { handleToggleDiffExclusive, handleToggleRawExclusive } = useEditorModeExclusion({
-    diffMode, rawMode, handleToggleDiff, handleToggleRaw, rawToggleRef, diffToggleRef,
-  })
-
-  const isLoadingNewTab = activeTabPath !== null && !activeTab
-  const activeStatus = activeTab ? getNoteStatus?.(activeTab.entry.path) ?? 'clean' : 'clean'
-  const showDiffToggle = !!(activeTab && (diffMode || activeStatus === 'modified'))
-
-  return {
-    editor, activeTab, rawLatestContentRef, rawModeContent,
-    rawMode, diffMode, diffContent, diffLoading,
-    handleToggleDiffExclusive, handleToggleRawExclusive,
-    handleEditorChange, flushPendingEditorChange, handleViewCommitDiff,
-    isLoadingNewTab, activeStatus, showDiffToggle, sheetFlushRef, richEditorContentReady,
-  }
-}
-
-function useEditorFindCommand({
-  activeTab,
-  findInNoteRef,
-  handleToggleRawExclusive,
-  rawMode,
-}: {
-  activeTab: Tab | null
-  findInNoteRef?: EditorProps['findInNoteRef']
-  handleToggleRawExclusive: () => void
-  rawMode: boolean
-}): RawEditorFindRequest | null {
-  const [findRequest, setFindRequest] = useState<RawEditorFindRequest | null>(null)
-  const handleFindInNote = useCallback((options: { replace?: boolean } = {}) => {
-    if (!activeTab || activeTab.entry.fileKind === 'binary') return
-    if (!rawMode) handleToggleRawExclusive()
-
-    setFindRequest((current) => ({
-      id: (current?.id ?? 0) + 1,
-      path: activeTab.entry.path,
-      replace: options.replace === true,
-    }))
-  }, [activeTab, handleToggleRawExclusive, rawMode])
-
-  useEffect(() => {
-    if (!findInNoteRef) return
-
-    findInNoteRef.current = handleFindInNote
-    return () => {
-      if (findInNoteRef.current === handleFindInNote) {
-        findInNoteRef.current = null
-      }
-    }
-  }, [findInNoteRef, handleFindInNote])
-
-  return findRequest
-}
-
-function EditorLayout({
-  tabs,
-  activeTabPath,
-  activeTab,
-  isLoadingNewTab,
-  isVaultLoading,
-  entries,
-  editor,
-  diffMode,
-  diffContent,
-  diffLoading,
-  richEditorContentReady,
-  handleToggleDiffExclusive,
-  rawMode,
-  handleToggleRawExclusive,
-  onContentChange,
-  onSave,
-  activeStatus,
-  showDiffToggle,
-  showAIChat,
-  onToggleAIChat,
-  aiWorkspaceSurface,
-  showTableOfContents,
-  onToggleTableOfContents,
-  inspectorCollapsed,
-  onToggleInspector,
-  onNavigateWikilink,
-  handleEditorChange,
-  onToggleFavorite,
-  onToggleOrganized,
-  onEnterNeighborhood,
-  onRevealFile,
-  onCopyFilePath,
-  onCopyDeepLink,
-  onCopyGitUrl,
-  onExportPdf,
-  onOpenExternalFile,
-  onDeleteNote,
-  onArchiveNote,
-  onUnarchiveNote,
-  vaultPath,
-  vaultPaths,
-  rawModeContent,
-  findRequest,
-  rawLatestContentRef,
-  sheetFlushRef,
-  onRenameFilename,
-  noteWidth,
-  onToggleNoteWidth,
-  isConflicted,
-  onKeepMine,
-  onKeepTheirs,
-  onInspectorResize,
-  inspectorWidth,
-  defaultAiAgent,
-  defaultAiTarget,
-  defaultAiAgentReadiness,
-  defaultAiAgentReady,
-  inspectorEntry,
-  inspectorContent,
-  gitHistory,
-  noteList,
-  noteListFilter,
-  handleViewCommitDiff,
-  onUpdateFrontmatter,
-  onDeleteProperty,
-  onAddProperty,
-  onCreateMissingType,
-  onCreateAndOpenNote,
-  onChangeWorkspace,
-  onInitializeProperties,
-  onFileCreated,
-  onFileModified,
-  onVaultChanged,
-  workspaces,
-  onUnsupportedAiPaste,
-  onImageImportError,
-  locale,
-}: {
-  tabs: Tab[]
-  activeTabPath: string | null
-  activeTab: Tab | null
-  isLoadingNewTab: boolean
-  isVaultLoading?: boolean
-  entries: VaultEntry[]
-  editor: ReturnType<typeof useCreateBlockNote>
-  diffMode: boolean
-  diffContent: string | null
-  diffLoading: boolean
-  richEditorContentReady: boolean
-  handleToggleDiffExclusive: () => void | Promise<void>
-  rawMode: boolean
-  handleToggleRawExclusive: () => void
-  onContentChange?: (path: string, content: string) => void
-  onSave?: () => void
-  activeStatus: NoteStatus
-  showDiffToggle: boolean
-  showAIChat?: boolean
-  onToggleAIChat?: () => void
-  aiWorkspaceSurface?: ReactNode
-  showTableOfContents?: boolean
-  onToggleTableOfContents?: () => void
-  inspectorCollapsed: boolean
-  onToggleInspector: () => void
-  onNavigateWikilink: (target: string) => void
-  handleEditorChange: () => void
-  onToggleFavorite?: (path: string) => void
-  onToggleOrganized?: (path: string) => void
-  onEnterNeighborhood?: (entry: VaultEntry) => void
-  onRevealFile?: (path: string) => void
-  onCopyFilePath?: (path: string) => void
-  onCopyDeepLink?: (entry: VaultEntry) => void
-  onCopyGitUrl?: (entry: VaultEntry) => void
-  onOpenExternalFile?: (path: string) => void
-  onDeleteNote?: (path: string) => void
-  onArchiveNote?: (path: string) => void
-  onUnarchiveNote?: (path: string) => void
-  vaultPath?: string
-  vaultPaths?: string[]
-  rawModeContent: string | null
-  findRequest?: RawEditorFindRequest | null
-  rawLatestContentRef: React.MutableRefObject<string | null>
-  sheetFlushRef: React.MutableRefObject<((path: string) => void) | null>
-  onRenameFilename?: (path: string, newFilenameStem: string) => void
-  noteWidth?: NoteWidthMode
-  onToggleNoteWidth?: () => void
-  isConflicted?: boolean
-  onKeepMine?: (path: string) => void
-  onKeepTheirs?: (path: string) => void
-  onInspectorResize: (delta: number) => void
-  inspectorWidth: number
-  defaultAiAgent: AiAgentId
-  defaultAiTarget?: AiTarget
-  defaultAiAgentReadiness?: AiAgentReadiness
-  defaultAiAgentReady: boolean
-  inspectorEntry: VaultEntry | null
-  inspectorContent: string | null
-  gitHistory: GitCommit[]
-  noteList?: NoteListItem[]
-  noteListFilter?: { type: string | null; query: string }
-  handleViewCommitDiff: (commitHash: string) => Promise<void>
-  onUpdateFrontmatter?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
-  onDeleteProperty?: (path: string, key: string, options?: FrontmatterOpOptions) => Promise<void>
-  onAddProperty?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
-  onCreateMissingType?: (path: string, missingType: string, nextTypeName: string) => Promise<boolean | void>
-  onCreateAndOpenNote?: (title: string) => Promise<boolean>
-  onChangeWorkspace?: (entry: VaultEntry, workspace: WorkspaceIdentity) => Promise<void> | void
-  onInitializeProperties?: (path: string) => void
-  onFileCreated?: (relativePath: string) => void
-  onFileModified?: (relativePath: string) => void
-  onVaultChanged?: () => void
-  workspaces?: WorkspaceIdentity[]
-  onUnsupportedAiPaste?: (message: string) => void
-  onImageImportError?: ImageImportErrorHandler
-  locale?: AppLocale
-  onExportPdf?: (source?: NotePdfExportSource) => void
-}) {
+      activeTabPath,
+      activeTab,
+      isLoadingNewTab,
+      isVaultLoading,
+      entries,
+      editor,
+      diffMode,
+      diffContent,
+      diffLoading,
+      richEditorContentReady,
+      handleToggleDiffExclusive,
+      rawMode,
+      handleToggleRawExclusive,
+      onContentChange,
+      onSave,
+      activeStatus,
+      showDiffToggle,
+      showAIChat,
+      onToggleAIChat,
+      aiWorkspaceSurface,
+      showTableOfContents,
+      onToggleTableOfContents,
+      inspectorCollapsed,
+      onToggleInspector,
+      onNavigateWikilink,
+      handleEditorChange,
+      onToggleFavorite,
+      onToggleOrganized,
+      onEnterNeighborhood,
+      onRevealFile,
+      onCopyFilePath,
+      onCopyDeepLink,
+      onCopyGitUrl,
+      onExportPdf,
+      onOpenExternalFile,
+      onDeleteNote,
+      onArchiveNote,
+      onUnarchiveNote,
+      vaultPath,
+      vaultPaths,
+      rawModeContent,
+      findRequest,
+      rawLatestContentRef,
+      sheetFlushRef,
+      onRenameFilename,
+      noteWidth,
+      onToggleNoteWidth,
+      isConflicted,
+      onKeepMine,
+      onKeepTheirs,
+      onInspectorResize,
+      inspectorWidth,
+      defaultAiAgent,
+      defaultAiTarget,
+      defaultAiAgentReadiness,
+      defaultAiAgentReady,
+      inspectorEntry,
+      inspectorContent,
+      gitHistory,
+      noteList,
+      noteListFilter,
+      handleViewCommitDiff,
+      onUpdateFrontmatter,
+      onDeleteProperty,
+      onAddProperty,
+      onCreateMissingType,
+      onCreateAndOpenNote,
+      onChangeWorkspace,
+      onInitializeProperties,
+      onFileCreated,
+      onFileModified,
+      onVaultChanged,
+      workspaces,
+      onUnsupportedAiPaste,
+      onImageImportError,
+      locale,
+  } = options
   const activeBinaryTab = activeTab?.entry.fileKind === 'binary' ? activeTab : null
   const showEmptyState = tabs.length === 0 && activeTabPath === null && !isVaultLoading
 
   return (
     <div className="editor flex flex-col min-h-0 overflow-hidden bg-background text-foreground">
       <div className="relative flex flex-1 min-h-0">
-        {showEmptyState
-          ? <EditorEmptyState locale={locale} />
-          : activeBinaryTab
-            ? (
+        {showEmptyState ? (
+          <EditorEmptyState locale={locale} />
+        ) : activeBinaryTab ? (
                 <FilePreview
                   key={activeBinaryTab.entry.path}
                   entry={activeBinaryTab.entry}
@@ -598,8 +677,8 @@ function EditorLayout({
                   onOpenExternalFile={onOpenExternalFile}
                   onRevealFile={onRevealFile}
                 />
-              )
-            : <EditorContent
+        ) : (
+          <EditorContent
               activeTab={activeTab}
               activeTabPath={activeTabPath}
               isLoadingNewTab={isLoadingNewTab}
@@ -650,7 +729,7 @@ function EditorLayout({
               onImageImportError={onImageImportError}
               locale={locale}
             />
-        }
+        )}
         {(showTableOfContents || !inspectorCollapsed) && <ResizeHandle onResize={onInspectorResize} />}
         <EditorRightPanel
           showAIChat={false}
@@ -718,9 +797,12 @@ function buildEditorLayoutProps(
 
 export const Editor = memo(function Editor(props: EditorProps) {
   const { locale, onToast } = props
-  const handleImageImportError = useCallback((error: ImageImportError) => {
+  const handleImageImportError = useCallback(
+    (error: ImageImportError) => {
     onToast?.(imageImportErrorMessage(error, locale))
-  }, [locale, onToast])
+    },
+    [locale, onToast],
+  )
   const runtime = useEditorSetup({
     tabs: props.tabs,
     activeTabPath: props.activeTabPath,

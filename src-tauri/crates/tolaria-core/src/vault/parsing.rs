@@ -1,6 +1,67 @@
 //! Pure text-processing helpers for markdown content parsing.
 //! Snippet extraction, markdown stripping, date parsing, and string utilities.
 
+use regex::Regex;
+use serde::Deserialize;
+use std::sync::OnceLock;
+
+const WORD_COUNT_CONTRACT_JSON: &str =
+    include_str!("../../../../../src/shared/wordCountContract.json");
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WordCountPatternSources {
+    wikilink: String,
+    markdown_marker: String,
+    unspaced_cjk: String,
+    word: String,
+}
+
+#[derive(Deserialize)]
+struct WordCountContract {
+    patterns: WordCountPatternSources,
+}
+
+struct WordCountPatterns {
+    wikilink: Regex,
+    markdown_marker: Regex,
+    unspaced_cjk: Regex,
+    word: Regex,
+}
+
+fn compile_word_count_pattern(source: &str) -> Regex {
+    Regex::new(source).expect("shared word-count pattern must be a valid Rust regex")
+}
+
+fn inline_markdown_patterns() -> &'static [Regex; 5] {
+    static PATTERNS: OnceLock<[Regex; 5]> = OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        [
+            r"~~(\S[^~]*\S|\S)~~",
+            r"\[([^\]]+)\]\([^)]+\)",
+            r"\[\[[^|\]]+\|([^\]]+)\]\]",
+            r"\[\[([^\]]+)\]\]",
+            r"\[\[([^\]]*)$",
+        ]
+        .map(|source| Regex::new(source).expect("inline-markdown pattern must be valid"))
+    })
+}
+
+fn word_count_patterns() -> &'static WordCountPatterns {
+    static PATTERNS: OnceLock<WordCountPatterns> = OnceLock::new();
+    PATTERNS.get_or_init(|| {
+        let contract: WordCountContract = serde_json::from_str(WORD_COUNT_CONTRACT_JSON)
+            .expect("shared word-count contract must be valid JSON");
+        let sources = contract.patterns;
+        WordCountPatterns {
+            wikilink: compile_word_count_pattern(&sources.wikilink),
+            markdown_marker: compile_word_count_pattern(&sources.markdown_marker),
+            unspaced_cjk: compile_word_count_pattern(&sources.unspaced_cjk),
+            word: compile_word_count_pattern(&sources.word),
+        }
+    })
+}
+
 #[derive(Clone, Copy)]
 struct TextSlice<'a>(&'a str);
 
@@ -157,12 +218,18 @@ fn truncate_with_ellipsis(s: TextSlice<'_>, max_len: usize) -> String {
 pub(super) fn count_body_words(content: &str) -> u32 {
     let without_fm = strip_frontmatter(TextSlice(content));
     let body = without_h1_line(TextSlice(without_fm)).unwrap_or(without_fm);
-    body.split_whitespace()
-        .filter(|w| {
-            !w.chars()
-                .all(|c| matches!(c, '#' | '*' | '_' | '`' | '~' | '-' | '>' | '|'))
-        })
-        .count() as u32
+    let patterns = word_count_patterns();
+    let without_wikilinks = patterns.wikilink.replace_all(body, "");
+    let text = patterns.markdown_marker.replace_all(&without_wikilinks, "");
+    count_multilingual_words(&text)
+}
+
+fn count_multilingual_words(text: &str) -> u32 {
+    let patterns = word_count_patterns();
+    let cjk_count = patterns.unspaced_cjk.find_iter(text).count();
+    let text_with_cjk_boundaries = patterns.unspaced_cjk.replace_all(text, " ");
+    let word_count = patterns.word.find_iter(&text_with_cjk_boundaries).count();
+    u32::try_from(cjk_count.saturating_add(word_count)).unwrap_or(u32::MAX)
 }
 
 /// Extract a snippet: first ~160 chars of content after frontmatter/title, stripped of markdown.
@@ -211,44 +278,37 @@ fn without_h1_line(s: TextSlice<'_>) -> Option<&str> {
     None
 }
 
-/// Collect chars until a delimiter, returning the collected string.
-fn collect_until(chars: &mut impl Iterator<Item = char>, delimiter: char) -> String {
-    let mut buf = String::new();
-    for c in chars.by_ref() {
-        if c == delimiter {
-            break;
-        }
-        buf.push(c);
-    }
-    buf
-}
-
-/// Skip all chars until a delimiter (consuming the delimiter).
-fn skip_until(chars: &mut impl Iterator<Item = char>, delimiter: char) {
-    for c in chars.by_ref() {
-        if c == delimiter {
-            break;
-        }
-    }
-}
-
 /// Check if a char is markdown formatting that should be stripped.
 fn is_markdown_formatting(ch: char) -> bool {
-    matches!(ch, '*' | '_' | '`' | '~')
+    matches!(ch, '*' | '`')
+}
+
+fn is_escaped_markdown_formatting(ch: char) -> bool {
+    ch == '_' || is_markdown_formatting(ch)
+}
+
+fn is_identifier_underscore(result: &str, next: Option<&char>) -> bool {
+    result
+        .chars()
+        .next_back()
+        .is_some_and(char::is_alphanumeric)
+        && next.is_some_and(|character| character.is_alphanumeric())
 }
 
 fn strip_markdown_chars(s: TextSlice<'_>) -> String {
-    let value = s.as_str();
+    let value = strip_shared_inline_patterns(s);
     let mut result = String::with_capacity(value.len());
     let mut chars = value.chars().peekable();
     while let Some(ch) = chars.next() {
         match ch {
-            '[' if chars.peek() == Some(&'[') => {
-                process_wikilink(&mut chars, &mut result);
+            '\\' if chars
+                .peek()
+                .is_some_and(|character| is_escaped_markdown_formatting(*character)) =>
+            {
+                result.push(chars.next().expect("peeked escaped character must exist"));
             }
-            '[' => {
-                process_markdown_link(&mut chars, &mut result);
-            }
+            '_' if is_identifier_underscore(&result, chars.peek()) => result.push(ch),
+            '_' => {}
             c if is_markdown_formatting(c) => {}
             _ => result.push(ch),
         }
@@ -256,54 +316,12 @@ fn strip_markdown_chars(s: TextSlice<'_>) -> String {
     result
 }
 
-/// Process a wikilink `[[...]]` or `[[...|display]]`, extracting the display text.
-fn process_wikilink(
-    chars: &mut std::iter::Peekable<impl Iterator<Item = char>>,
-    result: &mut String,
-) {
-    chars.next(); // consume second '['
-    let inner = collect_wikilink_inner(chars);
-    let display_text = extract_wikilink_display(&inner);
-    result.push_str(display_text);
-}
-
-/// Extract display text from wikilink inner content.
-/// Returns the part after '|' if present, otherwise the whole inner text.
-fn extract_wikilink_display(inner: &str) -> &str {
-    inner.find('|').map_or(inner, |idx| &inner[idx + 1..])
-}
-
-/// Process bracketed text.
-/// Real markdown links `[text](url)` are unwrapped to `text`.
-/// Plain bracketed text `[text]` is preserved verbatim.
-fn process_markdown_link(
-    chars: &mut std::iter::Peekable<impl Iterator<Item = char>>,
-    result: &mut String,
-) {
-    let inner = collect_until(chars, ']');
-    if chars.peek() == Some(&'(') {
-        chars.next();
-        skip_until(chars, ')');
-        result.push_str(&inner);
-        return;
-    }
-
-    result.push('[');
-    result.push_str(&inner);
-    result.push(']');
-}
-
-/// Collect chars inside a wikilink until `]]`, consuming both closing brackets.
-fn collect_wikilink_inner(chars: &mut std::iter::Peekable<impl Iterator<Item = char>>) -> String {
-    let mut buf = String::new();
-    while let Some(c) = chars.next() {
-        if c == ']' && chars.peek() == Some(&']') {
-            chars.next();
-            break;
-        }
-        buf.push(c);
-    }
-    buf
+fn strip_shared_inline_patterns(s: TextSlice<'_>) -> String {
+    inline_markdown_patterns()
+        .iter()
+        .fold(s.as_str().to_string(), |text, pattern| {
+            pattern.replace_all(&text, "$1").into_owned()
+        })
 }
 
 /// Check if a string contains a wikilink pattern `[[...]]`.
@@ -344,3 +362,7 @@ pub(super) fn extract_outgoing_links(content: &str) -> Vec<String> {
 #[cfg(test)]
 #[path = "parsing_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "word_count_tests.rs"]
+mod word_count_tests;

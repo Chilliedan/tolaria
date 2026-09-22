@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { vi } from 'vitest'
 import { clearNoteContentCache } from '../hooks/noteContentCache'
 import type { VaultEntry } from '../types'
@@ -135,6 +135,7 @@ interface MockSheetModel {
   setColumnsWidth(): void
   setFrozenColumnsCount(sheet: SheetIndex, count: ColumnIndex): void
   setFrozenRowsCount(sheet: SheetIndex, count: RowIndex): void
+  setSelectedCell(row: RowIndex, column: ColumnIndex): void
   setRowsHeight(): void
   setSelectedSheet(): void
   setTopLeftVisibleCell(topRow: RowIndex, leftColumn: ColumnIndex): void
@@ -159,6 +160,8 @@ interface SheetEditorMockState {
   modelConstructs: number
   rowsWithDataCalls: number
   selectedView: SelectedView
+  workbookRenderGate: Promise<void> | null
+  workbookRenderError: unknown
   workbookRenders: number
 }
 
@@ -208,6 +211,8 @@ const ironCalcMock = vi.hoisted(() => {
     modelConstructs: 0,
     rowsWithDataCalls: 0,
     selectedView: defaultSelectedView(),
+    workbookRenderGate: null,
+    workbookRenderError: null,
     workbookRenders: 0,
   }
 
@@ -359,6 +364,15 @@ const ironCalcMock = vi.hoisted(() => {
       return state.selectedView
     }
 
+    setSelectedCell(row: RowIndex, column: ColumnIndex): void {
+      state.selectedView = {
+        ...state.selectedView,
+        column,
+        range: [row, column, row, column],
+        row,
+      }
+    }
+
     setTopLeftVisibleCell(topRow: RowIndex, leftColumn: ColumnIndex): void {
       state.selectedView = {
         ...state.selectedView,
@@ -436,7 +450,15 @@ function focusMockWorkbookOnRender(node: HTMLDivElement | null): void {
   if (node && ironCalcMock.state.focusBeforeGuardOnRender) node.focus()
 }
 
+function isMockWorkbookEdgeNavigationPlaceholder(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
+  if (!event.metaKey && !event.ctrlKey) return false
+  return event.key.startsWith('Arrow')
+}
+
 function handleMockWorkbookKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+  if (isMockWorkbookEdgeNavigationPlaceholder(event)) {
+    throw new Error('Function not implemented.')
+  }
   if (event.key === 'F2') ironCalcMock.state.editStarts += 1
   if (event.key === 'Enter') ironCalcMock.state.downMoves += 1
 }
@@ -493,20 +515,34 @@ function handleMockWorkbookPointerDown(
   recordMockPointer(event)
 }
 
+function shouldSuspendMockWorkbook(model: MockSheetModel): boolean {
+  const { lastModel, modelConstructs, workbookRenderGate } = ironCalcMock.state
+  if (!workbookRenderGate || modelConstructs < 2) return false
+  return model === lastModel
+}
+
 vi.mock('@ironcalc/workbook', () => ({
   init: vi.fn(() => Promise.resolve()),
   IronCalc: ({ model }: { model: MockSheetModel }) => {
+    if (ironCalcMock.state.workbookRenderError) {
+      throw ironCalcMock.state.workbookRenderError
+    }
+    if (shouldSuspendMockWorkbook(model)) {
+      throw ironCalcMock.state.workbookRenderGate
+    }
     ironCalcMock.state.lastModel = model
     ironCalcMock.state.workbookRenders += 1
     return (
       <div className="scroll" data-testid="mock-sheet-scroll">
         <div
+          role="listbox"
+          aria-label="Spreadsheet workbook"
+          tabIndex={0}
           className="sheet-container"
           data-testid="ironcalc-workbook"
           ref={focusMockWorkbookOnRender}
           onKeyDown={handleMockWorkbookKeyDown}
           onPointerDown={(event) => handleMockWorkbookPointerDown(event, model)}
-          tabIndex={0}
         >
           <canvas data-testid="mock-sheet-canvas" />
           <input aria-label="Formula" data-testid="mock-formula-input" style={{ caretColor: 'rgb(242, 153, 74)' }} />
@@ -566,8 +602,8 @@ vi.mock('@ironcalc/workbook', () => ({
 import { SheetEditor } from './SheetEditor'
 
 export async function activateWorkbookRoot() {
-  const editor = await screen.findByTestId('sheet-editor')
   const workbookRoot = await screen.findByTestId('ironcalc-workbook')
+  const editor = screen.getByTestId('sheet-editor')
   act(() => {
     fireEvent.pointerDown(editor)
     workbookRoot.focus()
@@ -665,7 +701,11 @@ export async function openFormulaAutocomplete(value = '=su'): Promise<HTMLInputE
   formulaInput.value = value
   formulaInput.setSelectionRange(value.length, value.length)
   fireEvent.input(formulaInput)
-  await screen.findByRole('listbox')
+  await waitFor(() => {
+    if (!document.querySelector('.sheet-formula-autocomplete')) {
+      throw new Error('Formula autocomplete did not open')
+    }
+  })
   return formulaInput
 }
 
@@ -690,6 +730,8 @@ export function resetSheetEditorTestState(): void {
   ironCalcMock.state.modelConstructs = 0
   ironCalcMock.state.rowsWithDataCalls = 0
   ironCalcMock.state.selectedView = ironCalcMock.defaultSelectedView()
+  ironCalcMock.state.workbookRenderGate = null
+  ironCalcMock.state.workbookRenderError = null
   ironCalcMock.state.workbookRenders = 0
   nativeWorkerMock.canUse = false
   nativeWorkerMock.resolve.mockReset()

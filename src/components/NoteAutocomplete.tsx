@@ -5,6 +5,7 @@ import {
   useMemo,
   useEffect,
   type ChangeEvent,
+  type CSSProperties,
   type ComponentType,
   type Dispatch,
   type KeyboardEvent,
@@ -22,6 +23,13 @@ import './WikilinkSuggestionMenu.css'
 
 const MIN_QUERY_LENGTH = 2
 const MAX_RESULTS = 10
+const NOTE_AUTOCOMPLETE_INPUT_STYLE: CSSProperties = {
+  borderRadius: 4,
+  outline: 'none',
+  minWidth: 0,
+  width: '100%',
+  boxSizing: 'border-box',
+}
 
 type AutocompleteKeyAction = 'next' | 'previous' | 'select' | 'close'
 
@@ -59,26 +67,41 @@ interface OpenAutocompleteKeyContext {
 }
 
 function entryMatchesQuery(entry: VaultEntry, lowerQuery: string): boolean {
-  return entry.title.toLowerCase().includes(lowerQuery)
-    || entry.aliases.some(alias => alias.toLowerCase().includes(lowerQuery))
+  return (
+    entry.title.toLowerCase().includes(lowerQuery) ||
+    entry.aliases.some((alias) => alias.toLowerCase().includes(lowerQuery))
+  )
 }
 
 function shouldShowWorkspaceBadge(entries: VaultEntry[]): boolean {
   return new Set(entries.map((entry) => entry.workspace?.alias).filter(Boolean)).size > 1
 }
 
-function buildMatchedEntry(entry: VaultEntry, typeEntryMap: Record<string, VaultEntry>, showWorkspace: boolean): MatchedEntry {
-  const isA = entry.isA
-  const typeEntry = Reflect.get(typeEntryMap, isA ?? '') as VaultEntry | undefined
-  const noteType = isA || undefined
+function buildMatchedEntry(
+  entry: VaultEntry,
+  typeEntryMap: Record<string, VaultEntry>,
+  showWorkspace: boolean,
+): MatchedEntry {
   return {
     title: entry.title,
     noteIcon: entry.icon,
+    ...matchedEntryType(entry, typeEntryMap),
+    workspace: showWorkspace ? (entry.workspace ?? null) : null,
+  }
+}
+
+function matchedEntryType(
+  entry: VaultEntry,
+  typeEntryMap: Record<string, VaultEntry>,
+): Pick<MatchedEntry, 'noteType' | 'typeColor' | 'typeLightColor' | 'TypeIcon'> {
+  const noteType = entry.isA || undefined
+  if (!noteType) return {}
+  const typeEntry = Reflect.get(typeEntryMap, noteType) as VaultEntry | undefined
+  return {
     noteType,
-    typeColor: noteType ? getTypeColor(isA, typeEntry?.color) : undefined,
-    typeLightColor: noteType ? getTypeLightColor(isA, typeEntry?.color) : undefined,
-    TypeIcon: noteType ? getTypeIcon(isA, typeEntry?.icon) : undefined,
-    workspace: showWorkspace ? entry.workspace ?? null : null,
+    typeColor: getTypeColor(noteType, typeEntry?.color),
+    typeLightColor: getTypeLightColor(noteType, typeEntry?.color),
+    TypeIcon: getTypeIcon(noteType, typeEntry?.icon),
   }
 }
 
@@ -87,9 +110,9 @@ function matchEntries(entries: VaultEntry[], typeEntryMap: Record<string, VaultE
   const lowerQuery = query.toLowerCase()
   const showWorkspace = shouldShowWorkspaceBadge(entries)
   return entries
-    .filter(entry => entryMatchesQuery(entry, lowerQuery))
+    .filter((entry) => entryMatchesQuery(entry, lowerQuery))
     .slice(0, MAX_RESULTS)
-    .map(entry => buildMatchedEntry(entry, typeEntryMap, showWorkspace))
+    .map((entry) => buildMatchedEntry(entry, typeEntryMap, showWorkspace))
 }
 
 function resolveOpenAutocompleteKeyAction(key: string): AutocompleteKeyAction | null {
@@ -132,22 +155,14 @@ function preventAutocompleteMouseDown(event: React.MouseEvent): void {
   event.preventDefault()
 }
 
-function handleOpenAutocompleteKey({
-  action,
-  matches,
-  onEscape,
-  onSelect,
-  selectedIndex,
-  setOpen,
-  setSelectedIndex,
-  value,
-}: OpenAutocompleteKeyContext): void {
+function handleOpenAutocompleteKey(options: OpenAutocompleteKeyContext): void {
+  const { action, matches, onEscape, onSelect, selectedIndex, setOpen, setSelectedIndex, value } = options
   if (action === 'next') {
-    setSelectedIndex(i => nextAutocompleteSelectionIndex(i, matches.length))
+    setSelectedIndex((i) => nextAutocompleteSelectionIndex(i, matches.length))
     return
   }
   if (action === 'previous') {
-    setSelectedIndex(i => previousAutocompleteSelectionIndex(i, matches.length))
+    setSelectedIndex((i) => previousAutocompleteSelectionIndex(i, matches.length))
     return
   }
   if (action === 'close') {
@@ -160,17 +175,7 @@ function handleOpenAutocompleteKey({
   onSelect(match?.title ?? value)
 }
 
-function handleAutocompleteKeyDown({
-  event,
-  matches,
-  onEscape,
-  onSelect,
-  open,
-  selectedIndex,
-  setOpen,
-  setSelectedIndex,
-  value,
-}: {
+function handleAutocompleteKeyDown(options: {
   event: KeyboardEvent<HTMLInputElement>
   matches: MatchedEntry[]
   onEscape: (() => void) | undefined
@@ -181,6 +186,7 @@ function handleAutocompleteKeyDown({
   setSelectedIndex: Dispatch<SetStateAction<number>>
   value: string
 }): void {
+  const { event, matches, onEscape, onSelect, open, selectedIndex, setOpen, setSelectedIndex, value } = options
   if (!open || matches.length === 0) {
     handleClosedAutocompleteKey(event.key, value, onSelect, onEscape)
     return
@@ -190,7 +196,16 @@ function handleAutocompleteKeyDown({
   if (!action) return
 
   event.preventDefault()
-  handleOpenAutocompleteKey({ action, matches, onEscape, onSelect, selectedIndex, setOpen, setSelectedIndex, value })
+  handleOpenAutocompleteKey({
+    action,
+    matches,
+    onEscape,
+    onSelect,
+    selectedIndex,
+    setOpen,
+    setSelectedIndex,
+    value,
+  })
 }
 
 interface NoteAutocompleteMenuItemProps {
@@ -200,12 +215,7 @@ interface NoteAutocompleteMenuItemProps {
   onHover: () => void
 }
 
-function NoteAutocompleteMenuItem({
-  item,
-  selected,
-  onSelect,
-  onHover,
-}: NoteAutocompleteMenuItemProps) {
+function NoteAutocompleteMenuItem({ item, selected, onSelect, onHover }: NoteAutocompleteMenuItemProps) {
   return (
     <button
       type="button"
@@ -214,13 +224,30 @@ function NoteAutocompleteMenuItem({
       onClick={() => onSelect(item.title)}
       onMouseEnter={onHover}
     >
-      <span className="wikilink-menu__title" style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+      <span
+        className="wikilink-menu__title"
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
         {item.TypeIcon && <item.TypeIcon width={14} height={14} style={{ color: item.typeColor, flexShrink: 0 }} />}
         <NoteTitleIcon icon={item.noteIcon} size={14} />
         {item.title}
       </span>
       {item.noteType && (
-        <span className="wikilink-menu__type" style={{ color: item.typeColor, backgroundColor: item.typeLightColor, borderRadius: 9999, padding: '1px 8px' }}>
+        <span
+          className="wikilink-menu__type"
+          style={{
+            color: item.typeColor,
+            backgroundColor: item.typeLightColor,
+            borderRadius: 9999,
+            padding: '1px 8px',
+          }}
+        >
           {item.noteType}
         </span>
       )}
@@ -245,7 +272,18 @@ function NoteAutocompleteMenu({
   if (matches.length === 0) return null
 
   return (
-    <div className="wikilink-menu" ref={menuRef} style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: 2, minWidth: 'auto' }}>
+    <div
+      className="wikilink-menu"
+      ref={menuRef}
+      style={{
+        position: 'absolute',
+        top: '100%',
+        left: 0,
+        right: 0,
+        marginTop: 2,
+        minWidth: 'auto',
+      }}
+    >
       {matches.map((item, index) => (
         <NoteAutocompleteMenuItem
           key={item.title}
@@ -259,60 +297,80 @@ function NoteAutocompleteMenu({
   )
 }
 
-export function NoteAutocomplete({ entries, typeEntryMap, value, onChange, onSelect, onEscape, placeholder, autoFocus, testId }: NoteAutocompleteProps) {
+function useSelectedAutocompleteItemScroll(
+  selectedIndex: number,
+  menuRef: React.RefObject<HTMLDivElement | null>,
+): void {
+  useEffect(() => {
+    if (selectedIndex < 0 || !menuRef.current) return
+    scrollSelectedHTMLChildIntoView(menuRef.current, selectedIndex)
+  }, [menuRef, selectedIndex])
+}
+
+function useCloseAutocompleteOnOutsideClick(
+  inputRef: React.RefObject<HTMLInputElement | null>,
+  menuRef: React.RefObject<HTMLDivElement | null>,
+  setOpen: Dispatch<SetStateAction<boolean>>,
+): void {
+  useEffect(() => {
+    const handleMouseDown = (event: MouseEvent) => {
+      const target = event.target as Node
+      if (!inputRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleMouseDown)
+    return () => document.removeEventListener('mousedown', handleMouseDown)
+  }, [inputRef, menuRef, setOpen])
+}
+
+export function NoteAutocomplete(options: NoteAutocompleteProps) {
+  const { entries, typeEntryMap, value, onChange, onSelect, onEscape, placeholder, autoFocus, testId } = options
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [open, setOpen] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
   const matches = useMemo(
-    () => open ? matchEntries(entries, typeEntryMap, value) : [],
+    () => (open ? matchEntries(entries, typeEntryMap, value) : []),
     [entries, typeEntryMap, value, open],
   )
 
-  // Scroll selected item into view
-  useEffect(() => {
-    if (selectedIndex < 0 || !menuRef.current) return
-    scrollSelectedHTMLChildIntoView(menuRef.current, selectedIndex)
-  }, [selectedIndex])
+  useSelectedAutocompleteItemScroll(selectedIndex, menuRef)
+  useCloseAutocompleteOnOutsideClick(inputRef, menuRef, setOpen)
 
-  // Close on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node
-      if (!inputRef.current?.contains(target) && !menuRef.current?.contains(target)) {
-        setOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  const handleSelect = useCallback(
+    (title: string) => {
+      onSelect(title)
+      setOpen(false)
+      setSelectedIndex(-1)
+    },
+    [onSelect],
+  )
 
-  const handleSelect = useCallback((title: string) => {
-    onSelect(title)
-    setOpen(false)
-    setSelectedIndex(-1)
-  }, [onSelect])
+  const handleChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      onChange(e.target.value)
+      setOpen(true)
+      setSelectedIndex(-1)
+    },
+    [onChange],
+  )
 
-  const handleChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
-    onChange(e.target.value)
-    setOpen(true)
-    setSelectedIndex(-1)
-  }, [onChange])
-
-  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLInputElement>) => {
-    handleAutocompleteKeyDown({
-      event,
-      matches,
-      onEscape,
-      onSelect: handleSelect,
-      open,
-      selectedIndex,
-      setOpen,
-      setSelectedIndex,
-      value,
-    })
-  }, [handleSelect, matches, onEscape, open, selectedIndex, value])
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      handleAutocompleteKeyDown({
+        event,
+        matches,
+        onEscape,
+        onSelect: handleSelect,
+        open,
+        selectedIndex,
+        setOpen,
+        setSelectedIndex,
+        value,
+      })
+    },
+    [handleSelect, matches, onEscape, open, selectedIndex, value],
+  )
 
   return (
     <div style={{ position: 'relative' }}>
@@ -320,7 +378,7 @@ export function NoteAutocomplete({ entries, typeEntryMap, value, onChange, onSel
         ref={inputRef}
         autoFocus={autoFocus}
         className="h-7 flex-1 rounded border border-border bg-transparent px-2 py-0.5 text-xs text-foreground shadow-none focus-visible:ring-1"
-        style={{ borderRadius: 4, outline: 'none', minWidth: 0, width: '100%', boxSizing: 'border-box' }}
+        style={NOTE_AUTOCOMPLETE_INPUT_STYLE}
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
@@ -328,15 +386,13 @@ export function NoteAutocomplete({ entries, typeEntryMap, value, onChange, onSel
         onKeyDown={handleKeyDown}
         data-testid={testId}
       />
-      {open && matches.length > 0 && (
-        <NoteAutocompleteMenu
-          matches={matches}
-          menuRef={menuRef}
-          selectedIndex={selectedIndex}
-          onHover={setSelectedIndex}
-          onSelect={handleSelect}
-        />
-      )}
+      <NoteAutocompleteMenu
+        matches={matches}
+        menuRef={menuRef}
+        selectedIndex={selectedIndex}
+        onHover={setSelectedIndex}
+        onSelect={handleSelect}
+      />
     </div>
   )
 }

@@ -47,14 +47,27 @@ function findExternallyMovedActiveEntry(options: {
   if (updatedFiles.length === 0) return null
   const activeFilename = normalizeNotePathForIdentity(activeTabPath).split('/').pop()
   const updatedPaths = new Set(updatedFiles.map((path) => resolveUpdatedFilePath({ path, vaultPath })))
-  const candidates = entries.filter((entry) =>
-    !notePathsMatch(entry.path, activeTabPath)
-    && entry.filename === activeFilename
-    && updatedPaths.has(normalizeNotePathForIdentity(entry.path)),
-  )
+  const candidates = entries.filter((entry) => isExternallyMovedCandidate({
+    activeFilename,
+    activeTabPath,
+    entry,
+    updatedPaths,
+  }))
 
   const [candidate] = candidates
   return candidates.length === 1 && candidate ? candidate : null
+}
+
+function isExternallyMovedCandidate(options: {
+  activeFilename: string | undefined
+  activeTabPath: string
+  entry: VaultEntry
+  updatedPaths: Set<string>
+}): boolean {
+  const { activeFilename, activeTabPath, entry, updatedPaths } = options
+  if (notePathsMatch(entry.path, activeTabPath)) return false
+  if (entry.filename !== activeFilename) return false
+  return updatedPaths.has(normalizeNotePathForIdentity(entry.path))
 }
 
 function isActivePathBlocked(options: {
@@ -105,6 +118,7 @@ async function shouldKeepCurrentActiveEntryMounted(options: {
 }
 
 async function applyActiveEntryReplacement(options: {
+  activePath: string
   closeAllTabs: PulledVaultRefreshOptions['closeAllTabs']
   replaceActiveTab: PulledVaultRefreshOptions['replaceActiveTab']
   refocusActiveEditor?: PulledVaultRefreshOptions['refocusActiveEditor']
@@ -113,6 +127,7 @@ async function applyActiveEntryReplacement(options: {
   shouldReplace: boolean | null
 }): Promise<boolean> {
   const {
+    activePath,
     closeAllTabs,
     replaceActiveTab,
     refocusActiveEditor,
@@ -123,7 +138,7 @@ async function applyActiveEntryReplacement(options: {
   if (!replacementEntry || !shouldReplace) return false
 
   const shouldRefocus = shouldRefocusActiveEditor?.() === true
-  closeAllTabs()
+  if (!notePathsMatch(activePath, replacementEntry.path)) closeAllTabs()
   await replaceActiveTab(replacementEntry)
   if (shouldRefocus) refocusActiveEditor?.(replacementEntry.path)
   return true
@@ -181,6 +196,7 @@ export async function refreshPulledVaultState(options: PulledVaultRefreshOptions
   })) return entries
 
   const handledReplacement = await applyActiveEntryReplacement({
+    activePath,
     closeAllTabs,
     replaceActiveTab,
     refocusActiveEditor,

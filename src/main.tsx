@@ -1,6 +1,11 @@
 import { lazy, StrictMode, Suspense } from 'react'
 import * as Sentry from '@sentry/react'
 import { createRoot } from 'react-dom/client'
+import '@fontsource-variable/inter/wght.css'
+import '@fontsource-variable/jetbrains-mono/wght.css'
+import '@fontsource/ibm-plex-mono/400.css'
+import '@fontsource/ibm-plex-mono/500.css'
+import '@fontsource/ibm-plex-mono/600.css'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import './index.css'
 import { FrontendReadyMarker } from './components/FrontendReadyMarker'
@@ -25,41 +30,15 @@ import {
 import { isRecoveredActionTooltipError } from './components/ui/actionTooltipRecovery'
 import { isMac, shouldUseCustomWindowChrome } from './utils/platform'
 import { reloadFrontendOnceIfStartupFailed } from './utils/frontendReady'
+import { markStartupPhase } from './lib/startupPerformance'
+
+markStartupPhase('renderer_module_loaded')
 
 const TLDRAW_CONTEXT_MENU_SELECTOR = '.tldraw-whiteboard'
-const DISMISSABLE_ESCAPE_SURFACE_SELECTOR = [
-  '[data-slot="dialog-content"]',
-  '[data-slot="popover-content"]',
-  '[role="dialog"]',
-].join(',')
 const MACOS_FULLSCREEN_CHROME_CLASS = 'mac-chrome-fullscreen'
 
 function isTauriRuntime(): boolean {
   return '__TAURI__' in window || '__TAURI_INTERNALS__' in window
-}
-
-function hasDismissableEscapeSurface(): boolean {
-  return document.querySelector(DISMISSABLE_ESCAPE_SURFACE_SELECTOR) !== null
-}
-
-function installDismissableEscapeDefaultGuard(): void {
-  let escapeStartedWithDismissableSurface = false
-
-  window.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return
-
-    escapeStartedWithDismissableSurface = hasDismissableEscapeSurface()
-    window.setTimeout(() => {
-      escapeStartedWithDismissableSurface = false
-    }, 0)
-  }, true)
-
-  window.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || !escapeStartedWithDismissableSurface) return
-
-    event.preventDefault()
-    escapeStartedWithDismissableSurface = false
-  })
 }
 
 async function installMacosFullscreenChromeTracking(): Promise<void> {
@@ -83,7 +62,12 @@ async function installMacosFullscreenChromeTracking(): Promise<void> {
   }
 }
 
-const RootApp = lazy(() => import('./App.tsx'))
+const RootApp = lazy(async () => {
+  markStartupPhase('app_module_requested')
+  const appModule = await import('./App.tsx')
+  markStartupPhase('app_module_loaded')
+  return appModule
+})
 
 function dataTransferHasFiles(dataTransfer: DataTransfer | null): boolean {
   if (!dataTransfer) return false
@@ -111,7 +95,6 @@ function preventNativeContextMenu(event: MouseEvent): void {
 
 document.addEventListener('dragover', preventFileDropNavigation, true)
 document.addEventListener('drop', preventFileDropNavigation, true)
-installDismissableEscapeDefaultGuard()
 
 // Disable native WebKit context menu in Tauri (WKWebView intercepts right-click
 // at native level before React's synthetic events can call preventDefault).
@@ -190,10 +173,17 @@ function isResizeObserverLoopError(error: unknown): boolean {
     || message.includes('ResizeObserver loop limit exceeded')
 }
 
-function showFatalRenderError(
-  error: unknown,
-  errorInfo: { componentStack?: string },
-): void {
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.stack ?? error.message : String(error)
+}
+
+function isStartupDefaultExportImportError(error: unknown): boolean {
+  const message = errorText(error)
+  return message.includes("Cannot read properties of undefined (reading 'default')")
+    || message.includes("undefined is not an object (evaluating 'o.default')")
+}
+
+function fatalRenderOverlay(): HTMLElement {
   const existing = document.getElementById('tolaria-fatal-render-error')
   const overlay = existing ?? document.createElement('pre')
   overlay.id = 'tolaria-fatal-render-error'
@@ -210,12 +200,18 @@ function showFatalRenderError(
     'font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace',
     'white-space:pre-wrap',
   ].join(';')
+  return overlay
+}
 
-  const message = error instanceof Error ? error.stack ?? error.message : String(error)
+function showFatalRenderError(
+  error: unknown,
+  errorInfo: { componentStack?: string },
+): void {
+  const overlay = fatalRenderOverlay()
   overlay.textContent = [
     'Tolaria render error',
     '',
-    message,
+    errorText(error),
     '',
     errorInfo.componentStack ?? '',
   ].join('\n')
@@ -227,6 +223,7 @@ function captureReactRootError(
   errorInfo: { componentStack?: string },
 ): void {
   if (isResizeObserverLoopError(error)) return
+  if (isStartupDefaultExportImportError(error) && reloadFrontendOnceIfStartupFailed()) return
 
   const componentStack = errorInfo.componentStack ?? ''
   showFatalRenderError(error, { componentStack })
@@ -234,17 +231,29 @@ function captureReactRootError(
   reloadFrontendOnceIfStartupFailed()
 }
 
+function reportNonFatalReactRootError(
+  error: unknown,
+  errorInfo: { componentStack?: string },
+): void {
+  if (isResizeObserverLoopError(error)) return
+
+  sentryReactErrorHandler(error, { componentStack: errorInfo.componentStack ?? '' })
+}
+
+function shouldIgnoreRecoverableRootError(error: unknown, componentStack: string): boolean {
+  if (isResizeObserverLoopError(error)) return true
+  if (isRecoveredBlockNoteRenderError(error, componentStack)) return true
+  if (isRecoverableBlockNoteRenderError(error) && !isBlockNoteRenderUpdateDepthError(error)) return true
+  return isRecoveredActionTooltipError(error, componentStack)
+}
+
 function captureRecoverableReactRootError(
   error: unknown,
   errorInfo: { componentStack?: string },
 ): void {
   const componentStack = errorInfo.componentStack ?? ''
-  if (isResizeObserverLoopError(error)) return
-  if (isRecoveredBlockNoteRenderError(error, componentStack)) return
-  if (isRecoverableBlockNoteRenderError(error) && !isBlockNoteRenderUpdateDepthError(error)) return
-  if (isRecoveredActionTooltipError(error, componentStack)) return
-
-  captureReactRootError(error, { componentStack })
+  if (shouldIgnoreRecoverableRootError(error, componentStack)) return
+  reportNonFatalReactRootError(error, { componentStack })
 }
 
 function getRequiredRootElement(): HTMLElement {

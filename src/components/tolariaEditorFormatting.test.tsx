@@ -8,7 +8,9 @@ vi.mock('../lib/telemetry', () => ({
 
 import {
   addItemsToMediaGroup,
-  createHtmlBlockSlashMenuItem,
+  createCalloutSlashMenuItem,
+  createDateTimeSlashMenuItems,
+  createSandboxBlockSlashMenuItem,
   createMathSlashMenuItem,
   filterTolariaFormattingToolbarItems,
   filterTolariaSlashMenuItems,
@@ -21,11 +23,15 @@ import { HTML_BLOCK_DEFAULT_HEIGHT, HTML_BLOCK_TYPE } from '../utils/htmlBlockMa
 import { trackEvent } from '../lib/telemetry'
 import { MATH_BLOCK_TYPE } from '../utils/mathMarkdown'
 import { mermaidFenceSource } from '../utils/mermaidMarkdown'
+import { CALLOUT_BLOCK_TYPE } from '../utils/calloutMarkdown'
+import type { ObsidianCalloutType } from '../utils/calloutCatalog'
+import { calloutIconForType } from './calloutIcons'
 
 function createSlashCommandEditorFixture() {
   const block = { id: 'active-block' }
   const editor = {
     getTextCursorPosition: () => ({ block }),
+    insertInlineContent: () => {},
     replaceBlocks: () => {},
     updateBlock: () => {},
   }
@@ -33,6 +39,7 @@ function createSlashCommandEditorFixture() {
   return {
     block,
     editor: editor as never,
+    insertInlineContent: vi.spyOn(editor, 'insertInlineContent'),
     replaceBlocks: vi.spyOn(editor, 'replaceBlocks'),
     updateBlock: vi.spyOn(editor, 'updateBlock'),
   }
@@ -141,60 +148,20 @@ describe('tolariaEditorFormatting', () => {
   })
 
   it('keeps custom media slash-menu commands searchable', () => {
-    type TolariaSlashMenuTestItem = {
-      key: string
-      title: string
-      aliases?: string[]
-      onItemClick: () => void
-    }
+    const expectedCommands = [
+      { key: 'mermaid', title: 'Mermaid', aliases: ['diagram', 'flowchart', 'graph', 'chart'] },
+      { key: 'math', title: 'Math', aliases: ['equation', 'latex', 'formula', 'sqrt'] },
+      { key: 'html', title: 'HTML block', aliases: ['embed', 'iframe', 'sandbox', 'html'] },
+      { key: 'whiteboard', title: 'Whiteboard', aliases: ['tldraw', 'drawing', 'canvas', 'sketch'] },
+    ]
+    const items = filterTolariaSlashMenuItems(expectedCommands.map((item) => ({
+      ...item,
+      onItemClick: () => {},
+    })))
 
-    const items = filterTolariaSlashMenuItems([
-      {
-        key: 'mermaid',
-        title: 'Mermaid',
-        aliases: ['diagram', 'flowchart', 'graph', 'chart'],
-        onItemClick: () => {},
-      },
-      {
-        key: 'math',
-        title: 'Math',
-        aliases: ['equation', 'latex', 'formula', 'sqrt'],
-        onItemClick: () => {},
-      },
-      {
-        key: 'html',
-        title: 'HTML block',
-        aliases: ['embed', 'iframe', 'sandbox', 'html'],
-        onItemClick: () => {},
-      },
-      {
-        key: 'whiteboard',
-        title: 'Whiteboard',
-        aliases: ['tldraw', 'drawing', 'canvas', 'sketch'],
-        onItemClick: () => {},
-      },
-    ] satisfies TolariaSlashMenuTestItem[])
-
-    expect(items[0]).toEqual(expect.objectContaining({
-      key: 'mermaid',
-      title: 'Mermaid',
-      aliases: ['diagram', 'flowchart', 'graph', 'chart'],
-    }))
-    expect(items[1]).toEqual(expect.objectContaining({
-      key: 'math',
-      title: 'Math',
-      aliases: ['equation', 'latex', 'formula', 'sqrt'],
-    }))
-    expect(items[2]).toEqual(expect.objectContaining({
-      key: 'html',
-      title: 'HTML block',
-      aliases: ['embed', 'iframe', 'sandbox', 'html'],
-    }))
-    expect(items[3]).toEqual(expect.objectContaining({
-      key: 'whiteboard',
-      title: 'Whiteboard',
-      aliases: ['tldraw', 'drawing', 'canvas', 'sketch'],
-    }))
+    expect(items.map(({ aliases, key, title }) => ({ aliases, key, title }))).toEqual(
+      expectedCommands,
+    )
     expect(items.map((item) => isValidElement(item.icon))).toEqual([true, true, true, true])
   })
 
@@ -264,15 +231,17 @@ describe('tolariaEditorFormatting', () => {
   it('creates an empty HTML block slash command for immediate source editing', () => {
     const { block, editor, replaceBlocks, updateBlock } = createSlashCommandEditorFixture()
 
-    const htmlItem = createHtmlBlockSlashMenuItem(editor, { htmlTitle: 'HTML block' })
+    const sandboxItem = createSandboxBlockSlashMenuItem(editor, {
+      sandboxBlockTitle: 'HTML block',
+    })
 
-    expect(htmlItem).toEqual(expect.objectContaining({
+    expect(sandboxItem).toEqual(expect.objectContaining({
       key: 'html',
       title: 'HTML block',
       aliases: ['embed', 'iframe', 'sandbox', 'html'],
     }))
 
-    htmlItem?.onItemClick()
+    sandboxItem?.onItemClick()
 
     expect(replaceBlocks).toHaveBeenCalledWith([block], [{
       type: HTML_BLOCK_TYPE,
@@ -304,5 +273,111 @@ describe('tolariaEditorFormatting', () => {
     }])
     expect(updateBlock).not.toHaveBeenCalled()
     expect(trackEvent).toHaveBeenCalledWith('editor_math_slash_command_used')
+  })
+
+  it('creates a callout parent command with every default style in its submenu', () => {
+    const { block, editor, replaceBlocks } = createSlashCommandEditorFixture()
+    const calloutTypeTitles = Object.fromEntries([
+      'note',
+      'abstract',
+      'info',
+      'todo',
+      'tip',
+      'success',
+      'question',
+      'warning',
+      'failure',
+      'danger',
+      'bug',
+      'example',
+      'quote',
+    ].map(type => [type, type])) as Record<ObsidianCalloutType, string>
+    const calloutItem = createCalloutSlashMenuItem(editor, {
+      calloutTitle: 'Callout',
+      calloutTypeTitles,
+    })
+
+    expect(calloutItem).toEqual(expect.objectContaining({
+      key: 'callout',
+      title: 'Callout',
+      aliases: ['admonition', 'alert', 'aside'],
+    }))
+    expect(calloutItem.submenuItems?.map(item => item.key)).toEqual(
+      Object.keys(calloutTypeTitles).map(type => `callout_${type}`),
+    )
+
+    calloutItem.submenuItems?.find(item => item.key === 'callout_tip')?.onItemClick()
+
+    expect(replaceBlocks).toHaveBeenCalledWith([block], [{
+      type: CALLOUT_BLOCK_TYPE,
+      props: { calloutType: 'tip', title: '' },
+    }])
+    expect(trackEvent).toHaveBeenCalledWith('editor_callout_slash_command_used', {
+      type: 'tip',
+    })
+  })
+
+  it('uses a distinct Phosphor icon for every default callout type', () => {
+    const types: ObsidianCalloutType[] = [
+      'note', 'abstract', 'info', 'todo', 'tip', 'success', 'question',
+      'warning', 'failure', 'danger', 'bug', 'example', 'quote',
+    ]
+
+    expect(new Set(types.map(calloutIconForType)).size).toBe(types.length)
+  })
+
+  it('renders one Phosphor icon node for each callout submenu item', () => {
+    const { editor } = createSlashCommandEditorFixture()
+    const submenuItems = createCalloutSlashMenuItem(editor).submenuItems ?? []
+
+    submenuItems.forEach((item) => {
+      const type = item.key.replace('callout_', '')
+      expect(isValidElement(item.icon)).toBe(true)
+      expect((item.icon as ReactElement).type).toBe(calloutIconForType(type))
+    })
+  })
+
+  it('inserts resolved local date and time values from slash commands', () => {
+    const { editor, insertInlineContent, replaceBlocks } = createSlashCommandEditorFixture()
+    const currentDate = new Date(2026, 6, 19, 14, 5)
+    const items = createDateTimeSlashMenuItems(editor, {
+      dateTitle: 'Date',
+      datetimeTitle: 'Date and time',
+      timeTitle: 'Time',
+    }, () => currentDate)
+
+    expect(items).toEqual([
+      expect.objectContaining({ key: 'date', title: 'Date', aliases: ['today'] }),
+      expect.objectContaining({ key: 'time', title: 'Time', aliases: ['clock'] }),
+      expect.objectContaining({
+        key: 'datetime',
+        title: 'Date and time',
+        aliases: ['datetime', 'timestamp', 'date time'],
+      }),
+    ])
+
+    items.forEach((item) => {
+      item.onItemClick()
+    })
+
+    expect(insertInlineContent).toHaveBeenNthCalledWith(1, '2026-07-19', {
+      updateSelection: true,
+    })
+    expect(insertInlineContent).toHaveBeenNthCalledWith(2, '14:05', {
+      updateSelection: true,
+    })
+    expect(insertInlineContent).toHaveBeenNthCalledWith(3, '2026-07-19 14:05', {
+      updateSelection: true,
+    })
+    expect(replaceBlocks).not.toHaveBeenCalled()
+    expect(trackEvent).toHaveBeenCalledWith('editor_timestamp_slash_command_used', {
+      kind: 'date',
+    })
+    expect(trackEvent).toHaveBeenCalledWith('editor_timestamp_slash_command_used', {
+      kind: 'time',
+    })
+    expect(trackEvent).toHaveBeenCalledWith('editor_timestamp_slash_command_used', {
+      kind: 'datetime',
+    })
   })
 })

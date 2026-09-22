@@ -36,10 +36,15 @@ interface EditorRightPanelProps {
   onToggleTableOfContents?: () => void
   onNavigateWikilink: (target: string) => void
   onViewCommitDiff: (commitHash: string) => Promise<void>
-  onUpdateFrontmatter?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
+  onUpdateFrontmatter?: (
+    path: string,
+    key: string,
+    value: FrontmatterValue,
+    options?: FrontmatterOpOptions,
+  ) => Promise<void>
   onDeleteProperty?: (path: string, key: string, options?: FrontmatterOpOptions) => Promise<void>
   onAddProperty?: (path: string, key: string, value: FrontmatterValue, options?: FrontmatterOpOptions) => Promise<void>
-  onCreateMissingType?: (path: string, missingType: string, nextTypeName: string) => Promise<boolean | void>
+  onCreateMissingType?: (path: string, missingType: string, nextTypeName: string) => Promise<boolean | undefined>
   onCreateAndOpenNote?: (title: string) => Promise<boolean>
   onChangeWorkspace?: (entry: VaultEntry, workspace: WorkspaceIdentity) => Promise<void> | void
   onInitializeProperties?: (path: string) => void
@@ -50,6 +55,11 @@ interface EditorRightPanelProps {
   onVaultChanged?: () => void
   workspaces?: WorkspaceIdentity[]
   locale?: AppLocale
+}
+
+function resolveInspectorEntry(entry: VaultEntry | null, entries: VaultEntry[]): VaultEntry | null {
+  if (!entry) return null
+  return entries.find((candidate) => candidate.path === entry.path) ?? entry
 }
 
 type AiPanelSectionProps = Pick<
@@ -69,25 +79,10 @@ type AiPanelSectionProps = Pick<
   controller: AiPanelController
 }
 
-function AiPanelSection({
-  controller,
-  defaultAiAgent = DEFAULT_AI_AGENT,
-  defaultAiAgentReadiness,
-  defaultAiAgentReady = true,
-  defaultAiTarget,
-  entries,
-  inspectorEntry,
-  inspectorWidth,
-  locale,
-  onOpenNote,
-  onToggleAIChat,
-  onUnsupportedAiPaste,
-}: AiPanelSectionProps) {
+function AiPanelSection(options: AiPanelSectionProps) {
+  const { controller, defaultAiAgent = DEFAULT_AI_AGENT, defaultAiAgentReadiness, defaultAiAgentReady = true, defaultAiTarget, entries, inspectorEntry, inspectorWidth, locale, onOpenNote, onToggleAIChat, onUnsupportedAiPaste } = options
   return (
-    <div
-      className="shrink-0 flex flex-col min-h-0"
-      style={{ width: inspectorWidth, minWidth: 240, height: '100%' }}
-    >
+    <div className="shrink-0 flex flex-col min-h-0" style={{ width: inspectorWidth, minWidth: 240, height: '100%' }}>
       <AiPanelView
         controller={controller}
         onClose={() => onToggleAIChat?.()}
@@ -105,25 +100,8 @@ function AiPanelSection({
   )
 }
 
-function usePersistentAiPanelController({
-  showAIChat,
-  defaultAiAgent = DEFAULT_AI_AGENT,
-  defaultAiTarget,
-  defaultAiAgentReadiness,
-  defaultAiAgentReady = true,
-  inspectorEntry,
-  inspectorContent,
-  entries,
-  vaultPath,
-  vaultPaths,
-  noteList,
-  noteListFilter,
-  locale,
-  onOpenNote,
-  onFileCreated,
-  onFileModified,
-  onVaultChanged,
-}: Pick<
+function usePersistentAiPanelController(
+  options: Pick<
   EditorRightPanelProps,
   | 'showAIChat'
   | 'defaultAiAgent'
@@ -142,7 +120,9 @@ function usePersistentAiPanelController({
   | 'onFileCreated'
   | 'onFileModified'
   | 'onVaultChanged'
->): AiPanelController {
+  >,
+): AiPanelController {
+  const { showAIChat, defaultAiAgent = DEFAULT_AI_AGENT, defaultAiTarget, defaultAiAgentReadiness, defaultAiAgentReady = true, inspectorEntry, inspectorContent, entries, vaultPath, vaultPaths, noteList, noteListFilter, locale, onOpenNote, onFileCreated, onFileModified, onVaultChanged } = options
   return useAiPanelController({
     vaultPath,
     vaultPaths,
@@ -163,20 +143,8 @@ function usePersistentAiPanelController({
   })
 }
 
-export function EditorRightPanel({
-  showAIChat, showTableOfContents, inspectorCollapsed, inspectorWidth,
-  editor,
-  defaultAiAgent = DEFAULT_AI_AGENT, defaultAiTarget, defaultAiAgentReadiness, defaultAiAgentReady = true,
-  onUnsupportedAiPaste,
-  inspectorEntry, inspectorContent, entries, gitHistory, vaultPath,
-  vaultPaths,
-  noteList, noteListFilter,
-  onToggleInspector, onToggleAIChat, onToggleTableOfContents, onNavigateWikilink, onViewCommitDiff,
-  onUpdateFrontmatter, onDeleteProperty, onAddProperty, onCreateMissingType, onCreateAndOpenNote, onChangeWorkspace, onInitializeProperties, onToggleRawEditor, onOpenNote,
-  onFileCreated, onFileModified, onVaultChanged,
-  workspaces,
-  locale,
-}: EditorRightPanelProps) {
+export function EditorRightPanel(options: EditorRightPanelProps) {
+  const { showAIChat, showTableOfContents, inspectorCollapsed, inspectorWidth, defaultAiAgent = DEFAULT_AI_AGENT, defaultAiTarget, defaultAiAgentReadiness, defaultAiAgentReady = true, onUnsupportedAiPaste, inspectorEntry, inspectorContent, entries, vaultPath, vaultPaths, noteList, noteListFilter, onToggleAIChat, onOpenNote, onFileCreated, onFileModified, onVaultChanged, locale } = options
   const aiPanelController = usePersistentAiPanelController({
     showAIChat,
     defaultAiAgent,
@@ -208,55 +176,16 @@ export function EditorRightPanel({
   }, [handleNewChat])
 
   if (!inspectorCollapsed) {
-    return (
-      <div
-        className="shrink-0 flex flex-col min-h-0"
-        style={{ width: inspectorWidth, height: '100%' }}
-      >
-        <Inspector
-          collapsed={inspectorCollapsed}
-          onToggle={onToggleInspector}
-          entry={inspectorEntry}
-          content={inspectorContent}
-          entries={entries}
-          gitHistory={gitHistory}
-          vaultPath={vaultPath}
-          onNavigate={onNavigateWikilink}
-          onViewCommitDiff={onViewCommitDiff}
-          onUpdateFrontmatter={onUpdateFrontmatter}
-          onDeleteProperty={onDeleteProperty}
-          onAddProperty={onAddProperty}
-          onCreateMissingType={onCreateMissingType}
-          onCreateAndOpenNote={onCreateAndOpenNote}
-          onChangeWorkspace={onChangeWorkspace}
-          onInitializeProperties={onInitializeProperties}
-          onToggleRawEditor={onToggleRawEditor}
-          workspaces={workspaces}
-          locale={locale}
-        />
-      </div>
-    )
+    return renderExpandedInspector(options)
   }
 
   if (showTableOfContents) {
-    return (
-      <div
-        className="shrink-0 flex flex-col min-h-0"
-        style={{ width: inspectorWidth, minWidth: 240, height: '100%' }}
-      >
-        <TableOfContentsPanel
-          editor={editor}
-          entry={inspectorEntry}
-          locale={locale}
-          onClose={() => onToggleTableOfContents?.()}
-          sourceContent={inspectorContent}
-        />
-      </div>
-    )
+    return renderTableOfContents(options)
   }
 
   if (showAIChat) {
-    return <AiPanelSection
+    return (
+      <AiPanelSection
       controller={aiPanelController}
       defaultAiAgent={defaultAiAgent}
       defaultAiAgentReadiness={defaultAiAgentReadiness}
@@ -270,7 +199,28 @@ export function EditorRightPanel({
       onToggleAIChat={onToggleAIChat}
       onUnsupportedAiPaste={onUnsupportedAiPaste}
     />
+    )
   }
 
   return null
+}
+
+function renderExpandedInspector(options: EditorRightPanelProps) {
+  const { inspectorCollapsed, inspectorWidth, inspectorEntry, inspectorContent, entries, gitHistory, vaultPath, onToggleInspector, onNavigateWikilink, onViewCommitDiff, onUpdateFrontmatter, onDeleteProperty, onAddProperty, onCreateMissingType, onCreateAndOpenNote, onChangeWorkspace, onInitializeProperties, onToggleRawEditor, workspaces, locale } = options
+  const currentInspectorEntry = resolveInspectorEntry(inspectorEntry, entries)
+  return (
+    <div className="shrink-0 flex flex-col min-h-0" style={{ width: inspectorWidth, height: '100%' }}>
+      <Inspector collapsed={inspectorCollapsed} onToggle={onToggleInspector} entry={currentInspectorEntry} content={inspectorContent} entries={entries} gitHistory={gitHistory} vaultPath={vaultPath} onNavigate={onNavigateWikilink} onViewCommitDiff={onViewCommitDiff} onUpdateFrontmatter={onUpdateFrontmatter} onDeleteProperty={onDeleteProperty} onAddProperty={onAddProperty} onCreateMissingType={onCreateMissingType} onCreateAndOpenNote={onCreateAndOpenNote} onChangeWorkspace={onChangeWorkspace} onInitializeProperties={onInitializeProperties} onToggleRawEditor={onToggleRawEditor} workspaces={workspaces} locale={locale} />
+    </div>
+  )
+}
+
+function renderTableOfContents(options: EditorRightPanelProps) {
+  const { editor, inspectorContent, inspectorEntry, inspectorWidth, entries, locale, onToggleTableOfContents } = options
+  const currentInspectorEntry = resolveInspectorEntry(inspectorEntry, entries)
+  return (
+    <div className="shrink-0 flex flex-col min-h-0" style={{ width: inspectorWidth, minWidth: 240, height: '100%' }}>
+      <TableOfContentsPanel editor={editor} entry={currentInspectorEntry} locale={locale} onClose={() => onToggleTableOfContents?.()} sourceContent={inspectorContent} />
+    </div>
+  )
 }

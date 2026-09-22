@@ -41,6 +41,7 @@ interface IconSectionProps {
   locale: AppLocale
   onSearchChange: (query: string) => void
   onSelectIcon: (name: string) => void
+  onLoadMore: () => void
 }
 
 interface TemplateSectionProps {
@@ -51,6 +52,24 @@ interface TemplateSectionProps {
 
 const ICON_PICKER_ICON_SIZE = 18
 const ICON_PICKER_ICON_CLASS_NAME = 'size-[18px]'
+const ICON_PICKER_BATCH_SIZE = 120
+
+function useProgressiveIconSearch() {
+  const [search, setSearch] = useState('')
+  const [visibleIconCount, setVisibleIconCount] = useState(ICON_PICKER_BATCH_SIZE)
+  const matchingIcons = useMemo(() => filterIcons(ICON_OPTIONS, search), [search])
+  const filteredIcons = useMemo(() => matchingIcons.slice(0, visibleIconCount), [matchingIcons, visibleIconCount])
+
+  const handleSearchChange = (query: string) => {
+    setSearch(query)
+    setVisibleIconCount(ICON_PICKER_BATCH_SIZE)
+  }
+  const handleLoadMore = () => {
+    setVisibleIconCount((count) => Math.min(count + ICON_PICKER_BATCH_SIZE, matchingIcons.length))
+  }
+
+  return { filteredIcons, handleLoadMore, handleSearchChange, search }
+}
 
 interface DebouncedCallback {
   flush: () => void
@@ -62,7 +81,9 @@ function useDebouncedCallback(fn: (v: string) => void, delay: number): Debounced
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const pendingValueRef = useRef<string | null>(null)
   const fnRef = useRef(fn)
-  useEffect(() => { fnRef.current = fn })
+  useEffect(() => {
+    fnRef.current = fn
+  })
 
   const flush = useCallback(() => {
     clearTimeout(timerRef.current)
@@ -74,13 +95,21 @@ function useDebouncedCallback(fn: (v: string) => void, delay: number): Debounced
     fnRef.current(value)
   }, [])
 
-  const run = useCallback((value: string) => {
-    clearTimeout(timerRef.current)
-    pendingValueRef.current = value
-    timerRef.current = setTimeout(flush, delay)
-  }, [delay, flush])
+  const run = useCallback(
+    (value: string) => {
+      clearTimeout(timerRef.current)
+      pendingValueRef.current = value
+      timerRef.current = setTimeout(flush, delay)
+    },
+    [delay, flush],
+  )
 
-  useEffect(() => () => { flush() }, [flush])
+  useEffect(
+    () => () => {
+      flush()
+    },
+    [flush],
+  )
 
   return useMemo(() => ({ flush, run }), [flush, run])
 }
@@ -89,12 +118,7 @@ function ColorSection({ selectedColor, locale, onSelectColor }: ColorSectionProp
   return (
     <>
       <div className="font-mono-overline mb-2 text-muted-foreground">{translate(locale, 'customize.color')}</div>
-      <AccentColorPicker
-        className="mb-3 gap-2"
-        selectedColor={selectedColor}
-        onSelectColor={onSelectColor}
-        size={24}
-      />
+      <AccentColorPicker className="mb-3 gap-2" selectedColor={selectedColor} onSelectColor={onSelectColor} size={24} />
     </>
   )
 }
@@ -106,6 +130,7 @@ function IconSection({
   locale,
   onSearchChange,
   onSelectIcon,
+  onLoadMore,
 }: IconSectionProps) {
   return (
     <>
@@ -125,7 +150,15 @@ function IconSection({
       </div>
       <div
         className="grid gap-1 overflow-y-auto"
-        style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(30px, 1fr))', maxHeight: 160 }}
+        data-testid="icon-picker-grid"
+        onScroll={(event) => {
+          const grid = event.currentTarget
+          if (grid.scrollTop + grid.clientHeight >= grid.scrollHeight - 24) onLoadMore()
+        }}
+        style={{
+          gridTemplateColumns: 'repeat(auto-fit, minmax(30px, 1fr))',
+          maxHeight: 160,
+        }}
       >
         {filteredIcons.length === 0 ? (
           <div className="w-full py-6 text-center text-[12px] text-muted-foreground">
@@ -160,7 +193,9 @@ function IconSection({
 function TemplateSection({ templateText, locale, onTemplateChange }: TemplateSectionProps) {
   return (
     <>
-      <div className="font-mono-overline mb-2 mt-3 text-muted-foreground">{translate(locale, 'customize.template')}</div>
+      <div className="font-mono-overline mb-2 mt-3 text-muted-foreground">
+        {translate(locale, 'customize.template')}
+      </div>
       <Textarea
         value={templateText}
         onChange={(event) => onTemplateChange(event.target.value)}
@@ -188,25 +223,24 @@ function DoneSection({ locale, onClose }: { locale: AppLocale; onClose: () => vo
   )
 }
 
-export function TypeCustomizePopover({
-  currentIcon,
-  currentColor,
-  currentTemplate,
-  onChangeIcon,
-  onChangeColor,
-  onChangeTemplate,
-  onClose,
-  showTemplate = true,
-  showDone = true,
-  surface = 'popover',
-  locale = 'en',
-}: TypeCustomizePopoverProps) {
+export function TypeCustomizePopover(options: TypeCustomizePopoverProps) {
+  const {
+    currentIcon,
+    currentColor,
+    currentTemplate,
+    onChangeIcon,
+    onChangeColor,
+    onChangeTemplate,
+    onClose,
+    showTemplate = true,
+    showDone = true,
+    surface = 'popover',
+    locale = 'en',
+  } = options
   const [selectedColor, setSelectedColor] = useState(currentColor)
   const [selectedIcon, setSelectedIcon] = useState(currentIcon)
-  const [search, setSearch] = useState('')
+  const { filteredIcons, handleLoadMore, handleSearchChange, search } = useProgressiveIconSearch()
   const [templateText, setTemplateText] = useState(currentTemplate ?? '')
-
-  const filteredIcons = useMemo(() => filterIcons(ICON_OPTIONS, search), [search])
   const debouncedSaveTemplate = useDebouncedCallback(onChangeTemplate, 500)
 
   const handleColorClick = (key: string) => {
@@ -231,10 +265,7 @@ export function TypeCustomizePopover({
 
   return (
     <div
-      className={cn(
-        'text-popover-foreground z-50',
-        surface === 'popover' && 'rounded-lg border bg-popover shadow-md',
-      )}
+      className={cn('text-popover-foreground z-50', surface === 'popover' && 'rounded-lg border bg-popover shadow-md')}
       style={surface === 'popover' ? { width: 320, padding: 12 } : undefined}
     >
       <ColorSection selectedColor={selectedColor} locale={locale} onSelectColor={handleColorClick} />
@@ -243,8 +274,9 @@ export function TypeCustomizePopover({
         search={search}
         filteredIcons={filteredIcons}
         locale={locale}
-        onSearchChange={setSearch}
+        onSearchChange={handleSearchChange}
         onSelectIcon={handleIconClick}
+        onLoadMore={handleLoadMore}
       />
       {showTemplate && (
         <TemplateSection templateText={templateText} locale={locale} onTemplateChange={handleTemplateChange} />

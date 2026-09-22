@@ -122,7 +122,7 @@ proposed → active → superseded
 | [0063](0063-blocknote-code-block-package-for-editor-highlighting.md) | BlockNote code-block package for editor syntax highlighting | active |
 | [0064](0064-ratcheted-codescene-thresholds.md) | Ratcheted CodeScene thresholds as the quality gate baseline | active |
 | [0065](0065-root-managed-ai-guidance-files.md) | Root-managed AI guidance files with Claude shim | active |
-| [0066](0066-calendar-semver-versioning-for-alpha-and-stable-releases.md) | Calendar-semver versioning for alpha and stable releases | active |
+| [0066](0066-calendar-semver-versioning-for-alpha-and-stable-releases.md) | Calendar-semver versioning for alpha and stable releases | superseded -> [0173](0173-future-calendar-version-recovery.md) |
 | [0067](0067-autogit-idle-and-inactive-checkpoints.md) | AutoGit idle and inactive checkpoints | active |
 | [0068](0068-h1-only-title-surface-with-optional-untitled-auto-rename.md) | H1-only title surface with optional untitled auto-rename | active |
 | [0069](0069-neighborhood-mode-for-note-list-relationship-browsing.md) | Neighborhood mode for note-list relationship browsing | active |
@@ -145,7 +145,7 @@ proposed → active → superseded
 | [0086](0086-in-app-image-file-preview.md) | In-app image previews for binary vault files | superseded → [0098](0098-in-app-image-and-pdf-file-previews.md) |
 | [0087](0087-json-catalogs-and-lara-cli-localization.md) | JSON locale catalogs with Lara CLI synchronization | active |
 | [0088](0088-markdown-durable-mermaid-diagrams.md) | Markdown-durable Mermaid diagrams in notes | active |
-| [0089](0089-active-vault-filesystem-watcher.md) | Active vault filesystem watcher | active |
+| [0089](0089-active-vault-filesystem-watcher.md) | Active vault filesystem watcher | superseded -> [0165](0165-window-owned-vault-watchers-and-main-window-git-background-work.md) |
 | [0090](0090-pi-cli-agent-adapter.md) | Pi CLI agent adapter | active |
 | [0091](0091-gemini-cli-external-ai-setup.md) | Gemini CLI external AI setup | superseded -> [0147](0147-antigravity-cli-agent-adapter.md) |
 | [0092](0092-vault-ai-agent-permission-modes.md) | Vault-scoped AI agent permission modes | superseded -> [0103](0103-adapter-specific-ai-permission-semantics.md) |
@@ -204,7 +204,7 @@ proposed → active → superseded
 | [0143](0143-shared-focus-ownership-guard.md) | Shared focus ownership guard | active |
 | [0144](0144-collections-and-presentations.md) | Collections carry presentation configuration | active |
 | [0145](0145-xdg-backed-app-config-path.md) | XDG-backed app config path | active |
-| [0146](0146-cached-main-window-startup-with-empty-reload-recovery.md) | Cached main-window startup with empty reload recovery | active |
+| [0146](0146-cached-main-window-startup-with-empty-reload-recovery.md) | Cached main-window startup with empty reload recovery | superseded -> [0166](0166-snapshot-first-progressive-vault-startup.md) |
 | [0147](0147-antigravity-cli-agent-adapter.md) | Antigravity CLI agent adapter | superseded -> [0151](0151-antigravity-add-dir-workspace-flag.md) |
 | [0148](0148-cancellable-ai-agent-streams.md) | Cancellable AI agent streams | active |
 | [0149](0149-shared-app-config-policy-manifest.md) | Shared app config policy manifest | active |
@@ -214,13 +214,29 @@ proposed → active → superseded
 | [0154](0154-sandboxed-fenced-html-blocks.md) | Sandboxed fenced HTML blocks | active |
 | [0155](0155-html-block-source-edits-use-raw-editor.md) | HTML block source edits use the raw editor | active |
 | [0156](0156-vault-expression-html-blocks-and-line-references.md) | Vault expressions in sandboxed HTML blocks and line references | amended -> [0157](0157-opt-in-sandboxed-html-block-scripts.md) |
-| [0157](0157-opt-in-sandboxed-html-block-scripts.md) | Opt-in sandboxed scripts for HTML block dashboards | active |
+| [0157](0157-opt-in-sandboxed-html-block-scripts.md) | Opt-in sandboxed scripts for HTML block dashboards | amended -> [0178](0178-custom-protocol-for-scripted-html-blocks.md) |
 | [0158](0158-vault-write-mcp-tools-update-and-append.md) | Vault-write MCP tools: update_note and append_to_note | active |
 | [0159](0159-antigravity-permission-flags-aligned-with-cli.md) | Antigravity permission flags aligned with CLI | active |
-| [0160](0160-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
-| [0161](0161-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
-| [0162](0162-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
-| [0163](0163-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
-| [0164](0164-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
-| [0165](0165-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
-| [0166](0166-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |
+| [0160](0160-editable-markdown-durable-callout-blocks.md) | Editable Markdown-durable callout blocks | amended -> [0167](0167-non-collapsible-callout-scope.md) |
+| [0161](0161-parent-git-workspace-context.md) | Parent Git workspace context | active |
+| [0162](0162-safe-local-import-of-remote-paste-images.md) | Safe local import of remote paste images | active |
+| [0163](0163-agent-owned-model-selection.md) | Agent-owned model discovery and selection | active |
+| [0165](0165-window-owned-vault-watchers-and-main-window-git-background-work.md) | Window-owned vault watchers and main-window Git background work | active |
+| [0166](0166-snapshot-first-progressive-vault-startup.md) | Snapshot-first progressive vault startup | active |
+| [0167](0167-non-collapsible-callout-scope.md) | Non-collapsible callout scope | active |
+| [0168](0168-sandboxed-standalone-html-file-previews.md) | Sandboxed standalone HTML file previews | active |
+| [0170](0170-measurable-crash-safe-startup.md) | Measurable, crash-safe startup | active |
+| [0171](0171-separate-vault-application-instances.md) | Separate vault application instances | active |
+| [0172](0172-local-codescene-change-safeguards.md) | Local CodeScene safeguards before commits and direct-to-main pushes | active |
+| [0175](0175-mcp-vault-lifecycle-uses-app-registry.md) | MCP vault lifecycle uses the app registry | active |
+| [0176](0176-bundled-font-assets-for-offline-startup.md) | Bundled font assets for offline startup | active |
+| [0173](0173-future-calendar-version-recovery.md) | Future calendar version rejection and recovery | active |
+| [0178](0178-custom-protocol-for-scripted-html-blocks.md) | Custom protocol for scripted HTML blocks | active |
+| [0180](0180-shared-cross-runtime-word-count-contract.md) | Shared cross-runtime word-count contract | active |
+| [0900](0900-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
+| [0901](0901-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
+| [0902](0902-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |
+| [0903](0903-web-server-write-path-optimistic-concurrency.md) | Write path and optimistic concurrency for the web server (tolaria-server, Phase 4) | active |
+| [0904](0904-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
+| [0905](0905-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
+| [0906](0906-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |

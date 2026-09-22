@@ -9,6 +9,8 @@ export const APP_STORAGE_KEYS = {
   legacyMigrationFlag: 'tolaria:legacy-storage-migrated',
   sortPreferences: 'tolaria-sort-preferences',
   sidebarCollapsed: 'tolaria:sidebar-collapsed',
+  rightPanelCollapsed: 'tolaria:right-panel-collapsed',
+  lastActiveNotePath: 'tolaria:last-active-note-path',
   layoutPanels: 'tolaria:layout-panels',
   welcomeDismissed: 'tolaria_welcome_dismissed',
 } as const

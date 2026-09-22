@@ -1,13 +1,4 @@
-import { EditorView, ViewPlugin } from '@codemirror/view'
-
-function parseZoomValue(source: string | undefined): number | null {
-  const value = source?.trim() ?? ''
-  if (!value || value === 'normal') return null
-
-  let parsed = parseFloat(value)
-  if (value.endsWith('%')) parsed /= 100
-  return parsed > 0 && Number.isFinite(parsed) ? parsed : null
-}
+import { type EditorView, ViewPlugin } from '@codemirror/view'
 
 /**
  * Read the current CSS zoom factor from document.documentElement.
@@ -60,7 +51,8 @@ function caretPosFromPoint(
   if (!view.contentDOM.contains(range.startContainer)) return null
 
   try {
-    return view.posAtDOM(range.startContainer, range.startOffset)
+    const pos = view.posAtDOM(range.startContainer, range.startOffset)
+    return Number.isInteger(pos) && pos >= 0 && pos <= view.state.doc.length ? pos : null
   } catch {
     return null
   }
@@ -153,4 +145,13 @@ export function zoomCursorFix() {
       },
     }
   })
+}
+
+function parseZoomValue(source: string | undefined): number | null {
+  const value = source?.trim() ?? ''
+  if (!value || value === 'normal') return null
+
+  let parsed = parseFloat(value)
+  if (value.endsWith('%')) parsed /= 100
+  return parsed > 0 && Number.isFinite(parsed) ? parsed : null
 }

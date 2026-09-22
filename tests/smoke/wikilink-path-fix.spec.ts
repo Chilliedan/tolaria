@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
-import fs from 'fs'
-import path from 'path'
+import fs from 'node:fs'
+import path from 'node:path'
 import {
   createFixtureVaultCopy,
   openFixtureVault,
@@ -14,6 +14,23 @@ const INSERTED_WIKILINK_TARGET = 'manage-sponsorships'
 const MARKDOWN_LINK_NOTE_TITLE = 'Markdown Link Jump'
 
 let tempVaultDir: string | null = null
+
+function writeWikilinkFixtureNotes(vaultPath: string): void {
+  fs.writeFileSync(path.join(vaultPath, 'grow-newsletter.md'), `---
+type: Responsibility
+---
+
+# ${SOURCE_NOTE_TITLE}
+
+Build a sustainable audience through high-quality weekly essays.
+`, 'utf8')
+  fs.writeFileSync(path.join(vaultPath, `${INSERTED_WIKILINK_TARGET}.md`), `---
+type: Responsibility
+---
+
+# ${INSERTED_WIKILINK_TITLE}
+`, 'utf8')
+}
 
 async function insertWikilink(page: Page, query = INSERTED_WIKILINK_QUERY) {
   const editor = page.locator('.bn-editor')
@@ -83,12 +100,12 @@ async function dispatchModifiedLinkActivation(link: ReturnType<Page['locator']>)
     target.dispatchEvent(new MouseEvent('mousedown', {
       bubbles: true,
       cancelable: true,
-      metaKey: true,
+      ctrlKey: true,
     }))
     target.dispatchEvent(new MouseEvent('click', {
       bubbles: true,
       cancelable: true,
-      metaKey: true,
+      ctrlKey: true,
     }))
   })
 }
@@ -97,16 +114,19 @@ test.describe('Wikilink insertion and navigation', () => {
   test.describe.configure({ timeout: 60_000 })
 
   test.beforeEach(async ({ page }) => {
-    await page.route('**/api/vault/ping', route => route.fulfill({ status: 503 }))
-    await page.goto('/', { waitUntil: 'domcontentloaded' })
+    tempVaultDir = createFixtureVaultCopy()
+    writeWikilinkFixtureNotes(tempVaultDir)
+    await openFixtureVault(page, tempVaultDir, { expectedReadyTitle: SOURCE_NOTE_TITLE })
+    await openNote(page, SOURCE_NOTE_TITLE)
+  })
 
-    const noteItem = page.locator('.app__note-list .cursor-pointer').filter({ hasText: SOURCE_NOTE_TITLE }).first()
-    await expect(noteItem).toBeVisible({ timeout: 10_000 })
-    await noteItem.click()
+  test.afterEach(() => {
+    if (tempVaultDir) removeFixtureVaultCopy(tempVaultDir)
+    tempVaultDir = null
   })
 
   test('[[ autocomplete inserts wikilink that is not broken', async ({ page }) => {
-    const wikilink = await insertWikilink(page)
+    const wikilink = await insertWikilink(page, '[[M')
 
     const isBroken = await wikilink.evaluate(
       el => el.classList.contains('wikilink--broken'),
@@ -147,7 +167,7 @@ test.describe('Standard markdown link navigation', () => {
     tempVaultDir = null
   })
 
-  test('@smoke Cmd+clicking standard markdown links jumps within and across notes', async ({ page }) => {
+  test('@smoke Windows Ctrl+clicking standard markdown links jumps within and across notes', async ({ page }) => {
     await openNote(page, MARKDOWN_LINK_NOTE_TITLE)
 
     const scrollArea = page.locator('.editor-scroll-area').first()

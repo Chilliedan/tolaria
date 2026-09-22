@@ -186,6 +186,28 @@ describe('useNoteActions hook', () => {
     expect(result.current.activeTabPath).toBe('/vault/target.md')
   })
 
+  it.each(['html', 'HTM'])('loads .%s vault files into the editor for in-app preview', async (extension) => {
+    const entry = makeEntry({
+      path: `/test/vault/generated/report.${extension}`,
+      filename: `report.${extension}`,
+      fileKind: 'text',
+    })
+    const onOpenExternalFile = vi.fn()
+    const config = { ...makeConfig([entry]), onOpenExternalFile }
+    const { result } = renderHook(() => useNoteActions(config))
+
+    await act(async () => {
+      await result.current.handleSelectNote(entry)
+    })
+
+    expect(onOpenExternalFile).not.toHaveBeenCalled()
+    expect(result.current.tabs).toEqual([{ entry, content: '' }])
+    expect(result.current.activeTabPath).toBe(entry.path)
+    expect(mockInvoke).toHaveBeenCalledWith('get_note_content', expect.objectContaining({
+      path: entry.path,
+    }))
+  })
+
   it('handleNavigateWikilink warns when target not found', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 

@@ -8,8 +8,16 @@ interface MockConfig {
 interface PersistedState {
   active_vault: string | null
   availablePaths: string[]
+  default_workspace_path: string | null
   hidden_defaults: string[]
-  vaults: Array<{ label: string; path: string }>
+  vaults: Array<{
+    alias: string | null
+    color: string | null
+    icon: string | null
+    label: string
+    mounted: boolean
+    path: string
+  }>
 }
 
 const GETTING_STARTED_PATH = '/Users/mock/Documents/Getting Started'
@@ -56,6 +64,7 @@ async function installOnboardingVaultMocks(page: Page, config: MockConfig) {
     const defaultState = {
       vaults: [],
       active_vault: null,
+      default_workspace_path: null,
       hidden_defaults: [],
       availablePaths: [...mockConfig.availablePaths],
     }
@@ -91,6 +100,7 @@ async function installOnboardingVaultMocks(page: Page, config: MockConfig) {
           return {
             vaults: [...state.vaults],
             active_vault: state.active_vault,
+            default_workspace_path: state.default_workspace_path,
             hidden_defaults: [...state.hidden_defaults],
           }
         }
@@ -100,6 +110,7 @@ async function installOnboardingVaultMocks(page: Page, config: MockConfig) {
             ...state,
             vaults: [...args.list.vaults],
             active_vault: args.list.active_vault,
+            default_workspace_path: args.list.default_workspace_path,
             hidden_defaults: [...(args.list.hidden_defaults ?? [])],
           })
           return null
@@ -167,8 +178,16 @@ test('opening an existing vault from onboarding persists the selection and survi
   await expect(page.getByTestId('status-vault-trigger')).toContainText('Work')
 
   await expect.poll(() => readPersistedState(page)).toEqual({
-    vaults: [{ label: 'Work', path: vaultPath }],
+    vaults: [{
+      alias: null,
+      color: null,
+      icon: null,
+      label: 'Work',
+      mounted: true,
+      path: vaultPath,
+    }],
     active_vault: vaultPath,
+    default_workspace_path: vaultPath,
     hidden_defaults: [],
     availablePaths: [vaultPath],
   })

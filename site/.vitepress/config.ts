@@ -1,3 +1,4 @@
+import process from "node:process";
 import { defineConfig } from "vitepress";
 
 const base = process.env.VITEPRESS_BASE ?? "/";
@@ -7,6 +8,11 @@ export default defineConfig({
   description:
     "Tolaria is a local-first Markdown knowledge base with native relationships, Git history, and AI workflows.",
   base,
+  vite: {
+    build: {
+      target: "esnext",
+    },
+  },
   ignoreDeadLinks: [/^\/download\/?(?:index)?$/, /^\/releases\/?(?:index)?$/],
   cleanUrls: true,
   head: [
@@ -19,6 +25,15 @@ export default defineConfig({
         content:
           "A second brain for the AI era. Free forever, local-first, Markdown-based, Git-ready, and AI-friendly.",
       },
+    ],
+    ["script", { async: "true", src: "https://www.googletagmanager.com/gtag/js?id=G-0NJ6E1GH9D" }],
+    [
+      "script",
+      {},
+      `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', 'G-0NJ6E1GH9D');`,
     ],
   ],
   themeConfig: {
@@ -65,6 +80,7 @@ export default defineConfig({
           { text: "Capture A Note", link: "/guides/capture-a-note" },
           { text: "Organize The Inbox", link: "/guides/organize-inbox" },
           { text: "Use Wikilinks", link: "/guides/use-wikilinks" },
+          { text: "Use The Rich Editor", link: "/guides/use-rich-editor" },
           { text: "Use HTML Blocks", link: "/guides/use-html-blocks" },
           { text: "Use Spreadsheets", link: "/guides/use-spreadsheets" },
           { text: "Create Types", link: "/guides/create-types" },

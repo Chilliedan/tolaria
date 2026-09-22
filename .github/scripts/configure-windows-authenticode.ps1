@@ -69,7 +69,11 @@ New-Item -ItemType Directory -Force -Path $TempRoot | Out-Null
 $PfxPath = Join-Path $TempRoot "certificate.pfx"
 [IO.File]::WriteAllBytes($PfxPath, (Convert-CertificateSecretToBytes $CertificateSecret))
 
-$SecurePassword = ConvertTo-SecureString -String $CertificatePassword -Force -AsPlainText
+$SecurePassword = [Security.SecureString]::new()
+foreach ($Character in $CertificatePassword.ToCharArray()) {
+  $SecurePassword.AppendChar($Character)
+}
+$SecurePassword.MakeReadOnly()
 $ImportedCertificates = @(Import-PfxCertificate -FilePath $PfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $SecurePassword)
 Remove-Item -Force -ErrorAction SilentlyContinue $PfxPath
 
@@ -112,4 +116,4 @@ if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_ENV)) {
   "WINDOWS_CODE_SIGNING_CERTIFICATE_THUMBPRINT=$CertificateThumbprint" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 }
 
-Write-Host "Prepared Windows Authenticode signing config at $ConfigPath."
+Write-Output "Prepared Windows Authenticode signing config at $ConfigPath."

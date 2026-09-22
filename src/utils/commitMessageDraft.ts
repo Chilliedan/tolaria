@@ -185,25 +185,12 @@ function diffSummaryPrompt(files: ModifiedFile[], fallback: string, excerpts: Di
 function streamCallbacks(onText: (text: string) => void): AgentStreamCallbacks {
   return {
     onText,
-    onThinking: () => {},
-    onToolStart: () => {},
-    onToolDone: () => {},
-    onError: () => {},
-    onDone: () => {},
+    onThinking: () => { /* Only streamed text contributes to commit messages. */ },
+    onToolStart: () => { /* Tool lifecycle updates are intentionally ignored. */ },
+    onToolDone: () => { /* Tool lifecycle updates are intentionally ignored. */ },
+    onError: () => { /* The caller handles the stream result. */ },
+    onDone: () => { /* The caller handles the stream result. */ },
   }
-}
-
-function stripDecorations(message: string): string {
-  return message
-    .split('\n')
-    .map((line) => line.trim())
-    .find(Boolean)
-    ?.replace(/^[-*]\s*/, '')
-    .replace(/^(commit message|message|summary)\s*[:-]\s*/i, '')
-    .replace(/^["'`“”‘’\s]+|["'`“”‘’\s]+$/g, '')
-    .replace(/[.!?;:]+$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim() ?? ''
 }
 
 export function normalizeCommitMessageDraft(message: string): string | null {
@@ -277,4 +264,17 @@ export async function generateCommitMessageDraft({
   }
 
   return { aiAttempted: true, fileCount, message: fallback, source: 'fallback' }
+}
+
+function stripDecorations(message: string): string {
+  const firstLine = message.split('\n').map((line) => line.trim()).find(Boolean)
+  if (!firstLine) return ''
+
+  return firstLine
+    .replace(/^[-*]\s*/, '')
+    .replace(/^(commit message|message|summary)\s*[:-]\s*/i, '')
+    .replace(/^["'`“”‘’\s]+|["'`“”‘’\s]+$/g, '')
+    .replace(/[.!?;:]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }

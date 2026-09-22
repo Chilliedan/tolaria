@@ -162,19 +162,30 @@ async function openOverflowMenu() {
   return screen.findByRole('menu')
 }
 
+async function expectOverflowMenuWaitsForClick() {
+  const trigger = screen.getByRole('button', { name: 'More note actions' })
+
+  fireEvent.pointerDown(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+
+  fireEvent.pointerUp(trigger, { button: 0, ctrlKey: false, pointerType: 'mouse' })
+  fireEvent.click(trigger, { button: 0, ctrlKey: false, detail: 1 })
+  return screen.findByRole('menu')
+}
+
 function mockCollapsedBreadcrumbOverflow() {
   const requestFrame = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation((callback) => {
     callback(0)
     return 1
   })
   const cancelFrame = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {})
-  const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+  const rects = vi.spyOn(Object.getPrototypeOf(document.createElement('div')), 'getBoundingClientRect').mockImplementation(function () {
     if (this.classList.contains('breadcrumb-bar__actions')) {
       return DOMRect.fromRect({ x: 200, y: 0, width: 20, height: 52 })
     }
     return DOMRect.fromRect({ x: 0, y: 0, width: 500, height: 52 })
   })
-  const scrollWidths = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function () {
+  const scrollWidths = vi.spyOn(Object.getPrototypeOf(document.createElement('div')), 'scrollWidth', 'get').mockImplementation(function () {
     return this.classList.contains('breadcrumb-bar__actions') ? 400 : 500
   })
 
@@ -192,14 +203,14 @@ function mockOscillatingBreadcrumbOverflow() {
     return 1
   })
   const cancelFrame = vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => {})
-  const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+  const rects = vi.spyOn(Object.getPrototypeOf(document.createElement('div')), 'getBoundingClientRect').mockImplementation(function () {
     if (this.classList.contains('breadcrumb-bar__actions')) {
       const collapsed = this.getAttribute('data-overflow-collapsed') === 'true'
       return DOMRect.fromRect({ x: collapsed ? 1000 : 200, y: 0, width: 20, height: 52 })
     }
     return DOMRect.fromRect({ x: 0, y: 0, width: 500, height: 52 })
   })
-  const scrollWidths = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function () {
+  const scrollWidths = vi.spyOn(Object.getPrototypeOf(document.createElement('div')), 'scrollWidth', 'get').mockImplementation(function () {
     return this.classList.contains('breadcrumb-bar__actions') ? 400 : 500
   })
 
@@ -214,17 +225,17 @@ function mockOscillatingBreadcrumbOverflow() {
 describe('BreadcrumbBar — drag region', () => {
   it('forwards mousedown events to the shared drag-region hook', () => {
     const { container } = render(<BreadcrumbBar entry={baseEntry} {...defaultProps} />)
-    const bar = container.querySelector('.breadcrumb-bar') as HTMLElement
+    const breadcrumbHtml = container.querySelector('.breadcrumb-bar') as HTMLElement
 
-    fireEvent.mouseDown(bar, { button: 0 })
+    breadcrumbHtml.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, button: 0 }))
 
     expect(dragRegionMouseDown).toHaveBeenCalledOnce()
   })
 
   it('has data-tauri-drag-region on the container', () => {
     const { container } = render(<BreadcrumbBar entry={baseEntry} {...defaultProps} />)
-    const bar = container.firstElementChild as HTMLElement
-    expect(bar.dataset.tauriDragRegion).toBeDefined()
+    const breadcrumbHtml = container.firstElementChild as HTMLElement
+    expect(breadcrumbHtml.hasAttribute('data-tauri-drag-region')).toBe(true)
   })
 
   it('marks the center spacer as a drag region', () => {
@@ -236,6 +247,27 @@ describe('BreadcrumbBar — drag region', () => {
 })
 
 describe('BreadcrumbBar — delete', () => {
+  it('waits for a completed pointer click before opening the overflow menu', async () => {
+    render(<BreadcrumbBar entry={baseEntry} {...defaultProps} onDelete={vi.fn()} />)
+
+    const menu = await expectOverflowMenuWaitsForClick()
+
+    expect(within(menu).getByRole('menuitem', { name: 'Delete this note' })).toBeInTheDocument()
+  })
+
+  it('opens from the keyboard and dismisses with Escape', async () => {
+    render(<BreadcrumbBar entry={baseEntry} {...defaultProps} onDelete={vi.fn()} />)
+    const trigger = screen.getByRole('button', { name: 'More note actions' })
+
+    fireEvent.keyDown(trigger, { key: 'Enter' })
+    const menu = await screen.findByRole('menu')
+    fireEvent.keyDown(menu, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    })
+  })
+
   it('shows delete in the overflow menu', async () => {
     render(<BreadcrumbBar entry={baseEntry} {...defaultProps} onDelete={vi.fn()} />)
     const menu = await openOverflowMenu()
@@ -338,6 +370,44 @@ describe('BreadcrumbBar — file actions', () => {
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Export note as PDF' }))
 
     expect(onExportPdf).toHaveBeenCalledOnce()
+  })
+})
+
+describe('BreadcrumbBar — standalone HTML actions', () => {
+  it('keeps applicable file actions and hides Markdown-only actions', async () => {
+    renderBreadcrumb({
+      path: '/vault/reports/status.html',
+      filename: 'status.html',
+      title: 'status.html',
+      fileKind: 'text',
+    }, {
+      noteWidth: 'normal',
+      onArchive: vi.fn(),
+      onCopyFilePath: vi.fn(),
+      onDelete: vi.fn(),
+      onEnterNeighborhood: vi.fn(),
+      onExportPdf: vi.fn(),
+      onRevealFile: vi.fn(),
+      onToggleFavorite: vi.fn(),
+      onToggleNoteWidth: vi.fn(),
+      onToggleOrganized: vi.fn(),
+      onToggleRaw: vi.fn(),
+      onToggleTableOfContents: vi.fn(),
+    })
+
+    expect(screen.getByRole('button', { name: 'Open the raw editor' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reveal in Finder' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Copy file path' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Add to favorites' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Set note as organized' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: "Open note's neighborhood" })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Switch to wide note width' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Open table of contents' })).not.toBeInTheDocument()
+
+    const menu = await openOverflowMenu()
+    expect(within(menu).getByRole('menuitem', { name: 'Export note as PDF' })).toBeInTheDocument()
+    expect(within(menu).getByRole('menuitem', { name: 'Delete this note' })).toBeInTheDocument()
+    expect(within(menu).queryByRole('menuitem', { name: 'Archive this note' })).not.toBeInTheDocument()
   })
 })
 

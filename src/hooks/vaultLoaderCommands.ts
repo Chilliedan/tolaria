@@ -3,6 +3,11 @@ import { isTauri, mockInvoke } from '../mock-tauri'
 import type { FolderNode, GitPushResult, VaultEntry, ViewFile } from '../types'
 import type { VaultOption } from '../components/status-bar/types'
 import { normalizeVaultEntries, normalizeViewFiles } from '../utils/vaultMetadataNormalization'
+import {
+  isNonBlankWorkspacePath,
+  uniqueNonBlankWorkspacePaths,
+  workspacePathOrEmpty,
+} from '../utils/workspacePaths'
 import { workspaceIdentityFromVault } from '../utils/workspaces'
 
 interface TauriCallOptions {
@@ -41,13 +46,18 @@ interface LoadedVaultData {
   entries: VaultEntry[]
 }
 
+export interface LoadedStartupVaultData extends LoadedVaultData {
+  reconciliation: Promise<VaultEntry[]> | null
+  source: 'scan' | 'snapshot'
+}
+
 interface LoadedVaultChrome {
   folders: FolderNode[]
   views: ViewFile[]
 }
 
 export function hasVaultPath({ vaultPath }: VaultPathOptions): boolean {
-  return vaultPath.trim().length > 0
+  return isNonBlankWorkspacePath(vaultPath)
 }
 
 export function tauriCall<T>({ command, tauriArgs, mockArgs }: TauriCallOptions): Promise<T> {
@@ -72,23 +82,28 @@ function loadVaultEntriesWithCommand({ vaultPath, command }: VaultPathOptions & 
     .then((entries) => normalizeVaultEntries(entries, vaultPath))
 }
 
-function shouldIncludeVault(vault: VaultOption, primaryPaths: Set<string>): boolean {
-  if (!vault.path.trim() || vault.available === false) return false
-  return vault.mounted !== false || primaryPaths.has(vault.path)
+function isMountedVault(vault: VaultOption, path: string, primaryPaths: Set<string>): boolean {
+  return vault.mounted !== false || primaryPaths.has(path)
+}
+
+function mountedVaultPath(vault: VaultOption, primaryPaths: Set<string>): string | null {
+  const path = workspacePathOrEmpty(vault.path)
+  if (!path) return null
+  if (vault.available === false) return null
+  return isMountedVault(vault, path, primaryPaths) ? path : null
 }
 
 function shouldReloadEmptyResult(entries: VaultEntry[], options: EmptyResultReloadOptions): boolean {
   return entries.length === 0 && options.reloadIfEmpty === true && !options.forceReload && isTauri()
 }
 
-function shouldIncludeFallbackVault(
+function shouldAddFallbackVault(
   byPath: Map<string, VaultOption>,
-  vaultPath: string,
+  fallbackPath: string,
   includeFallbackVault: boolean,
 ): boolean {
-  if (!includeFallbackVault) return false
-  if (!vaultPath.trim()) return false
-  return !byPath.has(vaultPath)
+  if (!includeFallbackVault || !fallbackPath) return false
+  return !byPath.has(fallbackPath)
 }
 
 function loadWorkspaceEntriesWithCommand(
@@ -115,13 +130,15 @@ export function loadWorkspaceEntries(
 
 function uniqueMountedVaults({ defaultWorkspacePath, vaultPath, vaults = [], includeFallbackVault = true }: MountedVaultEntriesOptions): VaultOption[] {
   const byPath = new Map<string, VaultOption>()
-  const primaryPaths = new Set([vaultPath, defaultWorkspacePath ?? ''].filter((path) => path.trim()))
+  const primaryPaths = new Set(uniqueNonBlankWorkspacePaths([vaultPath, defaultWorkspacePath]))
   for (const vault of vaults) {
-    if (!shouldIncludeVault(vault, primaryPaths)) continue
-    byPath.set(vault.path, vault)
+    const path = mountedVaultPath(vault, primaryPaths)
+    if (!path) continue
+    byPath.set(path, { ...vault, path })
   }
-  if (shouldIncludeFallbackVault(byPath, vaultPath, includeFallbackVault)) {
-    byPath.set(vaultPath, { label: vaultPath.split('/').filter(Boolean).pop() || 'Workspace', path: vaultPath, mounted: true, available: true })
+  const fallbackPath = workspacePathOrEmpty(vaultPath)
+  if (shouldAddFallbackVault(byPath, fallbackPath, includeFallbackVault)) {
+    byPath.set(fallbackPath, { label: fallbackPath.split('/').filter(Boolean).pop() || 'Workspace', path: fallbackPath, mounted: true, available: true })
   }
   return [...byPath.values()]
 }
@@ -257,16 +274,47 @@ export async function loadVaultData({
   return { entries }
 }
 
-export async function loadVaultChrome({
-  defaultWorkspacePath,
-  vaultPath,
-  vaults,
-}: MountedVaultEntriesOptions): Promise<LoadedVaultChrome> {
+export async function loadStartupVaultData(options: MountedVaultEntriesOptions): Promise<LoadedStartupVaultData> {
+  if (!isTauri() || options.forceReload) {
+    const { entries } = await loadVaultData(options)
+    return { entries, reconciliation: null, source: 'scan' }
+  }
+
+  const snapshot = await tauriCall<unknown | null>({
+    command: 'read_vault_snapshot',
+    tauriArgs: { path: options.vaultPath },
+  })
+  if (snapshot === null || snapshot === undefined) {
+    const { entries } = await loadVaultData(options)
+    return { entries, reconciliation: null, source: 'scan' }
+  }
+
+  const activeVault = options.vaults?.find((vault) => vault.path === options.vaultPath)
+  const workspace = activeVault
+    ? workspaceIdentityFromVault(activeVault, { defaultWorkspacePath: options.defaultWorkspacePath })
+    : undefined
+  const entries = normalizeVaultEntries(snapshot, options.vaultPath, workspace)
+  const reconciliation = activeVault
+    ? loadWorkspaceEntries(activeVault, options.defaultWorkspacePath)
+    : loadVaultEntries({ vaultPath: options.vaultPath, forceReload: false })
+  return { entries, reconciliation, source: 'snapshot' }
+}
+
+async function loadVaultViewsForOptions(options: MountedVaultEntriesOptions): Promise<ViewFile[]> {
+  if (options.vaults?.length) {
+    return loadMountedVaultViews(options)
+  }
+  return loadVaultViews({ vaultPath: options.vaultPath })
+}
+
+async function loadListOrEmpty<T>(loader: () => Promise<T[]>): Promise<T[]> {
+  return loader().catch(() => [])
+}
+
+export async function loadVaultChrome(options: MountedVaultEntriesOptions): Promise<LoadedVaultChrome> {
   const [folders, views] = await Promise.all([
-    loadVaultFolders({ vaultPath }).catch(() => [] as FolderNode[]),
-    vaults?.length
-      ? loadMountedVaultViews({ defaultWorkspacePath, vaultPath, vaults }).catch(() => [] as ViewFile[])
-      : loadVaultViews({ vaultPath }).catch(() => [] as ViewFile[]),
+    loadListOrEmpty<FolderNode>(() => loadVaultFolders({ vaultPath: options.vaultPath })),
+    loadListOrEmpty(() => loadVaultViewsForOptions(options)),
   ])
 
   return {

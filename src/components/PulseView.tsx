@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core'
 import { cn } from '@/lib/utils'
 import { isTauri, mockInvoke } from '../mock-tauri'
 import { useDragRegion } from '../hooks/useDragRegion'
+import { useInitialPulseLoad } from '../hooks/useInitialPulseLoad'
 import type { PulseCommit, PulseFile } from '../types'
 import { relativeDate } from '../utils/noteListHelpers'
 import { openExternalUrl } from '../utils/url'
@@ -11,13 +12,18 @@ import { getLocaleDateLocale, translate, type AppLocale } from '../lib/i18n'
 import { GitRepositorySelect } from './GitRepositorySelect'
 import type { GitRepositoryOption } from '../utils/gitRepositories'
 import {
-  Plus, Minus, PencilSimple, GitCommit, ArrowSquareOut,
-  FileText, CaretDown, CaretRight, Pulse,
+  Plus,
+  Minus,
+  PencilSimple,
+  GitCommit,
+  ArrowSquareOut,
+  FileText,
+  CaretDown,
+  CaretRight,
+  Pulse,
 } from '@phosphor-icons/react'
 
-function tauriCall<T>(command: string, args: Record<string, unknown>): Promise<T> {
-  return isTauri() ? invoke<T>(command, args) : mockInvoke<T>(command, args)
-}
+const tauriCall = isTauri() ? invoke : mockInvoke
 
 interface PulseViewProps {
   vaultPath: string
@@ -66,7 +72,12 @@ function formatDayLabel(dateKey: string, locale: AppLocale): string {
 
   const date = new Date(`${dateKey}T00:00:00`)
   const dateLocale = getLocaleDateLocale(locale)
-  return date.toLocaleDateString(dateLocale, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+  return date.toLocaleDateString(dateLocale, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  })
 }
 
 const STATUS_ICON = {
@@ -81,15 +92,28 @@ const STATUS_COLOR = {
   deleted: 'var(--destructive)',
 } as const
 
-const PULSE_ROW_FOCUS_CLASS_NAME = 'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/70 focus-visible:ring-inset'
+const PULSE_ROW_FOCUS_CLASS_NAME =
+  'focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring/70 focus-visible:ring-inset'
 const PULSE_EDGE_TO_EDGE_ROW_CLASS_NAME = '-mx-4 rounded-none px-4'
 
 function SummaryBadges({ added, modified, deleted }: { added: number; modified: number; deleted: number }) {
   return (
     <div className="flex items-center" style={{ gap: 8 }}>
-      {added > 0 && <span className="text-[11px] font-medium" style={{ color: STATUS_COLOR.added }}>+{added}</span>}
-      {modified > 0 && <span className="text-[11px] font-medium" style={{ color: STATUS_COLOR.modified }}>~{modified}</span>}
-      {deleted > 0 && <span className="text-[11px] font-medium" style={{ color: STATUS_COLOR.deleted }}>-{deleted}</span>}
+      {added > 0 && (
+        <span className="text-[11px] font-medium" style={{ color: STATUS_COLOR.added }}>
+          +{added}
+        </span>
+      )}
+      {modified > 0 && (
+        <span className="text-[11px] font-medium" style={{ color: STATUS_COLOR.modified }}>
+          ~{modified}
+        </span>
+      )}
+      {deleted > 0 && (
+        <span className="text-[11px] font-medium" style={{ color: STATUS_COLOR.deleted }}>
+          -{deleted}
+        </span>
+      )}
     </div>
   )
 }
@@ -174,9 +198,7 @@ function CommitCard({
             </div>
             <div className="flex items-center" style={{ gap: 8 }}>
               <span className="text-[11px] text-muted-foreground">{relativeDate(commit.date)}</span>
-              {!commitUrl && (
-                <span className="text-[11px] font-mono text-muted-foreground">{commit.shortHash}</span>
-              )}
+              {!commitUrl && <span className="text-[11px] font-mono text-muted-foreground">{commit.shortHash}</span>}
               <SummaryBadges added={commit.added} modified={commit.modified} deleted={commit.deleted} />
             </div>
           </div>
@@ -217,7 +239,12 @@ function CommitCard({
   )
 }
 
-function DayGroup({ label, commits, locale, onOpenNote }: {
+function DayGroup({
+  label,
+  commits,
+  locale,
+  onOpenNote,
+}: {
   label: string
   commits: PulseCommit[]
   locale: AppLocale
@@ -241,17 +268,18 @@ function DayGroup({ label, commits, locale, onOpenNote }: {
         onKeyDown={(event) => handleActivationKey(event, toggleCollapsed)}
       >
         <Chevron size={12} className="text-muted-foreground" />
-        <span className="text-[11px] font-medium text-muted-foreground">
-          {label}
-        </span>
+        <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
         <span className="text-[11px] text-muted-foreground">
-          ({translate(locale, 'pulse.commitCount', {
+          (
+          {translate(locale, 'pulse.commitCount', {
             count: commits.length,
             label: translate(locale, commits.length === 1 ? 'pulse.commitSingular' : 'pulse.commitPlural'),
-          })})
+          })}
+          )
         </span>
       </button>
-      {!collapsed && commits.map((commit) => (
+      {!collapsed &&
+        commits.map((commit) => (
         <CommitCard key={commit.hash} commit={commit} locale={locale} onOpenNote={onOpenNote} />
       ))}
     </div>
@@ -263,10 +291,7 @@ function PulseHeader({
   onExpandSidebar,
   locale = 'en',
 }: Pick<PulseViewProps, 'sidebarCollapsed' | 'onExpandSidebar' | 'locale'>) {
-  type DragRegionResult = ReturnType<typeof useDragRegion<HTMLDivElement>> & {
-    dragRegionRef?: React.RefObject<HTMLDivElement | null>
-  }
-  const { dragRegionRef, onMouseDown } = useDragRegion<HTMLDivElement>() as DragRegionResult
+  const { dragRegionRef, onMouseDown } = useDragRegion<HTMLDivElement>()
   const fallbackDragRegionRef = useRef<HTMLDivElement>(null)
   const headerRef = dragRegionRef ?? fallbackDragRegionRef
 
@@ -279,7 +304,8 @@ function PulseHeader({
     return () => header.removeEventListener('mousedown', onMouseDown)
   }, [dragRegionRef, onMouseDown])
 
-  const leftPadding = sidebarCollapsed && isMac()
+  const leftPadding =
+    sidebarCollapsed && isMac()
     ? `var(--tolaria-macos-traffic-light-padding, ${MACOS_TRAFFIC_LIGHT_SAFE_PADDING}px)`
     : '16px'
   const headerStyle = {
@@ -325,7 +351,10 @@ function PulseRepositoryRow({
   if (!onRepositoryChange || !selectedRepositoryPath || repositories.length <= 1) return null
 
   return (
-    <div className="flex h-11 shrink-0 items-center border-b border-border px-4" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+    <div
+      className="flex h-11 shrink-0 items-center border-b border-border px-4"
+      style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+    >
       <GitRepositorySelect
         label={translate(locale, 'git.repository.select')}
         repositories={repositories}
@@ -353,7 +382,8 @@ function ErrorState({ message, locale = 'en', onRetry }: { message: string; loca
   return (
     <div className="flex flex-1 flex-col items-center justify-center text-muted-foreground" style={{ padding: 32 }}>
       <p className="text-[13px]">{message}</p>
-      <button type="button"
+      <button
+        type="button"
         className="mt-2 cursor-pointer rounded border border-border bg-transparent px-3 py-1 text-[12px] text-foreground transition-colors hover:bg-accent"
         onClick={onRetry}
       >
@@ -363,17 +393,7 @@ function ErrorState({ message, locale = 'en', onRetry }: { message: string; loca
   )
 }
 
-function PulseFeed({
-  commits,
-  dayGroups,
-  loading,
-  loadingMore,
-  error,
-  locale,
-  onOpenNote,
-  onRetry,
-  sentinelRef,
-}: {
+function PulseFeed(options: {
   commits: PulseCommit[]
   dayGroups: Map<string, PulseCommit[]>
   loading: boolean
@@ -384,6 +404,7 @@ function PulseFeed({
   onRetry: () => void
   sentinelRef: React.RefObject<HTMLDivElement | null>
 }) {
+  const { commits, dayGroups, loading, loadingMore, error, locale, onOpenNote, onRetry, sentinelRef } = options
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ padding: 32 }}>
@@ -423,51 +444,41 @@ function PulseFeed({
 
 const PAGE_SIZE = 20
 
-export const PulseView = memo(function PulseView({
-  vaultPath,
-  onOpenNote,
-  refreshKey = 0,
-  sidebarCollapsed,
-  onExpandSidebar,
-  repositories,
-  selectedRepositoryPath,
-  onRepositoryChange,
-  locale = 'en',
-}: PulseViewProps) {
+export const PulseView = memo(function PulseView(options: PulseViewProps) {
+  const {
+    vaultPath,
+    onOpenNote,
+    refreshKey = 0,
+    sidebarCollapsed,
+    onExpandSidebar,
+    repositories,
+    selectedRepositoryPath,
+    onRepositoryChange,
+    locale = 'en',
+  } = options
   const [commits, setCommits] = useState<PulseCommit[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [hasMore, setHasMore] = useState(true)
   const [skip, setSkip] = useState(0)
+  const [retryCount, setRetryCount] = useState(0)
   const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const retryLoad = useCallback(() => setRetryCount((count) => count + 1), [])
+  const loadInitialCommits = useCallback(() => tauriCall<PulseCommit[]>('get_vault_pulse', { vaultPath, limit: PAGE_SIZE, skip: 0 }), [vaultPath])
 
-  // Initial load
-  const loadInitial = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    setCommits([])
-    setSkip(0)
-    setHasMore(true)
-    try {
-      const result = await tauriCall<PulseCommit[]>('get_vault_pulse', { vaultPath, limit: PAGE_SIZE, skip: 0 })
-      setCommits(result)
-      setHasMore(result.length >= PAGE_SIZE)
-      setSkip(result.length)
-    } catch (err) {
-      const msg = typeof err === 'string' ? err : translate(locale, 'pulse.loadError')
-      setError(msg)
-    } finally {
-      setLoading(false)
-    }
-  }, [locale, vaultPath])
+  useInitialPulseLoad({ loadCommits: loadInitialCommits, locale, pageSize: PAGE_SIZE, refreshKey, retryCount, setCommits, setError, setHasMore, setLoading, setSkip })
 
   // Append next page
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
     try {
-      const result = await tauriCall<PulseCommit[]>('get_vault_pulse', { vaultPath, limit: PAGE_SIZE, skip })
+      const result = await tauriCall<PulseCommit[]>('get_vault_pulse', {
+        vaultPath,
+        limit: PAGE_SIZE,
+        skip,
+      })
       setCommits((prev) => [...prev, ...result])
       setHasMore(result.length >= PAGE_SIZE)
       setSkip((s) => s + result.length)
@@ -478,14 +489,14 @@ export const PulseView = memo(function PulseView({
     }
   }, [vaultPath, skip, loadingMore, hasMore])
 
-  useEffect(() => { loadInitial() }, [loadInitial, refreshKey])
-
   // Intersection Observer for infinite scroll
   useEffect(() => {
     const sentinel = sentinelRef.current
     if (!sentinel) return
     const observer = new IntersectionObserver(
-      (entries) => { if (entries[0].isIntersecting) loadMore() },
+      (entries) => {
+        if (entries[0].isIntersecting) loadMore()
+      },
       { threshold: 0.1 },
     )
     observer.observe(sentinel)
@@ -496,11 +507,7 @@ export const PulseView = memo(function PulseView({
 
   return (
     <div className="flex h-full flex-col overflow-hidden border-r border-[var(--sidebar-border)] bg-background">
-      <PulseHeader
-        sidebarCollapsed={sidebarCollapsed}
-        locale={locale}
-        onExpandSidebar={onExpandSidebar}
-      />
+      <PulseHeader sidebarCollapsed={sidebarCollapsed} locale={locale} onExpandSidebar={onExpandSidebar} />
       <PulseRepositoryRow
         repositories={repositories}
         selectedRepositoryPath={selectedRepositoryPath}
@@ -517,7 +524,7 @@ export const PulseView = memo(function PulseView({
           error={error}
           locale={locale}
           onOpenNote={onOpenNote}
-          onRetry={loadInitial}
+          onRetry={retryLoad}
           sentinelRef={sentinelRef}
         />
       </div>

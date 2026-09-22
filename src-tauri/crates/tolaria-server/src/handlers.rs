@@ -64,9 +64,9 @@ pub fn dispatch(vault_root: &Path, command: &str, args: Value) -> Result<Value, 
                 .to_str()
                 .ok_or_else(|| RpcError::internal("vault path is not valid UTF-8"))?;
             let resp = search_vault_with_options(SearchOptions {
-                vault_path: vault_str,
-                query: &a.query,
-                mode: "keyword",
+                vault_path: vault_str.to_string(),
+                query: a.query,
+                mode: "keyword".to_string(),
                 limit: a.limit.unwrap_or(20),
                 hide_gitignored_files: true,
                 exclude_frontmatter: a.exclude_frontmatter.unwrap_or(false),

@@ -25,6 +25,14 @@ export interface AppCommandShortcutEventOptions {
   preferControl?: boolean
 }
 
+interface AppCommandShortcutAlternateEvent {
+  key: string
+  altKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+  shiftKey: boolean
+}
+
 export type AppCommandShortcutEventInit = Pick<
   KeyboardEventInit,
   'altKey' | 'bubbles' | 'cancelable' | 'code' | 'ctrlKey' | 'key' | 'metaKey' | 'shiftKey'
@@ -87,6 +95,7 @@ interface AppCommandShortcutDefinition {
   aliases?: string[]
   code?: string
   display: string
+  macosAlternateEvents?: AppCommandShortcutAlternateEvent[]
 }
 
 interface AppCommandManifestShortcutDefinition extends AppCommandShortcutDefinition {
@@ -224,6 +233,7 @@ const MENU_LABEL_KEYS = {
 } as const
 
 export type AppCommandMenuLabelKey = (typeof MENU_LABEL_KEYS)[keyof typeof MENU_LABEL_KEYS]
+const MENU_LABEL_KEY_BY_LABEL = new Map<string, AppCommandMenuLabelKey>(Object.entries(MENU_LABEL_KEYS))
 export type AppCommandMenuTranslator = (key: AppCommandMenuLabelKey) => string
 
 export const APP_COMMAND_IDS = Object.fromEntries(
@@ -245,6 +255,7 @@ function toShortcutDefinition(
     aliases: shortcut.aliases,
     code: shortcut.code,
     display: shortcut.display,
+    macosAlternateEvents: shortcut.macosAlternateEvents,
   }
 }
 
@@ -266,9 +277,11 @@ function resolvePlatformLabel(label: PlatformLabel): string {
   return label.default
 }
 
-function localizeMenuLabel(label: string, t?: AppCommandMenuTranslator): string {
-  const key = Reflect.get(MENU_LABEL_KEYS, label) as AppCommandMenuLabelKey | undefined
-  return key && t ? t(key) : label
+function localizeMenuLabel(label: string, t: AppCommandMenuTranslator | undefined): string {
+  const key = MENU_LABEL_KEY_BY_LABEL.get(label)
+  if (!key) return label
+  if (!t) return label
+  return t(key)
 }
 
 function formatAcceleratorDisplay(accelerator: string): string {
@@ -372,27 +385,28 @@ const shortcutCodeMaps = {
   'command-shift': new Map<string, AppCommandId>(),
 } satisfies Record<AppCommandShortcutCombo, Map<string, AppCommandId>>
 
+const macosAlternateShortcutMap = new Map<string, AppCommandId>()
+
 const COMMAND_ONLY_COMBOS: readonly AppCommandShortcutCombo[] = ['command-or-ctrl']
 const COMMAND_SHIFT_COMBOS: readonly AppCommandShortcutCombo[] = ['command-shift', 'command-or-ctrl-shift']
 const COMMAND_OR_CTRL_SHIFT_COMBOS: readonly AppCommandShortcutCombo[] = ['command-or-ctrl-shift']
 const NO_SHORTCUT_COMBOS: readonly AppCommandShortcutCombo[] = []
 
 function normalizeShortcutKey(key: string): string {
-  return key.length === 1 ? key.toLowerCase() : key
+  if (key.length === 1) return key.toLowerCase()
+  return key
+}
+
+function alternateShortcutSignature(event: AppCommandShortcutAlternateEvent): string {
+  return [event.altKey, event.ctrlKey, event.metaKey, event.shiftKey, normalizeShortcutKey(event.key)].join(':')
 }
 
 function isPlatformRedoAlternate(event: ShortcutEventLike): boolean {
-  return !isMac()
-    && !event.altKey
-    && !event.metaKey
-    && event.ctrlKey
-    && !event.shiftKey
-    && normalizeShortcutKey(event.key) === 'y'
+  const signature = `${isMac()}:${event.altKey}:${event.ctrlKey}:${event.metaKey}:${event.shiftKey}:${normalizeShortcutKey(event.key)}`
+  return signature === 'false:false:true:false:false:y'
 }
 
-for (const [id, definition] of Object.entries(APP_COMMAND_DEFINITIONS) as Array<[AppCommandId, AppCommandDefinition]>) {
-  const shortcut = definition.shortcut
-  if (!shortcut) continue
+function registerShortcutDefinition(id: AppCommandId, shortcut: AppCommandShortcutDefinition): void {
   const shortcutKeyMap = Reflect.get(shortcutKeyMaps, shortcut.combo) as Map<string, AppCommandId>
   shortcutKeyMap.set(normalizeShortcutKey(shortcut.key), id)
   for (const alias of shortcut.aliases ?? []) {
@@ -402,7 +416,20 @@ for (const [id, definition] of Object.entries(APP_COMMAND_DEFINITIONS) as Array<
     const shortcutCodeMap = Reflect.get(shortcutCodeMaps, shortcut.combo) as Map<string, AppCommandId>
     shortcutCodeMap.set(shortcut.code, id)
   }
+  for (const event of shortcut.macosAlternateEvents ?? []) {
+    macosAlternateShortcutMap.set(alternateShortcutSignature(event), id)
+  }
 }
+
+function registerShortcutDefinitions(): void {
+  for (const [id, definition] of Object.entries(APP_COMMAND_DEFINITIONS) as Array<[AppCommandId, AppCommandDefinition]>) {
+    if (definition.shortcut) {
+      registerShortcutDefinition(id, definition.shortcut)
+    }
+  }
+}
+
+registerShortcutDefinitions()
 
 export function isAppCommandId(value: string): value is AppCommandId {
   return APP_COMMAND_SET.has(value)
@@ -449,17 +476,29 @@ export function getShortcutEventInit(
   }
 }
 
-export function shortcutCombosForEvent({
-  altKey,
-  ctrlKey,
-  metaKey,
-  shiftKey,
-}: Pick<ShortcutEventLike, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey'>): readonly AppCommandShortcutCombo[] {
-  if (altKey || (!metaKey && !ctrlKey)) return NO_SHORTCUT_COMBOS
-  if (isMac() && ctrlKey) return NO_SHORTCUT_COMBOS
-  if (shiftKey) {
-    return metaKey && !ctrlKey ? COMMAND_SHIFT_COMBOS : COMMAND_OR_CTRL_SHIFT_COMBOS
+interface ShortcutModifierState {
+  altKey: boolean
+  ctrlKey: boolean
+  metaKey: boolean
+  shiftKey: boolean
+}
+
+function shiftedShortcutCombos(metaKey: boolean, ctrlKey: boolean): readonly AppCommandShortcutCombo[] {
+  if (!metaKey) return COMMAND_OR_CTRL_SHIFT_COMBOS
+  if (ctrlKey) return COMMAND_OR_CTRL_SHIFT_COMBOS
+  return COMMAND_SHIFT_COMBOS
+}
+
+export function shortcutCombosForEvent(event: ShortcutModifierState): readonly AppCommandShortcutCombo[] {
+  const { altKey, ctrlKey, metaKey, shiftKey } = event
+  if (altKey) return NO_SHORTCUT_COMBOS
+  if (!metaKey) {
+    if (!ctrlKey) return NO_SHORTCUT_COMBOS
   }
+  if (isMac()) {
+    if (ctrlKey) return NO_SHORTCUT_COMBOS
+  }
+  if (shiftKey) return shiftedShortcutCombos(metaKey, ctrlKey)
   return COMMAND_ONLY_COMBOS
 }
 
@@ -481,6 +520,11 @@ export function findShortcutCommandId(
 
 export function findShortcutCommandIdForEvent(event: ShortcutEventLike): AppCommandId | null {
   if (isPlatformRedoAlternate(event)) return APP_COMMAND_IDS.editRedo
+
+  if (isMac()) {
+    const alternateCommandId = macosAlternateShortcutMap.get(alternateShortcutSignature(event))
+    if (alternateCommandId) return alternateCommandId
+  }
 
   for (const combo of shortcutCombosForEvent(event)) {
     const commandId = findShortcutCommandId(combo, event.key, event.code)

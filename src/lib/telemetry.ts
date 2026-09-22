@@ -6,6 +6,7 @@ import {
   isWhiteboardPlatformPermissionRejection,
 } from '../utils/whiteboardPlatformPermissionRejection'
 import { classifyRichEditorRecoveryError } from '../components/richEditorRecoveryClassifier'
+import { isRecoveredBlockNoteRenderError } from '../components/blockNoteRenderRecovery'
 
 type SensitiveTelemetryText = string
 type AnonymousTelemetryId = string
@@ -41,6 +42,13 @@ function isBlockNoteStaleBlockReferenceText(value: string | undefined): boolean 
   return value ? BLOCKNOTE_STALE_BLOCK_REFERENCE_PATTERN.test(value) : false
 }
 
+function isBlockNoteMissingIdText(value: string | undefined): boolean {
+  if (!value) return false
+
+  const message = value.replace(/^Error:\s*/, '')
+  return classifyRichEditorRecoveryError(new Error(message), 'render') === 'block_missing_id'
+}
+
 function isResizeObserverLoopText(value: string | undefined): boolean {
   return value
     ? RESIZE_OBSERVER_LOOP_MESSAGES.some((message) => value.includes(message))
@@ -71,6 +79,22 @@ function recoveredRichEditorDomNotFoundText(value: string | undefined): boolean 
   const message = messageParts.join(':').trim()
 
   return recoveredRichEditorDomNotFoundError(name, message)
+}
+
+function recoveredRichEditorPositionError(name: string | undefined, message: string | undefined): boolean {
+  if (name !== 'RangeError' || !message) return false
+
+  return classifyRichEditorRecoveryError(
+    new RangeError(message),
+    'render',
+  ) === 'prosemirror_position_out_of_range'
+}
+
+function recoveredRichEditorPositionText(value: string | undefined): boolean {
+  const [name, ...messageParts] = value?.split(':') ?? []
+  const message = messageParts.join(':').trim()
+
+  return recoveredRichEditorPositionError(name, message)
 }
 
 function errorText(value: unknown): string | undefined {
@@ -140,6 +164,17 @@ function shouldDropBlockNoteStaleBlockReferenceEvent(
   return matchesBenignSentryEventText(event, hint, isBlockNoteStaleBlockReferenceText)
 }
 
+function shouldDropRecoveredBlockNoteRenderEvent(hint?: Sentry.EventHint): boolean {
+  return isRecoveredBlockNoteRenderError(hint?.originalException, '')
+}
+
+function shouldDropBlockNoteMissingIdEvent(
+  event: Sentry.ErrorEvent,
+  hint?: Sentry.EventHint,
+): boolean {
+  return matchesBenignSentryEventText(event, hint, isBlockNoteMissingIdText)
+}
+
 function shouldDropRichEditorDomNotFoundEvent(
   event: Sentry.ErrorEvent,
   hint?: Sentry.EventHint,
@@ -149,6 +184,18 @@ function shouldDropRichEditorDomNotFoundEvent(
     message: recoveredRichEditorDomNotFoundText,
     originalException: (originalException) =>
       classifyRichEditorRecoveryError(originalException, 'render') === 'dom_not_found',
+  })
+}
+
+function shouldDropRichEditorPositionEvent(
+  event: Sentry.ErrorEvent,
+  hint?: Sentry.EventHint,
+): boolean {
+  return matchesBenignSentryEventSurface(event, hint, {
+    exception: (exception) => recoveredRichEditorPositionError(exception.type, exception.value),
+    message: recoveredRichEditorPositionText,
+    originalException: (originalException) =>
+      classifyRichEditorRecoveryError(originalException, 'render') === 'prosemirror_position_out_of_range',
   })
 }
 
@@ -172,11 +219,18 @@ function shouldDropMissingFilePromiseRejectionEvent(
   })
 }
 
+function shouldDropRichEditorRecoveryEvent(event: Sentry.ErrorEvent, hint?: Sentry.EventHint): boolean {
+  return shouldDropBlockNoteStaleBlockReferenceEvent(event, hint)
+    || shouldDropRecoveredBlockNoteRenderEvent(hint)
+    || shouldDropBlockNoteMissingIdEvent(event, hint)
+    || shouldDropRichEditorDomNotFoundEvent(event, hint)
+    || shouldDropRichEditorPositionEvent(event, hint)
+}
+
 function shouldDropSentryEvent(event: Sentry.ErrorEvent, hint?: Sentry.EventHint): boolean {
   return shouldDropWhiteboardPlatformPermissionEvent(event, hint)
     || shouldDropStaleTauriListenerCleanupEvent(event, hint)
-    || shouldDropBlockNoteStaleBlockReferenceEvent(event, hint)
-    || shouldDropRichEditorDomNotFoundEvent(event, hint)
+    || shouldDropRichEditorRecoveryEvent(event, hint)
     || shouldDropResizeObserverLoopEvent(event, hint)
     || shouldDropMissingFilePromiseRejectionEvent(event, hint)
 }

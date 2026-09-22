@@ -23,6 +23,7 @@ type AiAgentResponseText = string
 type AiAgentToolCount = number
 type AiAgentResponseTextFlag = 'had_text' | 'had_partial_response'
 type SheetFormulaFunctionName = string
+type StartupSource = 'scan' | 'snapshot'
 
 const ALL_NOTES_VISIBILITY_CATEGORIES: ReadonlyArray<keyof AllNotesFileVisibility> = [
   'pdfs',
@@ -38,6 +39,34 @@ function numericFlag(value: AnalyticsBoolean): number {
   return value ? 1 : 0
 }
 
+export function trackStartupActiveVaultUsable(properties: {
+  activeVaultEntryCount: number
+  activeVaultUsableMs: number
+  nativeElapsedMs: number | null
+  reactShellMs: number | null
+  source: StartupSource
+  targetMs: number
+}): void {
+  trackEvent('startup_active_vault_usable', {
+    active_vault_entry_count: properties.activeVaultEntryCount,
+    active_vault_usable_ms: properties.activeVaultUsableMs,
+    native_elapsed_ms: properties.nativeElapsedMs ?? -1,
+    react_shell_ms: properties.reactShellMs ?? -1,
+    source: properties.source,
+    target_met: numericFlag(properties.activeVaultUsableMs <= properties.targetMs),
+    target_ms: properties.targetMs,
+  })
+}
+
+export function trackStartupBackgroundReconciled(properties: {
+  elapsedMs: number
+  entryCount: number
+}): void {
+  trackEvent('startup_background_reconciled', {
+    elapsed_ms: properties.elapsedMs,
+    entry_count: properties.entryCount,
+  })
+}
 function aiAgentResponsePayload(
   agent: AiAgentId,
   response: AiAgentResponseText,
@@ -243,6 +272,25 @@ export function trackAiAgentPermissionModeChanged(agent: AiAgentId, permissionMo
   trackEvent('ai_agent_permission_mode_changed', {
     agent,
     permission_mode: permissionMode,
+  })
+}
+
+export function trackAiAgentModelSelected(
+  agent: AiAgentId,
+  usedAgentDefault: AnalyticsBoolean,
+  surface: AiWorkspaceMode,
+): void {
+  trackEvent('ai_agent_model_selected', {
+    agent_id: agent,
+    surface,
+    used_agent_default: numericFlag(usedAgentDefault),
+  })
+}
+
+export function trackAiAgentModelFallback(agent: AiAgentId, reason: 'unavailable'): void {
+  trackEvent('ai_agent_model_fallback', {
+    agent_id: agent,
+    reason,
   })
 }
 

@@ -1,5 +1,6 @@
 import { useRef, useLayoutEffect, useCallback, useState } from 'react'
 import type { useCreateBlockNote } from '@blocknote/react'
+import { useEditorContentPathSignal } from '../hooks/useEditorContentPathSignal'
 import { useRawMode } from '../hooks/useRawMode'
 import { clearTableResizeState } from './tableResizeState'
 import {
@@ -65,18 +66,14 @@ function buildPendingRawRestore({
   if (!nextContent) return null
 
   const richSnapshot = captureRichEditorPositionSnapshot(editor, document)
-  return richSnapshot
-    ? buildCodeMirrorRestoreState(editor, nextContent, richSnapshot)
-    : null
+  return richSnapshot ? buildCodeMirrorRestoreState(editor, nextContent, richSnapshot) : null
 }
 
 function capturePendingRoundTripRawRestore(activeTabPath: string | null): PendingRoundTripRawRestore | null {
   if (!activeTabPath) return null
 
   const rawRestoreState = captureRawCodeMirrorRestoreState(document)
-  return rawRestoreState
-    ? { path: activeTabPath, state: rawRestoreState }
-    : null
+  return rawRestoreState ? { path: activeTabPath, state: rawRestoreState } : null
 }
 
 function resolveActiveTabContent({
@@ -126,7 +123,14 @@ function useTrackRawBuffer({
     rawInitialContentRef.current = activeTabContent
     rawBufferPathRef.current = activeTabContent === null ? null : activeTabPath
     rawSourceContentRef.current = activeTabContent
-  }, [activeTabContent, activeTabPath, rawBufferPathRef, rawInitialContentRef, rawLatestContentRef, rawSourceContentRef])
+  }, [
+    activeTabContent,
+    activeTabPath,
+    rawBufferPathRef,
+    rawInitialContentRef,
+    rawLatestContentRef,
+    rawSourceContentRef,
+  ])
 }
 
 function resetRawBufferState({
@@ -146,21 +150,11 @@ function resetRawBufferState({
   rawSourceContentRef.current = null
 }
 
-function useHandleFlushPending({
-  editor,
-  activeTabPath,
-  activeTabContent,
-  rawInitialContentRef,
-  rawLatestContentRef,
-  rawSourceContentRef,
-  flushPendingEditorChangeRef,
-  restoreTransitionRef,
-  setRawModeContentOverride,
-  vaultPath,
-}: {
+function useHandleFlushPending(options: {
   editor: ReturnType<typeof useCreateBlockNote>
   activeTabPath: string | null
   activeTabContent: string | null
+  editorContentPath: string | null
   rawInitialContentRef: React.MutableRefObject<string | null>
   rawLatestContentRef: React.MutableRefObject<string | null>
   rawSourceContentRef: React.MutableRefObject<string | null>
@@ -169,6 +163,19 @@ function useHandleFlushPending({
   setRawModeContentOverride: React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>
   vaultPath?: string
 }) {
+  const {
+    editor,
+    activeTabPath,
+    activeTabContent,
+    editorContentPath,
+    rawInitialContentRef,
+    rawLatestContentRef,
+    rawSourceContentRef,
+    flushPendingEditorChangeRef,
+    restoreTransitionRef,
+    setRawModeContentOverride,
+    vaultPath,
+  } = options
   return useCallback(async () => {
     rawSourceContentRef.current = activeTabContent
     const serializeRichEditorContent = flushPendingEditorChangeRef?.current?.() ?? true
@@ -176,6 +183,7 @@ function useHandleFlushPending({
       editor,
       activeTabPath,
       activeTabContent,
+      editorContentPath,
       rawLatestContentRef,
       serializeRichEditorContent,
       vaultPath,
@@ -197,6 +205,7 @@ function useHandleFlushPending({
     activeTabContent,
     activeTabPath,
     editor,
+    editorContentPath,
     flushPendingEditorChangeRef,
     restoreTransitionRef,
     rawInitialContentRef,
@@ -207,18 +216,7 @@ function useHandleFlushPending({
   ])
 }
 
-function useHandleBeforeRawEnd({
-  activeTabPath,
-  activeTabContent,
-  onContentChange,
-  rawInitialContentRef,
-  rawBufferPathRef,
-  rawLatestContentRef,
-  rawSourceContentRef,
-  restoreTransitionRef,
-  setPendingRawExitContent,
-  setRawModeContentOverride,
-}: {
+function useHandleBeforeRawEnd(options: {
   activeTabPath: string | null
   activeTabContent: string | null
   onContentChange?: (path: string, content: string) => void
@@ -230,20 +228,39 @@ function useHandleBeforeRawEnd({
   setPendingRawExitContent: React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>
   setRawModeContentOverride: React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>
 }) {
+  const {
+    activeTabPath,
+    activeTabContent,
+    onContentChange,
+    rawInitialContentRef,
+    rawBufferPathRef,
+    rawLatestContentRef,
+    rawSourceContentRef,
+    restoreTransitionRef,
+    setPendingRawExitContent,
+    setRawModeContentOverride,
+  } = options
   return useCallback(() => {
     const restoreTransition = restoreTransitionRef.current
     restoreTransition.roundTripRawRestore = capturePendingRoundTripRawRestore(activeTabPath)
     restoreTransition.richRestore = captureRawEditorPositionSnapshot(document)
     restoreTransition.rawRestore = null
-    setPendingRawExitContent(rememberPendingRawExitContent({
+    setPendingRawExitContent(
+      rememberPendingRawExitContent({
       activeTabPath,
       activeTabContent,
       rawInitialContent: rawInitialContentRef.current,
       rawLatestContentRef,
       onContentChange,
-    }))
+      }),
+    )
     setRawModeContentOverride(null)
-    resetRawBufferState({ rawInitialContentRef, rawBufferPathRef, rawLatestContentRef, rawSourceContentRef })
+    resetRawBufferState({
+      rawInitialContentRef,
+      rawBufferPathRef,
+      rawLatestContentRef,
+      rawSourceContentRef,
+    })
   }, [
     activeTabContent,
     activeTabPath,
@@ -290,18 +307,25 @@ export function useRawModeWithFlush(
   vaultPath?: string,
   flushPendingEditorChangeRef?: React.MutableRefObject<(() => boolean) | null>,
 ) {
+  const { path: editorContentPath } = useEditorContentPathSignal()
   const rawLatestContentRef = useRef<string | null>(null)
   const rawInitialContentRef = useRef<string | null>(null)
   const rawBufferPathRef = useRef<string | null>(null)
   const rawSourceContentRef = useRef<string | null>(null)
   const restoreTransitionRef = useRef(createEditorModeRestoreTransition())
   const [contentTransition, setContentTransition] = useState(createRawModeContentTransition)
-  const setPendingRawExitContent = useCallback<React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>>((action) => {
-    setContentTransition(transition => withPendingRawExitContent(transition, action))
-  }, [])
-  const setRawModeContentOverride = useCallback<React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>>((action) => {
-    setContentTransition(transition => withRawModeContentOverride(transition, action))
-  }, [])
+  const setPendingRawExitContent = useCallback<React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>>(
+    (action) => {
+      setContentTransition((transition) => withPendingRawExitContent(transition, action))
+    },
+    [],
+  )
+  const setRawModeContentOverride = useCallback<React.Dispatch<React.SetStateAction<PendingRawExitContent | null>>>(
+    (action) => {
+      setContentTransition((transition) => withRawModeContentOverride(transition, action))
+    },
+    [],
+  )
   const effectiveActiveTabContent = resolveActiveTabContent({
     activeTabContent,
     activeTabPath,
@@ -326,6 +350,7 @@ export function useRawModeWithFlush(
     editor,
     activeTabPath,
     activeTabContent: effectiveActiveTabContent,
+    editorContentPath,
     rawInitialContentRef,
     rawLatestContentRef,
     rawSourceContentRef,

@@ -6,12 +6,18 @@ import { THEME_MODE_STORAGE_KEY } from '../lib/themeMode'
 import type { AiAgentsStatus } from '../lib/aiAgents'
 import type { VaultOption } from './StatusBar'
 
-const { trackEventMock } = vi.hoisted(() => ({
+const { trackEventMock, registerEscapeSurfaceMock, unregisterEscapeSurfaceMock } = vi.hoisted(() => ({
   trackEventMock: vi.fn(),
+  registerEscapeSurfaceMock: vi.fn(),
+  unregisterEscapeSurfaceMock: vi.fn(),
 }))
 
 vi.mock('../lib/telemetry', () => ({
   trackEvent: trackEventMock,
+}))
+
+vi.mock('../utils/macosDismissableEscapeSurface', () => ({
+  registerMacosDismissableEscapeSurface: registerEscapeSurfaceMock,
 }))
 
 const emptySettings: Settings = {
@@ -97,6 +103,20 @@ describe('SettingsPanel', () => {
   const onSave = vi.fn()
   const onClose = vi.fn()
   const localStorageMock = createStorageMock()
+
+  it('registers only while the Settings surface is visible', () => {
+    registerEscapeSurfaceMock.mockReturnValue(unregisterEscapeSurfaceMock)
+    const view = render(
+      <SettingsPanel open={true} settings={emptySettings} onSave={onSave} onClose={onClose} />
+    )
+
+    expect(registerEscapeSurfaceMock).toHaveBeenCalledOnce()
+
+    view.rerender(
+      <SettingsPanel open={false} settings={emptySettings} onSave={onSave} onClose={onClose} />
+    )
+    expect(unregisterEscapeSurfaceMock).toHaveBeenCalledOnce()
+  })
 
   function renderOpenSettings(settings: Settings = emptySettings) {
     return render(
@@ -893,6 +913,36 @@ describe('SettingsPanel', () => {
     )
 
     expectAutoGitControlsDisabled()
+  })
+
+  it('shows the parent Git repository root', async () => {
+    const handlers = window.__mockHandlers as Record<string, unknown>
+    const originalHandler = handlers.git_workspace_info
+    handlers.git_workspace_info = () => ({
+      vaultRoot: '/repo/docs',
+      gitRoot: '/repo',
+      vaultPathspec: 'docs',
+      gitRootRelation: 'parent',
+      resolutionFailure: null,
+    })
+
+    render(
+      <SettingsPanel
+        open={true}
+        settings={emptySettings}
+        isGitVault={true}
+        vaultPath="/repo/docs"
+        onSave={onSave}
+        onClose={onClose}
+      />
+    )
+
+    const root = await screen.findByTestId('settings-git-root')
+    expect(root).toHaveTextContent('/repo')
+    expect(root).toBeVisible()
+    expect(screen.getByText(/Repository-wide sync actions use this parent folder/)).toBeInTheDocument()
+
+    handlers.git_workspace_info = originalHandler
   })
 
   it('saves the initial H1 auto-rename preference when toggled off', () => {

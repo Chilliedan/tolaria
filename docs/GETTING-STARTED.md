@@ -115,6 +115,20 @@ Set `LAPUTA_PREPUSH_LOCAL=1` to force the local fallback path. If CircleCI has d
 
 The sidecar is Linux-based, so keep native macOS Tauri QA and app-focus screenshot checks on the host machine. The Chunk config is intended for portable frontend, Rust, coverage, and Playwright smoke checks. Avoid starting multiple `chunk validate --remote ...` processes against the same sidecar at once; each validate run syncs the checkout, so concurrent validates can race.
 
+## CircleCI
+
+CircleCI is the authoritative outer-loop CI/CD system. `.circleci/config.yml` runs the same
+frontend, Rust, and Playwright lane scripts used by Chunk, then owns native macOS, Linux, and
+Windows release builds, GitHub Release publication, and documentation deployment.
+
+Validate configuration changes before pushing:
+
+```bash
+circleci config validate .circleci/config.yml
+```
+
+See `.circleci/README.md` for required contexts, secrets, branch checks, and release behavior.
+
 ## Starter Vaults And Remotes
 
 `create_getting_started_vault` clones the public starter repo and then removes every git remote from the new local copy. That means Getting Started vaults open local-only by default. Users connect a compatible remote later through the bottom-bar `No remote` chip or the command palette, both of which feed the same `AddRemoteModal` and `git_add_remote` backend flow.
@@ -519,10 +533,11 @@ BASE_URL="http://localhost:5173" npx playwright test tests/smoke/<slug>.spec.ts
 1. **Agent system prompt**: Edit `src/utils/ai-agent.ts` (inline system prompt string)
 2. **Context building**: Edit `src/utils/ai-context.ts` for what data is sent to the agent
 3. **Tool action display**: Edit `src/components/AiActionCard.tsx`
-4. **Permission-mode UI and request plumbing**: Edit `src/lib/aiAgentPermissionMode.ts`, `src/components/AiPanel*.tsx`, `src/hooks/useCliAiAgent.ts`, and `src/utils/streamAiAgent.ts`
-5. **Shared CLI runtime behavior**: Edit `src-tauri/src/cli_agent_runtime.rs` for process lifecycle, prompt wrapping, version probing, and common Tolaria MCP path handling.
-6. **Agent-specific arguments/events**: Edit the per-agent adapter modules (`claude_cli.rs`, `codex_cli.rs`, `opencode_*`, `pi_*`, `antigravity_*`, `kiro_*`). Keep Codex Safe on `read-only` + `untrusted` and Codex Power User on active-vault `workspace-write` + `never`, keep Pi, Antigravity, and Kiro on transient MCP config, and do not use dangerous permission bypasses unless an ADR explicitly designs a new mode. Pi's transient agent directory must be seeded from the user's existing Pi agent directory before Tolaria MCP is merged so standalone provider/auth setup keeps working. Antigravity Safe uses the boolean `--sandbox` flag, Power User uses `--dangerously-skip-permissions` by ADR-0159, and workspace MCP config lives in `.agents/mcp_config.json`. Kiro receives prompt content over stdin and writes Tolaria MCP config into `.kiro/settings/mcp.json` in the active vault.
-7. **Availability probing**: Edit `src/hooks/useAiAgentsStatus.ts` and `src-tauri/src/ai_agents.rs` for AI-agent install/status detection. Keep renderer probing deferred until after first paint, skip it when AI features or AI surfaces are unavailable, and keep backend per-agent CLI checks parallel so missing tools do not serialize shell startup cost.
+4. **Agent/model selector and discovery**: Edit `src/components/AiAgentModelPicker.tsx`, `src/hooks/useAiAgentModelCatalog.ts`, `src/hooks/useAiAgentModelSelection.ts`, and the relevant Rust adapter. Keep installed agents and their verified models grouped in the single composer selector; direct local/API targets remain separate groups.
+5. **Permission-mode UI and request plumbing**: Edit `src/lib/aiAgentPermissionMode.ts`, `src/components/AiPanel*.tsx`, `src/hooks/useCliAiAgent.ts`, and `src/utils/streamAiAgent.ts`
+6. **Shared CLI runtime behavior**: Edit `src-tauri/src/cli_agent_runtime.rs` for process lifecycle, prompt wrapping, version probing, and common Tolaria MCP path handling.
+7. **Agent-specific arguments/events**: Edit the per-agent adapter modules (`claude_cli.rs`, `codex_cli.rs`, `opencode_*`, `pi_*`, `antigravity_*`, `kiro_*`). Keep Codex Safe on `read-only` + `on-request` and Codex Power User on active-vault `workspace-write` + `never`, keep Pi, Antigravity, and Kiro on transient MCP config, and do not use dangerous permission bypasses unless an ADR explicitly designs a new mode. Pi's transient agent directory must be seeded from the user's existing Pi agent directory before Tolaria MCP is merged so standalone provider/auth setup keeps working. Antigravity Safe uses the boolean `--sandbox` flag, Power User uses `--dangerously-skip-permissions` by ADR-0159, and workspace MCP config lives in `.agents/mcp_config.json`. Kiro receives prompt content over stdin and writes Tolaria MCP config into `.kiro/settings/mcp.json` in the active vault.
+8. **Availability probing**: Edit `src/hooks/useAiAgentsStatus.ts` and `src-tauri/src/ai_agents.rs` for AI-agent install/status detection. Keep renderer probing deferred until after first paint, skip it when AI features or AI surfaces are unavailable, and keep backend per-agent CLI checks parallel so missing tools do not serialize shell startup cost.
 
 ### Work with external MCP setup
 

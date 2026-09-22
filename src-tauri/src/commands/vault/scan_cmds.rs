@@ -123,8 +123,7 @@ pub async fn reload_vault(
     crate::sync_vault_asset_scope(&app_handle, Path::new(&path))?;
     tokio::task::spawn_blocking(move || {
         let vault_path = Path::new(&path);
-        vault::invalidate_cache(vault_path);
-        let entries = vault::scan_vault_cached(vault_path)?;
+        let entries = vault::refresh_vault_cache(vault_path)?;
         Ok(vault::filter_gitignored_entries(
             vault_path,
             entries,
@@ -147,9 +146,9 @@ pub async fn search_vault(
     let exclude_frontmatter = exclude_frontmatter.unwrap_or(false);
     tokio::task::spawn_blocking(move || {
         search::search_vault_with_options(search::SearchOptions {
-            vault_path: &vault_path,
-            query: &query,
-            mode: "keyword",
+            vault_path,
+            query,
+            mode: "keyword".to_string(),
             limit,
             hide_gitignored_files: crate::settings::hide_gitignored_files_enabled(),
             exclude_frontmatter,

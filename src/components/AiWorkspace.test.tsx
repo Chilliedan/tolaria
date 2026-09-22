@@ -6,6 +6,7 @@ import { buildAiWorkspaceTargetGroups } from './aiWorkspaceTargetGroups'
 import {
   createAiAgentAvailability,
   createMissingAiAgentsStatus,
+  type AiAgentReadiness,
   type AiAgentsStatus,
 } from '../lib/aiAgents'
 import type { AiModelProvider } from '../lib/aiTargets'
@@ -13,10 +14,12 @@ import type { AgentStatus } from '../hooks/useCliAiAgent'
 import { resetVaultConfigStore } from '../utils/vaultConfigStore'
 import type { VaultEntry } from '../types'
 import type { VaultAiGuidanceStatus } from '../lib/vaultAiGuidance'
+import { setPreferredAgentModel } from '../lib/aiAgentModels'
 
 let mockedAgentStatus: AgentStatus = 'idle'
 let mockMessages: ReturnType<typeof import('../hooks/useCliAiAgent').useCliAiAgent>['messages'] = []
 let controllerCalls: unknown[] = []
+const addLocalMarkerMock = vi.fn()
 const { generateTitleMock } = vi.hoisted(() => ({
   generateTitleMock: vi.fn(),
 }))
@@ -42,7 +45,7 @@ vi.mock('./useAiPanelController', () => ({
         status: mockedAgentStatus,
         sendMessage: vi.fn(),
         clearConversation: vi.fn(),
-        addLocalMarker: vi.fn(),
+        addLocalMarker: addLocalMarkerMock,
       },
       input: '',
       setInput: vi.fn(),
@@ -61,16 +64,25 @@ vi.mock('./useAiPanelController', () => ({
 vi.mock('./AiPanel', () => ({
   AiPanelView: ({
     composerControls,
+    defaultAiAgentReadiness,
+    defaultAiAgentReady,
     onMessageHistoryScrollStateChange,
     onSendPrompt,
     showHeader,
   }: {
     composerControls?: ReactNode
+    defaultAiAgentReadiness?: AiAgentReadiness
+    defaultAiAgentReady?: boolean
     onMessageHistoryScrollStateChange?: (scrolled: boolean) => void
     onSendPrompt?: (prompt: string) => void
     showHeader?: boolean
   }) => (
-    <div data-testid="ai-panel-view" data-show-header={String(showHeader)}>
+    <div
+      data-testid="ai-panel-view"
+      data-agent-readiness={defaultAiAgentReadiness}
+      data-agent-ready={String(defaultAiAgentReady)}
+      data-show-header={String(showHeader)}
+    >
       <button type="button" onClick={() => onSendPrompt?.('summarize quarterly sponsor outreach')}>
         Send mocked prompt
       </button>
@@ -169,6 +181,7 @@ describe('AiWorkspace', () => {
     mockedAgentStatus = 'idle'
     mockMessages = []
     controllerCalls = []
+    addLocalMarkerMock.mockReset()
     generateTitleMock.mockReset()
     generateTitleMock.mockResolvedValue('Quarterly sponsor outreach')
     localStorage.clear()
@@ -182,6 +195,48 @@ describe('AiWorkspace', () => {
     expect(groups.localAgents.some((target) => target.agent === 'antigravity')).toBe(false)
     expect(groups.localModels.map((target) => target.shortLabel)).toEqual(['Llama 3.2'])
     expect(groups.apiModels.map((target) => target.shortLabel)).toEqual(['GPT-4.1'])
+  })
+
+  it('uses parent readiness for browser mock agents when raw CLI status is missing', () => {
+    render(
+      <AiWorkspace
+        open
+        mode="docked"
+        aiAgentsStatus={createMissingAiAgentsStatus()}
+        aiModelProviders={[]}
+        defaultAiAgentReady
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('ai-panel-view')).toHaveAttribute('data-agent-readiness', 'ready')
+    expect(screen.getByTestId('ai-panel-view')).toHaveAttribute('data-agent-ready', 'true')
+    expect(controllerCalls[0]).toEqual(expect.objectContaining({
+      defaultAiAgentReadiness: 'ready',
+      defaultAiAgentReady: true,
+    }))
+  })
+
+  it('keeps unavailable default agents missing when parent readiness is false', () => {
+    render(
+      <AiWorkspace
+        open
+        mode="docked"
+        aiAgentsStatus={createMissingAiAgentsStatus()}
+        aiModelProviders={[]}
+        defaultAiAgentReady={false}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('ai-panel-view')).toHaveAttribute('data-agent-readiness', 'missing')
+    expect(screen.getByTestId('ai-panel-view')).toHaveAttribute('data-agent-ready', 'false')
+    expect(controllerCalls[0]).toEqual(expect.objectContaining({
+      defaultAiAgentReadiness: 'missing',
+      defaultAiAgentReady: false,
+    }))
   })
 
   it('creates chats from the sidebar and hides the legacy AI panel header', () => {
@@ -214,7 +269,7 @@ describe('AiWorkspace', () => {
     expect(workspace).toHaveAttribute('data-ai-workspace-expanded', 'false')
     expect(workspace).not.toHaveClass('fixed')
     expect(workspace).toHaveClass('bg-sidebar')
-    expect(workspace).toHaveStyle({ width: '320px', minWidth: '320px' })
+    expect(workspace).toHaveStyle({ width: '360px', minWidth: '320px' })
     const header = screen.getByTestId('ai-workspace-side-header')
     const tabStrip = screen.getByTestId('ai-workspace-side-tabs')
     expect(header).not.toHaveClass('border-b')
@@ -339,8 +394,11 @@ describe('AiWorkspace', () => {
     render(<AiWorkspace open mode="docked" aiAgentsStatus={installedStatuses()} aiModelProviders={providers} vaultPath="/tmp/vault" onClose={vi.fn()} />)
 
     const workspace = screen.getByTestId('ai-workspace')
+    const horizontalResizeHandle = screen.getByTestId('ai-workspace-left-resize')
+    expect(horizontalResizeHandle).toHaveClass('inset-y-0', 'h-auto', 'min-h-0', 'w-2', 'rounded-none', 'p-0')
+    expect(screen.getByTestId('ai-workspace-top-resize')).toHaveClass('h-2', 'min-h-0', 'w-auto', 'rounded-none', 'p-0')
     fireEvent.click(screen.getByRole('button', { name: 'Expand AI chat list' }))
-    fireEvent.mouseDown(screen.getByTestId('ai-workspace-left-resize'), { clientX: 100, clientY: 20 })
+    fireEvent.mouseDown(horizontalResizeHandle, { clientX: 100, clientY: 20 })
     fireEvent.mouseMove(window, { clientX: 60, clientY: 20 })
     fireEvent.mouseUp(window)
     expect(workspace).toHaveStyle({ width: '600px' })
@@ -361,12 +419,12 @@ describe('AiWorkspace', () => {
     fireEvent.mouseDown(screen.getByTestId('ai-workspace-left-resize'), { clientX: 100, clientY: 20 })
     fireEvent.mouseMove(window, { clientX: 40, clientY: 20 })
     fireEvent.mouseUp(window)
-    expect(workspace).toHaveStyle({ width: '380px' })
+    expect(workspace).toHaveStyle({ width: '420px' })
 
     unmount()
     render(<AiWorkspace open mode="side" aiAgentsStatus={installedStatuses()} aiModelProviders={providers} vaultPath="/tmp/vault" onClose={vi.fn()} />)
 
-    expect(screen.getByTestId('ai-workspace')).toHaveStyle({ width: '380px' })
+    expect(screen.getByTestId('ai-workspace')).toHaveStyle({ width: '420px' })
   })
 
   it('separates the guidance warning from the header and uses a short restore action', () => {
@@ -482,7 +540,6 @@ describe('AiWorkspace', () => {
     })
     const menu = await screen.findByRole('menu')
 
-    expect(within(menu).getByText('Local agents')).toBeTruthy()
     expect(within(menu).getByText('Local models')).toBeTruthy()
     expect(within(menu).getByText('API models')).toBeTruthy()
     expect(within(menu).getByText('Claude Code')).toBeTruthy()
@@ -490,6 +547,237 @@ describe('AiWorkspace', () => {
     expect(within(menu).queryByText('Antigravity CLI')).toBeNull()
     expect(within(menu).getByText('Ollama · Llama 3.2')).toBeTruthy()
     expect(within(menu).getByText('OpenAI · GPT-4.1')).toBeTruthy()
+  })
+
+  it('persists a verified model with the conversation and next invocation', async () => {
+    const onConversationSettingsChange = vi.fn()
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={[]}
+        conversationSettings={[{
+          id: 'codex-chat',
+          title: 'Codex chat',
+          target_id: 'agent:codex',
+          model_id: null,
+          archived: false,
+        }]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+        onConversationSettingsChange={onConversationSettingsChange}
+      />,
+    )
+
+    const trigger = await screen.findByTestId('ai-workspace-target-trigger')
+    expect(trigger).toHaveAccessibleName('AI target: Codex, Model: Agent default')
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-busy', 'false'))
+    act(() => {
+      trigger.focus()
+      fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    })
+    fireEvent.click(within(await screen.findByRole('menu')).getByText('GPT-5.6 Sol'))
+
+    await waitFor(() => {
+      expect(onConversationSettingsChange).toHaveBeenLastCalledWith([
+        expect.objectContaining({ id: 'codex-chat', model_id: 'gpt-5.6-sol' }),
+      ])
+    })
+    expect(controllerCalls.at(-1)).toEqual(expect.objectContaining({ model: 'gpt-5.6-sol' }))
+  })
+
+  it('combines installed agents and their models in one composer selector', async () => {
+    const onConversationSettingsChange = vi.fn()
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={[]}
+        conversationSettings={[{
+          id: 'combined-picker-chat',
+          title: 'Combined picker chat',
+          target_id: 'agent:codex',
+          model_id: null,
+          archived: false,
+        }]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+        onConversationSettingsChange={onConversationSettingsChange}
+      />,
+    )
+
+    const trigger = await screen.findByTestId('ai-workspace-target-trigger')
+    expect(screen.queryByTestId('ai-workspace-model-trigger')).toBeNull()
+    expect(trigger).toHaveAccessibleName('AI target: Codex, Model: Agent default')
+    expect(screen.getByTestId('ai-workspace-composer-controls')).toHaveClass('flex', 'items-center')
+    await waitFor(() => expect(trigger).toHaveAttribute('aria-busy', 'false'))
+
+    act(() => {
+      trigger.focus()
+      fireEvent.keyDown(trigger, { key: 'ArrowDown' })
+    })
+    const menu = await screen.findByRole('menu')
+    expect(within(menu).getByText('Claude Code')).toBeTruthy()
+    expect(within(menu).getByText('Codex')).toBeTruthy()
+    fireEvent.click(within(menu).getByText('GPT-5.6 Sol'))
+
+    await waitFor(() => {
+      expect(onConversationSettingsChange).toHaveBeenLastCalledWith([
+        expect.objectContaining({
+          id: 'combined-picker-chat',
+          target_id: 'agent:codex',
+          model_id: 'gpt-5.6-sol',
+        }),
+      ])
+    })
+    expect(trigger).toHaveAccessibleName('AI target: Codex, Model: GPT-5.6 Sol')
+  })
+
+  it('restores independent model preferences when switching agents', async () => {
+    setPreferredAgentModel('codex', 'gpt-5.6-terra')
+    setPreferredAgentModel('claude_code', 'sonnet')
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={[]}
+        conversationSettings={[{
+          id: 'switch-chat',
+          title: 'Switch chat',
+          target_id: 'agent:codex',
+          model_id: 'gpt-5.6-terra',
+          archived: false,
+        }]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+      />,
+    )
+
+    const targetTrigger = await screen.findByTestId('ai-workspace-target-trigger')
+    await waitFor(() => {
+      expect(targetTrigger).toHaveAccessibleName('AI target: Codex, Model: GPT-5.6 Terra')
+      expect(targetTrigger).toHaveAttribute('aria-busy', 'false')
+    })
+    act(() => {
+      targetTrigger.focus()
+      fireEvent.keyDown(targetTrigger, { key: 'ArrowDown' })
+    })
+    fireEvent.click(within(await screen.findByRole('menu')).getByText('Sonnet'))
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-workspace-target-trigger')).toHaveAccessibleName('AI target: Claude Code, Model: Sonnet')
+    })
+
+    const claudeTrigger = screen.getByTestId('ai-workspace-target-trigger')
+    act(() => {
+      claudeTrigger.focus()
+      fireEvent.keyDown(claudeTrigger, { key: 'ArrowDown' })
+    })
+    fireEvent.click(within(await screen.findByRole('menu')).getByText('GPT-5.6 Terra'))
+    await waitFor(() => {
+      expect(screen.getByTestId('ai-workspace-target-trigger')).toHaveAccessibleName('AI target: Codex, Model: GPT-5.6 Terra')
+    })
+  })
+
+  it('falls back visibly when a saved model is no longer available', async () => {
+    setPreferredAgentModel('codex', 'removed-model')
+    const onConversationSettingsChange = vi.fn()
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={[]}
+        conversationSettings={[{
+          id: 'legacy-model-chat',
+          title: 'Legacy model chat',
+          target_id: 'agent:codex',
+          model_id: 'removed-model',
+          archived: false,
+        }]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+        onConversationSettingsChange={onConversationSettingsChange}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(addLocalMarkerMock).toHaveBeenCalledWith(expect.stringContaining('Agent default'))
+    })
+    expect(onConversationSettingsChange).toHaveBeenLastCalledWith([
+      expect.objectContaining({ id: 'legacy-model-chat', model_id: null }),
+    ])
+    expect(controllerCalls.at(-1)).toEqual(expect.objectContaining({ model: undefined }))
+  })
+
+  it('locks the combined agent and model selector while a response is active', async () => {
+    mockedAgentStatus = 'thinking'
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={[]}
+        conversationSettings={[{
+          id: 'running-chat',
+          title: 'Running chat',
+          target_id: 'agent:codex',
+          model_id: 'gpt-5.6-sol',
+          archived: false,
+        }]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('ai-workspace-target-trigger')).toBeDisabled()
+    expect(screen.queryByTestId('ai-workspace-model-trigger')).toBeNull()
+  })
+
+  it('keeps direct API model targets separate from agent model choices', async () => {
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={providers}
+        conversationSettings={[{
+          id: 'api-chat',
+          title: 'API chat',
+          target_id: 'model:openai/gpt-4.1',
+          model_id: null,
+          archived: false,
+        }]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+      />,
+    )
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('ai-workspace-model-trigger')).toBeNull()
+      expect(controllerCalls.at(-1)).toEqual(expect.objectContaining({ model: undefined }))
+    })
+  })
+
+  it('clamps legacy narrow side-panel widths so the composer remains visible', async () => {
+    localStorage.setItem('tolaria:ai-workspace-side-width', '240')
+    render(
+      <AiWorkspace
+        open
+        mode="side"
+        aiAgentsStatus={installedStatuses()}
+        aiModelProviders={[]}
+        vaultPath="/tmp/vault"
+        onClose={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByTestId('ai-workspace')).toHaveStyle({ minWidth: '320px', width: '320px' })
+    expect(await screen.findByTestId('ai-workspace-target-trigger')).toHaveClass('min-w-0', 'flex-1')
+    expect(screen.queryByTestId('ai-workspace-model-trigger')).toBeNull()
+    expect(screen.getByTestId('ai-workspace-composer-controls')).toHaveClass('flex', 'items-center', 'overflow-hidden')
   })
 
   it('reports the selected workspace target to parent surfaces', async () => {
@@ -520,7 +808,7 @@ describe('AiWorkspace', () => {
       fireEvent.keyDown(trigger, { key: 'ArrowDown' })
     })
     const menu = await screen.findByRole('menu')
-    fireEvent.click(within(menu).getByRole('menuitemradio', { name: /Codex/i }))
+    fireEvent.click(within(menu).getByRole('menuitemradio', { name: 'Codex, Agent default' }))
 
     await waitFor(() => {
       expect(onActiveTargetChange).toHaveBeenLastCalledWith(expect.objectContaining({

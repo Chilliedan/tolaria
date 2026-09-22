@@ -1,3 +1,9 @@
+import {
+  canMeasurePerformance,
+  formatDuration,
+  logPerf,
+} from './performanceLogging'
+
 type NoteOpenStage =
   | 'beforeNavigateStart'
   | 'beforeNavigateEnd'
@@ -16,18 +22,6 @@ interface NoteOpenTrace {
 
 const inFlightNoteOpens = new Map<string, NoteOpenTrace>()
 
-function isVitestRuntime(): boolean {
-  return '__vitest_worker__' in globalThis
-}
-
-function canMeasurePerformance(): boolean {
-  return import.meta.env.DEV && typeof performance !== 'undefined' && !isVitestRuntime()
-}
-
-function formatDuration(durationMs: number | null): string {
-  return durationMs === null ? 'n/a' : `${durationMs.toFixed(1)}ms`
-}
-
 function measureDuration(
   trace: NoteOpenTrace,
   start: keyof NoteOpenTrace['marks'] | 'startedAt',
@@ -37,11 +31,6 @@ function measureDuration(
   const endTime = Reflect.get(trace.marks, end) as number | undefined
   if (startTime === undefined || endTime === undefined) return null
   return endTime - startTime
-}
-
-function logPerf(message: string): void {
-  if (!canMeasurePerformance()) return
-  console.debug(`[perf] ${message}`)
 }
 
 export function beginNoteOpenTrace(path: string, source: string): void {
@@ -64,6 +53,24 @@ export function markNoteOpenTrace(path: string, stage: NoteOpenStage): void {
   Reflect.set(trace.marks, stage, performance.now())
 }
 
+function editorSwapDuration(trace: NoteOpenTrace): number | null {
+  const candidateStarts: Array<keyof NoteOpenTrace['marks'] | 'startedAt'> = [
+    'contentLoadEnd',
+    'freshnessCheckEnd',
+    'beforeNavigateEnd',
+    'startedAt',
+  ]
+  for (const start of candidateStarts) {
+    const duration = measureDuration(trace, start, 'editorSwapped')
+    if (duration !== null) return duration
+  }
+  return null
+}
+
+function cacheStatus(trace: NoteOpenTrace): 'hit' | 'miss' {
+  return Reflect.get(trace.marks, 'cacheReady') === undefined ? 'miss' : 'hit'
+}
+
 export function finishNoteOpenTrace(path: string): void {
   if (!canMeasurePerformance()) return
   const trace = inFlightNoteOpens.get(path)
@@ -75,10 +82,7 @@ export function finishNoteOpenTrace(path: string): void {
   const beforeNavigate = measureDuration(trace, 'beforeNavigateStart', 'beforeNavigateEnd')
   const freshnessCheck = measureDuration(trace, 'freshnessCheckStart', 'freshnessCheckEnd')
   const contentLoad = measureDuration(trace, 'contentLoadStart', 'contentLoadEnd')
-  const editorSwap = measureDuration(trace, 'contentLoadEnd', 'editorSwapped')
-    ?? measureDuration(trace, 'freshnessCheckEnd', 'editorSwapped')
-    ?? measureDuration(trace, 'beforeNavigateEnd', 'editorSwapped')
-    ?? measureDuration(trace, 'startedAt', 'editorSwapped')
+  const editorSwap = editorSwapDuration(trace)
 
   logPerf(
     `noteOpen path=${path} source=${trace.source} total=${formatDuration(total)} `
@@ -86,7 +90,7 @@ export function finishNoteOpenTrace(path: string): void {
     + `freshnessCheck=${formatDuration(freshnessCheck)} `
     + `contentLoad=${formatDuration(contentLoad)} `
     + `editorSwap=${formatDuration(editorSwap)} `
-    + `cache=${Reflect.get(trace.marks, 'cacheReady') !== undefined ? 'hit' : 'miss'}`,
+    + `cache=${cacheStatus(trace)}`,
   )
   inFlightNoteOpens.delete(path)
 }

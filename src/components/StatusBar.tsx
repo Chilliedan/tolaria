@@ -5,16 +5,12 @@ import type { AppLocale } from '../lib/i18n'
 import type { GitRemoteStatus, SyncStatus } from '../types'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import type { GitRepositoryOption } from '../utils/gitRepositories'
-import {
-  StatusBarPrimarySection,
-  StatusBarSecondarySection,
-} from './status-bar/StatusBarSections'
+import { StatusBarPrimarySection, StatusBarSecondarySection } from './status-bar/StatusBarSections'
 import type { VaultOption } from './status-bar/types'
 
 export type { VaultOption } from './status-bar/types'
 
 const COMPACT_STATUS_BAR_MAX_WIDTH = 1000
-const STACKED_STATUS_BAR_MAX_WIDTH = 900
 const STATUS_BAR_STACKING_Z_INDEX = 30
 
 function getWindowWidth() {
@@ -23,11 +19,10 @@ function getWindowWidth() {
 
 function getStatusBarLayout(windowWidth: number) {
   const compact = windowWidth <= COMPACT_STATUS_BAR_MAX_WIDTH
-  const stacked = windowWidth <= STACKED_STATUS_BAR_MAX_WIDTH
 
   return {
     compact,
-    stacked,
+    stacked: false,
   }
 }
 
@@ -111,110 +106,33 @@ interface StatusBarFooterProps extends StatusBarProps {
   stacked: boolean
 }
 
-function StatusBarPrimaryFromFooter({
-  modifiedCount = 0,
-  vaultPath,
-  defaultWorkspacePath,
-  vaults,
-  multiWorkspaceEnabled,
-  onSwitchVault,
-  onSetDefaultWorkspace,
-  onOpenVaultSettings,
-  onOpenLocalFolder,
-  onCreateEmptyVault,
-  onCloneVault,
-  onCloneGettingStarted,
-  onClickPending,
-  onClickPulse,
-  onCommitPush,
-  commitActionPending = false,
-  gitFeaturesEnabled = true,
-  onInitializeGit,
-  isOffline = false,
-  isVaultReloading = false,
-  isGitVault = true,
-  syncStatus = 'idle',
-  lastSyncTime = null,
-  conflictCount = 0,
-  remoteStatus,
-  repositories,
-  selectedRepositoryPath,
-  onRepositoryChange,
-  onTriggerSync,
-  onPullAndPush,
-  onOpenConflictResolver,
-  buildNumber,
-  onCheckForUpdates,
-  onRemoveVault,
-  onReorderVaults,
-  onUpdateWorkspaceIdentity,
-  aiFeaturesEnabled = true,
-  mcpStatus,
-  onInstallMcp,
-  locale = 'en',
-  compact,
-  stacked,
-}: StatusBarFooterProps) {
+function StatusBarPrimaryFromFooter(options: StatusBarFooterProps) {
   return (
     <StatusBarPrimarySection
-      modifiedCount={modifiedCount}
-      vaultPath={vaultPath}
-      defaultWorkspacePath={defaultWorkspacePath}
-      vaults={vaults}
-      multiWorkspaceEnabled={multiWorkspaceEnabled}
-      onSwitchVault={onSwitchVault}
-      onSetDefaultWorkspace={onSetDefaultWorkspace}
-      onOpenVaultSettings={onOpenVaultSettings}
-      onOpenLocalFolder={onOpenLocalFolder}
-      onCreateEmptyVault={onCreateEmptyVault}
-      onCloneVault={onCloneVault}
-      onCloneGettingStarted={onCloneGettingStarted}
-      onClickPending={onClickPending}
-      onClickPulse={onClickPulse}
-      onCommitPush={onCommitPush}
-      commitActionPending={commitActionPending}
-      gitFeaturesEnabled={gitFeaturesEnabled}
-      onInitializeGit={onInitializeGit}
-      isOffline={isOffline}
-      isVaultReloading={isVaultReloading}
-      isGitVault={isGitVault}
-      syncStatus={syncStatus}
-      lastSyncTime={lastSyncTime}
-      conflictCount={conflictCount}
-      remoteStatus={remoteStatus}
-      repositories={repositories}
-      selectedRepositoryPath={selectedRepositoryPath}
-      onRepositoryChange={onRepositoryChange}
-      onTriggerSync={onTriggerSync}
-      onPullAndPush={onPullAndPush}
-      onOpenConflictResolver={onOpenConflictResolver}
-      buildNumber={buildNumber}
-      onCheckForUpdates={onCheckForUpdates}
-      onRemoveVault={onRemoveVault}
-      onReorderVaults={onReorderVaults}
-      onUpdateWorkspaceIdentity={onUpdateWorkspaceIdentity}
-      mcpStatus={aiFeaturesEnabled ? mcpStatus : undefined}
-      onInstallMcp={onInstallMcp}
-      locale={locale}
-      stacked={stacked}
-      compact={compact}
+      {...options}
+      modifiedCount={options.modifiedCount ?? 0}
+      syncStatus={options.syncStatus ?? 'idle'}
+      lastSyncTime={options.lastSyncTime ?? null}
+      conflictCount={options.conflictCount ?? 0}
+      mcpStatus={options.aiFeaturesEnabled === false ? undefined : options.mcpStatus}
     />
   )
 }
 
-function StatusBarSecondaryFromFooter({
-  noteCount,
-  zoomLevel = 100,
-  themeMode = 'light',
-  onZoomReset,
-  onToggleThemeMode,
-  onOpenFeedback,
-  onOpenDocs,
-  onOpenSettings,
-  locale = 'en',
-  compact,
-  stacked,
-}: StatusBarFooterProps) {
+function StatusBarSecondaryFromFooter(options: StatusBarFooterProps) {
+  const {
+    noteCount,
+    zoomLevel = 100,
+    themeMode = 'light',
+    onZoomReset,
+    onToggleThemeMode,
+    onOpenFeedback,
+    onOpenDocs,
+    onOpenSettings,
+    locale = 'en',
+    compact,
+    stacked,
+  } = options
   return (
       <StatusBarSecondarySection
         noteCount={noteCount}

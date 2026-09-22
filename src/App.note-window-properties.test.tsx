@@ -202,6 +202,7 @@ vi.mock('./mock-tauri', () => ({
 }))
 
 import App from './App'
+import { APP_STORAGE_KEYS } from './constants/appStorage'
 
 function renderApp(children: ReactNode) {
   return render(<TooltipProvider>{children}</TooltipProvider>)
@@ -243,6 +244,17 @@ describe('App note windows', () => {
     })
   })
 
+  it('does not replace the main window last-note state', async () => {
+    localStorage.setItem(APP_STORAGE_KEYS.lastActiveNotePath, secondEntry.path)
+
+    renderApp(<App />)
+
+    await waitFor(() => {
+      expect(editorSnapshots.at(-1)?.activeTabPath).toBe(activeEntry.path)
+    })
+    expect(localStorage.getItem(APP_STORAGE_KEYS.lastActiveNotePath)).toBe(secondEntry.path)
+  })
+
   it('opens repeated note windows through the full app vault loader', async () => {
     const firstWindow = renderApp(<App />)
 
@@ -269,6 +281,32 @@ describe('App note windows', () => {
     })
     expect(commandResults.reload_vault_entry).toHaveBeenCalledTimes(2)
     expect(vi.mocked(commandResults.list_vault).mock.calls.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('keeps automatic Git work out of secondary note windows', async () => {
+    const isGitRepo = vi.fn(() => true)
+    const getModifiedFiles = vi.fn(() => [])
+    const gitRemoteStatus = vi.fn(() => ({
+      ahead: 0,
+      behind: 0,
+      branch: 'main',
+      hasRemote: true,
+    }))
+    commandResults.is_git_repo = isGitRepo
+    commandResults.get_modified_files = getModifiedFiles
+    commandResults.git_remote_status = gitRemoteStatus
+
+    renderApp(<App />)
+
+    await waitFor(() => {
+      expect(commandResults.reload_vault_entry).toHaveBeenCalledWith({
+        path: activeEntry.path,
+        vaultPath: '/vault',
+      })
+    })
+    expect(isGitRepo).not.toHaveBeenCalled()
+    expect(getModifiedFiles).not.toHaveBeenCalled()
+    expect(gitRemoteStatus).not.toHaveBeenCalled()
   })
 
   it('probes installed AI agents in note windows for target-picker parity', async () => {

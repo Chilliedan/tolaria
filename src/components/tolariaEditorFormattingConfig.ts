@@ -5,7 +5,10 @@ import {
 } from '@blocknote/react'
 import { createElement, type ReactElement } from 'react'
 import {
+  CalendarBlank,
+  CalendarDots,
   CodeBlock,
+  Clock,
   File,
   FlowArrow,
   ImageSquare,
@@ -13,6 +16,7 @@ import {
   ListChecks,
   ListNumbers,
   Minus,
+  Note,
   Pi,
   Paragraph,
   Quotes,
@@ -30,6 +34,11 @@ import {
   type Icon as PhosphorIcon,
 } from '@phosphor-icons/react'
 import { trackEvent } from '../lib/telemetry'
+import { CALLOUT_BLOCK_TYPE, calloutHeading } from '../utils/calloutMarkdown'
+import {
+  OBSIDIAN_CALLOUT_DEFINITIONS,
+  type ObsidianCalloutType,
+} from '../utils/calloutCatalog'
 import {
   RICH_EDITOR_BLOCK_TYPE_DEFINITIONS,
   type RichEditorBlockTypeDefinition,
@@ -39,13 +48,18 @@ import { HTML_BLOCK_DEFAULT_HEIGHT, HTML_BLOCK_TYPE } from '../utils/htmlBlockMa
 import { MATH_BLOCK_TYPE } from '../utils/mathMarkdown'
 import { MERMAID_BLOCK_TYPE, mermaidFenceSource } from '../utils/mermaidMarkdown'
 import { TLDRAW_BLOCK_TYPE, TLDRAW_DEFAULT_HEIGHT } from '../utils/tldrawMarkdown'
+import { calloutIconForType } from './calloutIcons'
 
-type TolariaSlashMenuItem = DefaultReactSuggestionItem & { key: string }
+export type TolariaSlashMenuItem = DefaultReactSuggestionItem & {
+  key: string
+  submenuItems?: TolariaSlashMenuItem[]
+}
 type TolariaBlockTypeSelectItem = RichEditorBlockTypeDefinition & {
   icon: PhosphorIcon
 }
 type SlashInsertEditor = {
   getTextCursorPosition: () => { block: unknown }
+  insertInlineContent: (content: string, options: { updateSelection: true }) => void
   replaceBlocks: (blocksToReplace: unknown[], blocksToInsert: Array<Record<string, unknown>>) => void
 }
 type BlockSlashMenuItemConfig = {
@@ -57,9 +71,20 @@ type BlockSlashMenuItemConfig = {
   type: string
 }
 type TolariaSlashMenuLabels = {
-  htmlTitle: string
+  calloutTitle: string
+  calloutTypeTitles: Record<ObsidianCalloutType, string>
+  dateTitle: string
+  datetimeTitle: string
+  sandboxBlockTitle: string
   mathTitle: string
+  timeTitle: string
 }
+type DateTimeSlashCommandKind = 'date' | 'datetime' | 'time'
+type DateTimeSlashMenuLabels = Pick<
+  TolariaSlashMenuLabels,
+  'dateTitle' | 'datetimeTitle' | 'timeTitle'
+>
+type DateProvider = () => Date
 
 export const MERMAID_SLASH_COMMAND_DIAGRAM = [
   'flowchart TD',
@@ -103,8 +128,11 @@ const TOLARIA_BLOCK_TYPE_SELECT_ICONS: Record<RichEditorBlockTypeKey, PhosphorIc
 const TOLARIA_SLASH_MENU_ICONS: Partial<Record<string, PhosphorIcon>> = {
   audio: SpeakerHigh,
   bullet_list: ListBullets,
+  callout: Note,
   check_list: ListChecks,
   code_block: CodeBlock,
+  date: CalendarBlank,
+  datetime: CalendarDots,
   divider: Minus,
   emoji: Smiley,
   file: File,
@@ -120,12 +148,75 @@ const TOLARIA_SLASH_MENU_ICONS: Partial<Record<string, PhosphorIcon>> = {
   paragraph: Paragraph,
   quote: Quotes,
   table: Table,
+  time: Clock,
   toggle_heading: TextHOne,
   toggle_heading_2: TextHTwo,
   toggle_heading_3: TextHThree,
   toggle_list: ListBullets,
   video: Video,
   whiteboard: ScribbleLoop,
+}
+
+const DEFAULT_CALLOUT_TYPE_TITLES = Object.fromEntries(
+  OBSIDIAN_CALLOUT_DEFINITIONS.map(({ type }) => [type, calloutHeading(type, '')]),
+) as Record<ObsidianCalloutType, string>
+
+const DATE_TIME_SLASH_COMMANDS: ReadonlyArray<{
+  aliases: string[]
+  key: DateTimeSlashCommandKind
+  labelKey: keyof DateTimeSlashMenuLabels
+}> = [
+  { key: 'date', labelKey: 'dateTitle', aliases: ['today'] },
+  { key: 'time', labelKey: 'timeTitle', aliases: ['clock'] },
+  {
+    key: 'datetime',
+    labelKey: 'datetimeTitle',
+    aliases: ['datetime', 'timestamp', 'date time'],
+  },
+]
+
+function padDateTimePart(value: number): string {
+  return String(value).padStart(2, '0')
+}
+
+function formatLocalDateTime(date: Date, kind: DateTimeSlashCommandKind): string {
+  const dateValue = [
+    date.getFullYear(),
+    padDateTimePart(date.getMonth() + 1),
+    padDateTimePart(date.getDate()),
+  ].join('-')
+  const timeValue = [
+    padDateTimePart(date.getHours()),
+    padDateTimePart(date.getMinutes()),
+  ].join(':')
+
+  if (kind === 'date') return dateValue
+  if (kind === 'time') return timeValue
+  return `${dateValue} ${timeValue}`
+}
+
+export function createDateTimeSlashMenuItems(
+  editor: Parameters<typeof getDefaultReactSlashMenuItems>[0],
+  labels: DateTimeSlashMenuLabels = {
+    dateTitle: 'Date',
+    datetimeTitle: 'Date and time',
+    timeTitle: 'Time',
+  },
+  getCurrentDate: DateProvider = () => new Date(),
+): TolariaSlashMenuItem[] {
+  const inlineEditor = editor as unknown as SlashInsertEditor
+
+  return DATE_TIME_SLASH_COMMANDS.map(({ aliases, key, labelKey }) => ({
+    aliases,
+    key,
+    title: labels[labelKey],
+    onItemClick: () => {
+      inlineEditor.insertInlineContent(formatLocalDateTime(getCurrentDate(), key), {
+        updateSelection: true,
+      })
+      trackEvent('editor_timestamp_slash_command_used', { kind: key })
+    },
+  } as TolariaSlashMenuItem))
 }
 
 function createBoardId(): string {
@@ -184,13 +275,15 @@ export function createMathSlashMenuItem(
   })
 }
 
-export function createHtmlBlockSlashMenuItem(
+export function createSandboxBlockSlashMenuItem(
   editor: Parameters<typeof getDefaultReactSlashMenuItems>[0],
-  labels: Pick<TolariaSlashMenuLabels, 'htmlTitle'> = { htmlTitle: 'HTML block' },
+  labels: Pick<TolariaSlashMenuLabels, 'sandboxBlockTitle'> = {
+    sandboxBlockTitle: 'HTML block',
+  },
 ): TolariaSlashMenuItem {
   return createBlockSlashMenuItem(editor, {
     key: 'html',
-    title: labels.htmlTitle,
+    title: labels.sandboxBlockTitle,
     aliases: ['embed', 'iframe', 'sandbox', 'html'],
     eventName: 'editor_html_block_slash_command_used',
     type: HTML_BLOCK_TYPE,
@@ -199,6 +292,44 @@ export function createHtmlBlockSlashMenuItem(
       html: HTML_SLASH_COMMAND_SOURCE,
     },
   })
+}
+
+export function createCalloutSlashMenuItem(
+  editor: Parameters<typeof getDefaultReactSlashMenuItems>[0],
+  labels: Pick<TolariaSlashMenuLabels, 'calloutTitle' | 'calloutTypeTitles'> = {
+    calloutTitle: 'Callout',
+    calloutTypeTitles: DEFAULT_CALLOUT_TYPE_TITLES,
+  },
+): TolariaSlashMenuItem {
+  const blockEditor = editor as unknown as SlashInsertEditor
+  const submenuItems = OBSIDIAN_CALLOUT_DEFINITIONS.map(({ aliases, type }) => ({
+    aliases: [...aliases],
+    icon: createElement(calloutIconForType(type), {
+      'aria-hidden': true,
+      className: 'size-[18px]',
+      size: 18,
+      weight: 'regular',
+    }),
+    key: `callout_${type}`,
+    onItemClick: () => {
+      const block = blockEditor.getTextCursorPosition().block
+      blockEditor.replaceBlocks([block], [{
+        type: CALLOUT_BLOCK_TYPE,
+        props: { calloutType: type, title: '' },
+      }])
+      trackEvent('editor_callout_slash_command_used', { type })
+    },
+    title: labels.calloutTypeTitles[type],
+  } satisfies TolariaSlashMenuItem))
+
+  return {
+    aliases: ['admonition', 'alert', 'aside'],
+    badge: '›',
+    key: 'callout',
+    onItemClick: () => {},
+    submenuItems,
+    title: labels.calloutTitle,
+  } as TolariaSlashMenuItem
 }
 
 function createBlockSlashMenuItem(
@@ -294,13 +425,26 @@ export function getTolariaSlashMenuItems(
   query: string,
   labels?: TolariaSlashMenuLabels,
 ) {
+  const defaultItems = getDefaultReactSlashMenuItems(editor) as TolariaSlashMenuItem[]
+  const otherGroup = defaultItems.find((item) => item.key === 'emoji')?.group
+  const quoteIndex = defaultItems.findIndex(item => item.key === 'quote')
+  const calloutItem = {
+    ...createCalloutSlashMenuItem(editor, labels),
+    group: defaultItems.at(quoteIndex)?.group,
+  }
+  defaultItems.splice(quoteIndex === -1 ? 0 : quoteIndex + 1, 0, calloutItem)
+  const dateTimeItems = createDateTimeSlashMenuItems(editor, labels).map((item) => ({
+    ...item,
+    group: otherGroup,
+  }))
   const items = addItemsToMediaGroup(
-    getDefaultReactSlashMenuItems(editor) as TolariaSlashMenuItem[],
+    defaultItems,
     [
       createMermaidSlashMenuItem(editor),
       createMathSlashMenuItem(editor, labels),
-      createHtmlBlockSlashMenuItem(editor, labels),
+      createSandboxBlockSlashMenuItem(editor, labels),
       createWhiteboardSlashMenuItem(editor),
+      ...dateTimeItems,
     ],
   )
 
