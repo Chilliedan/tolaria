@@ -133,6 +133,17 @@ describe('vault attachment URL/path conversions', () => {
     ).toBe('attachments/shot.png')
   })
 
+  it('round-trips web server asset URLs like Tauri asset URLs', () => {
+    const url = '/api/asset/%2Fvault%2Fattachments%2Fmy%20shot.png'
+    expect(isTauriAssetUrl({ url })).toBe(true)
+    expect(isVaultAttachmentUrl({ url })).toBe(true)
+    expect(portableAttachmentPathFromCurrentVaultAssetUrl({ url, vaultPath: '/vault' }))
+      .toBe('attachments/my shot.png')
+    expect(resolveVaultAttachmentPath({ url, vaultPath: '/vault' }))
+      .toBe('/vault/attachments/my shot.png')
+    expect(isTauriAssetUrl({ url: '/api/assets/%2Fvault%2Fshot.png' })).toBe(false)
+  })
+
   it('identifies every Tauri asset URL form used by editor media flows', () => {
     expect(isTauriAssetUrl({ url: 'asset://localhost/%2Fvault%2Fattachments%2Fshot.png' })).toBe(true)
     expect(isTauriAssetUrl({ url: 'http://asset.localhost/%2Fvault%2Fattachments%2Fshot.png' })).toBe(true)

@@ -240,3 +240,4 @@ proposed → active → superseded
 | [0904](0904-web-client-compatibility-layer.md) | Web client compatibility layer for reusing the desktop app over HTTP | active |
 | [0905](0905-web-server-git-sync-model.md) | Web server git sync model (per-save authored commits, repo lock) | active |
 | [0906](0906-web-command-surface-completion.md) | Web command surface completion (git reads, folder ops, desktop-only no-ops) | active |
+| [0907](0907-web-server-vault-image-assets.md) | Web server serves vault image attachments over an authenticated asset route | active |

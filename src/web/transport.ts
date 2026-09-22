@@ -8,12 +8,14 @@
  */
 
 /**
- * On web there is no local file serving; return the path unchanged.
- * Components that use convertFileSrc should gracefully handle the case
- * where the URL cannot load (404) — the same degradation as 501 on invoke.
+ * Map a vault file path to the server's authenticated asset route, mirroring
+ * Tauri's `asset://localhost/<encoded path>` shape (the prefix is recognised
+ * by `src/utils/vaultAttachments.ts`). The server serves image types from
+ * inside the vault only; anything else 404s, like a missing asset.
  */
-export function convertFileSrc(filePath: string): string {
-  return filePath
+export function convertFileSrc(filePath: string, protocol = 'asset'): string {
+  if (protocol !== 'asset') return filePath
+  return `/api/asset/${encodeURIComponent(filePath)}`
 }
 
 /** Stub for the Tauri Channel class used by the updater flow. On web the
@@ -63,55 +65,80 @@ async function sha256Hex(text: string): Promise<string | null> {
 /** Reads the double-submit CSRF token from the `tolaria_csrf` cookie. */
 function csrfToken(): string {
   if (typeof document === 'undefined') return ''
-  const m = document.cookie.match(/(?:^|;\s*)tolaria_csrf=([^;]+)/)
-  return m ? m[1] : ''
+  const prefix = 'tolaria_csrf='
+  const cookie = document.cookie.split(';').map((part) => part.trim()).find((part) => part.startsWith(prefix))
+  return cookie ? cookie.slice(prefix.length) : ''
+}
+
+type InvokeArgs = Record<string, unknown> | undefined
+
+function notePathArg(args: InvokeArgs): string | undefined {
+  return typeof args?.path === 'string' ? args.path : undefined
+}
+
+/** Attach the last known `baseHash` to saves so the server can reject stale writes. */
+function requestBody(command: string, args: InvokeArgs): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...(args ?? {}) }
+  const path = notePathArg(args)
+  const baseHash = command === 'save_note_content' && path ? noteVersions.get(path) : undefined
+  return baseHash ? { ...body, baseHash } : body
+}
+
+function reloadAfterConflict(): void {
+  // Optimistic-concurrency conflict: someone else changed the note since our
+  // baseHash was recorded. Discard the stale edit and reload with the server's
+  // current version rather than risk silently clobbering it.
+  window.alert('This note changed on the server. Reloading the latest version — your last change was not saved.')
+  window.location.reload()
+}
+
+/** Statuses that degrade to `undefined` instead of throwing. */
+const DEGRADED_STATUS_ACTIONS: Record<number, () => void> = {
+  // Command not implemented on web — degrade gracefully.
+  501: () => {},
+  // Session expired or missing — bounce to login instead of throwing.
+  401: () => window.location.assign('/login'),
+  409: reloadAfterConflict,
+}
+
+function handleDegradedStatus(status: number): boolean {
+  const action = DEGRADED_STATUS_ACTIONS[status]
+  if (!action) return false
+  if (typeof window !== 'undefined') action()
+  return true
+}
+
+type ErrorBody = { error?: unknown }
+
+async function errorMessage(res: Response, command: string): Promise<string> {
+  const detail = (await res.json().catch(() => ({ error: res.statusText }))) as ErrorBody
+  return typeof detail.error === 'string' ? detail.error : `invoke ${command} failed`
+}
+
+/** Remember the content hash of notes we read or wrote, for the next save's `baseHash`. */
+async function recordNoteVersion(command: string, args: InvokeArgs, data: unknown): Promise<void> {
+  const path = notePathArg(args)
+  if (!path) return
+  let content: string | undefined
+  if (command === 'get_note_content' && typeof data === 'string') content = data
+  if (command === 'save_note_content') content = String(args?.content ?? '')
+  if (content === undefined) return
+  const version = await sha256Hex(content)
+  if (version) noteVersions.set(path, version)
 }
 
 export async function invoke<T = unknown>(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  const path = typeof args?.path === 'string' ? (args.path as string) : undefined
-  let body: Record<string, unknown> = { ...(args ?? {}) }
-  if (command === 'save_note_content' && path && noteVersions.has(path)) {
-    body = { ...body, baseHash: noteVersions.get(path) }
-  }
   const res = await fetch(`/api/cmd/${command}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken() },
-    body: JSON.stringify(body),
+    body: JSON.stringify(requestBody(command, args)),
   })
-  if (res.status === 501) {
-    // Command not implemented on web (read-only phase) — degrade gracefully.
-    return undefined as T
-  }
-  if (res.status === 401) {
-    // Session expired or missing — bounce to login instead of throwing.
-    if (typeof window !== 'undefined') window.location.assign('/login')
-    return undefined as T
-  }
-  if (res.status === 409) {
-    // Optimistic-concurrency conflict: someone else changed the note since
-    // our baseHash was recorded. Discard the stale edit and reload with the
-    // server's current version rather than risk silently clobbering it.
-    if (typeof window !== 'undefined') {
-      window.alert('This note changed on the server. Reloading the latest version — your last change was not saved.')
-      window.location.reload()
-    }
-    return undefined as T
-  }
-  if (!res.ok) {
-    const detail = await res.json().catch(() => ({ error: res.statusText }))
-    throw new Error(typeof (detail as { error?: string })?.error === 'string' ? (detail as { error: string }).error : `invoke ${command} failed`)
-  }
+  if (handleDegradedStatus(res.status)) return undefined as T
+  if (!res.ok) throw new Error(await errorMessage(res, command))
   const data = (await res.json()) as T
-  if (command === 'get_note_content' && path && typeof data === 'string') {
-    const version = await sha256Hex(data)
-    if (version) noteVersions.set(path, version)
-  }
-  if (command === 'save_note_content' && path) {
-    const version = await sha256Hex(String((args as { content?: unknown } | undefined)?.content ?? ''))
-    if (version) noteVersions.set(path, version)
-  }
+  await recordNoteVersion(command, args, data)
   return data
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { invoke } from './transport'
+import { convertFileSrc, invoke } from './transport'
 
 describe('web invoke transport', () => {
   beforeEach(() => { vi.restoreAllMocks() })
@@ -68,5 +68,16 @@ describe('web invoke transport', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify('hello world'), { status: 200 })))
     const content = await invoke<string>('get_note_content', { path: '/v/n.md' })
     expect(content).toBe('hello world')
+  })
+})
+
+describe('web convertFileSrc', () => {
+  it('maps vault file paths to the authenticated asset route', () => {
+    expect(convertFileSrc('/vault/attachments/my image.png'))
+      .toBe('/api/asset/%2Fvault%2Fattachments%2Fmy%20image.png')
+  })
+
+  it('leaves custom protocols (desktop-only surfaces) unchanged', () => {
+    expect(convertFileSrc('payload', 'tolaria-html-block')).toBe('payload')
   })
 })

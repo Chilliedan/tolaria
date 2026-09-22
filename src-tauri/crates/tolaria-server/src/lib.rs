@@ -1,5 +1,6 @@
 //! Tolaria web server library — re-exports all modules for integration testing.
 
+mod asset_route;
 mod attachment_handlers;
 pub mod auth_middleware;
 pub mod auth_routes;
@@ -29,8 +30,9 @@ use crate::users::UsersDb;
 /// `static_dir` is the compiled SPA directory served as the fallback.
 ///
 /// Public routes (`GET /login`, `POST /api/auth/login`) are reachable without
-/// a session. Everything else — the RPC surface, auth/me, auth/logout, the
-/// JSON 404 catch-all, and the SPA fallback — is behind `require_auth`.
+/// a session. Everything else — the RPC surface, auth/me, auth/logout, vault
+/// image assets, the JSON 404 catch-all, and the SPA fallback — is behind
+/// `require_auth`.
 pub fn build_router(
     vault_root: PathBuf,
     static_dir: PathBuf,
@@ -59,6 +61,7 @@ pub fn build_router(
         .route("/api/cmd/:command", post(rpc::command_route))
         .route("/api/auth/logout", post(auth_routes::logout))
         .route("/api/auth/me", axum::routing::get(auth_routes::me))
+        .route("/api/asset/*path", axum::routing::get(asset_route::serve_asset))
         .route("/api/*path", axum::routing::any(static_files::api_not_found))
         .fallback_service(static_files::service(static_dir))
         .layer(axum::middleware::from_fn_with_state(

@@ -4,10 +4,15 @@ import { canWritePathToVault } from './vaultPathContainment'
 const LOCALHOST_ASSET_URL_PREFIX = 'asset://localhost/'
 const HTTP_ASSET_URL_PREFIX = 'http://asset.localhost/'
 const GENERIC_ASSET_URL_PREFIX = 'asset://'
+// The web build's convertFileSrc (src/web/transport.ts) maps file paths to the
+// web server's authenticated asset route in the same `<prefix><encoded path>`
+// shape, so editor round-trips back to portable paths work identically.
+const WEB_SERVER_ASSET_URL_PREFIX = '/api/asset/'
 const ASSET_URL_PREFIXES = [
   LOCALHOST_ASSET_URL_PREFIX,
   HTTP_ASSET_URL_PREFIX,
   GENERIC_ASSET_URL_PREFIX,
+  WEB_SERVER_ASSET_URL_PREFIX,
 ]
 const ATTACHMENTS_SEGMENT = '/attachments/'
 const RELATIVE_ATTACHMENTS_PREFIX = 'attachments/'
