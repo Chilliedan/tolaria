@@ -861,7 +861,7 @@ Phase 5 adds authenticated git commit/push/pull/status/conflict-resolution contr
 - **Autogit** (`write_handlers.rs`): every mutating write handler (`save_note_content`, `create_note*`, `delete_note`, `update_frontmatter`/`delete_frontmatter_property`) follows its write with an autogit commit via `autogit_commit_paths` (scoped to the exact path(s) touched), when an identity is present and `AppState::autogit` is enabled. `rename_note`/`rename_note_filename` use `autogit_commit_all` (`git add -A`) instead, since wikilink rewrites touch an unknowable set of files and `RenameResult` only exposes a count. A failed autogit commit logs to stderr without failing the write.
 - **Authorship**: `AppState::acting_user` resolves the session cookie to a `CommitIdentity` — author = committer = the acting user's own `git_name`/`git_email` (from `UsersDb`, stored since ADR-0902). Every commit the server makes (autogit or explicit) attributes fully to the acting user, so per-user attribution survives even though the server holds one shared push credential. `GIT_COMMITTER_*` env vars still feed pull-merge commits (which have no single acting user), configured from `TOLARIA_COMMITTER_NAME`/`TOLARIA_COMMITTER_EMAIL` at deploy time.
 - **Repo lock**: `AppState::repo_lock` (`tokio::sync::Mutex<()>`) serializes all index-mutating operations process-wide. Lock ordering is always per-path-lock (`PathLocks`) → repo-lock, never reversed, so the two lock kinds cannot deadlock.
-- **Configuration** (environment variables): `TOLARIA_COMMITTER_NAME` / `TOLARIA_COMMITTER_EMAIL` (pull-merge committer identity, defaults `Tolaria Server` / `server@tolaria.local`) and `TOLARIA_AUTOGIT` (default `true`; set `false` to disable auto-commit and rely on the explicit `git_commit` control). Push/pull use a single server-side deploy credential (SSH key or HTTPS credential helper) configured at deploy time — see the commented example in `docker-compose.yml`. Real-time WebSocket sync events are deferred to a later phase; git-sync QA is native/manual against a real deployment (see ADR-0165).
+- **Configuration** (environment variables): `TOLARIA_COMMITTER_NAME` / `TOLARIA_COMMITTER_EMAIL` (pull-merge committer identity, defaults `Tolaria Server` / `server@tolaria.local`) and `TOLARIA_AUTOGIT` (default `true`; set `false` to disable auto-commit and rely on the explicit `git_commit` control). Push/pull use a single server-side deploy credential (SSH key or HTTPS credential helper) configured at deploy time — see the commented example in `docker-compose.yml`. Real-time WebSocket sync events are deferred to a later phase; git-sync QA is native/manual against a real deployment (see ADR-0905).
 
 ### Web command surface (git reads, folder ops)
 
@@ -878,6 +878,15 @@ plus vault folder mutations. See [ADR-0906](./adr/0906-web-command-surface-compl
 - **Repo mutations** (`git_handlers::dispatch_git`, under `AppState::repo_lock`):
   `git_add_remote`, `git_discard_file`, `init_git_repo` join the existing
   commit/push/pull/conflict arms.
+- **Git workspace info** (`handlers::dispatch`, no lock): `git_workspace_info`
+  reports the git root, vault pathspec, and vault/parent relation for the
+  server's `vault_root` (any client `vaultPath` is ignored), so the Git
+  settings panel can show the repository root on web.
+- **Attachment rename** (`attachment_handlers::rename_attachment`, via
+  `dispatch_write`): containment-checked source, per-path lock, then
+  `tolaria_core::vault::rename_attachment` renames the file and rewrites
+  note references; followed by `autogit_commit_all` since the set of
+  rewritten notes is only reported as a count.
 - **Folder mutations** (`write_handlers`, path lock + `autogit_commit_all`):
   `create_vault_folder`/`delete_vault_folder`/`rename_vault_folder`, backed
   by a new core `tolaria_core::vault::create_folder`. Like note renames,

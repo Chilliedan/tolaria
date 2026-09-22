@@ -36,6 +36,7 @@ pub fn is_write_command(command: &str) -> bool {
             | "move_note_to_folder"
             | "save_view_cmd"
             | "delete_view_cmd"
+            | "rename_attachment"
     )
 }
 
@@ -78,6 +79,9 @@ pub async fn dispatch_write(
         "move_note_to_folder" => move_note_to_folder(state, identity, args).await,
         "save_view_cmd" => save_view_command(state, identity, args).await,
         "delete_view_cmd" => delete_view_command(state, identity, args).await,
+        "rename_attachment" => {
+            crate::attachment_handlers::rename_attachment(state, identity, args).await
+        }
         other => Err(crate::rpc::unsupported(other)),
     }
 }
@@ -135,7 +139,7 @@ async fn autogit_commit_paths(
 /// the caller's per-path `_guard` is still held (a known throughput
 /// trade-off documented in ADR 0151); acquisition order is always
 /// per-path-lock → repo-lock, never the reverse, so this cannot deadlock.
-async fn autogit_commit_all(
+pub(crate) async fn autogit_commit_all(
     state: &AppState,
     identity: Option<&tolaria_core::git::CommitIdentity>,
     message: &str,
@@ -597,6 +601,29 @@ mod tests {
         )
     }
 
+    fn init_git_vault(vault: &std::path::Path) {
+        for args in [
+            ["init"].as_slice(),
+            ["config", "user.email", "s@t"].as_slice(),
+            ["config", "user.name", "S"].as_slice(),
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(vault)
+                .output()
+                .unwrap();
+        }
+    }
+
+    fn frank_identity() -> tolaria_core::git::CommitIdentity {
+        tolaria_core::git::CommitIdentity {
+            author_name: "Frank F".into(),
+            author_email: "frank@example.com".into(),
+            committer_name: "Tolaria Server".into(),
+            committer_email: "server@tolaria.local".into(),
+        }
+    }
+
     #[tokio::test]
     async fn save_without_base_hash_writes_and_returns_version() {
         let dir = tempdir().unwrap();
@@ -912,24 +939,9 @@ mod tests {
     async fn save_auto_commits_the_file_as_acting_user() {
         let dir = tempdir().unwrap();
         let vault = dir.path();
-        for args in [
-            ["init"].as_slice(),
-            ["config", "user.email", "s@t"].as_slice(),
-            ["config", "user.name", "S"].as_slice(),
-        ] {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(vault)
-                .output()
-                .unwrap();
-        }
+        init_git_vault(vault);
         let state = state_for(vault);
-        let identity = tolaria_core::git::CommitIdentity {
-            author_name: "Frank F".into(),
-            author_email: "frank@example.com".into(),
-            committer_name: "Tolaria Server".into(),
-            committer_email: "server@tolaria.local".into(),
-        };
+        let identity = frank_identity();
         let p = vault.join("auto.md");
         dispatch_write(
             &state,
@@ -956,24 +968,9 @@ mod tests {
     async fn delete_note_autogit_commits_the_removal() {
         let dir = tempdir().unwrap();
         let vault = dir.path();
-        for args in [
-            ["init"].as_slice(),
-            ["config", "user.email", "s@t"].as_slice(),
-            ["config", "user.name", "S"].as_slice(),
-        ] {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(vault)
-                .output()
-                .unwrap();
-        }
+        init_git_vault(vault);
         let state = state_for(vault);
-        let identity = tolaria_core::git::CommitIdentity {
-            author_name: "Frank F".into(),
-            author_email: "frank@example.com".into(),
-            committer_name: "Tolaria Server".into(),
-            committer_email: "server@tolaria.local".into(),
-        };
+        let identity = frank_identity();
         let p = vault.join("auto.md");
 
         dispatch_write(
@@ -1197,17 +1194,7 @@ mod tests {
     async fn rename_note_does_not_autogit_when_identity_is_none() {
         let dir = tempdir().unwrap();
         let vault = dir.path();
-        for args in [
-            ["init"].as_slice(),
-            ["config", "user.email", "s@t"].as_slice(),
-            ["config", "user.name", "S"].as_slice(),
-        ] {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(vault)
-                .output()
-                .unwrap();
-        }
+        init_git_vault(vault);
         let p = vault.join("old-title.md");
         fs::write(&p, "# Old Title\n\nbody").unwrap();
         let state = state_for(vault);

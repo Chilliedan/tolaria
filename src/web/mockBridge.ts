@@ -73,6 +73,9 @@ export const SERVER_COMMANDS = new Set<string>([
   'create_vault_folder',
   'delete_vault_folder',
   'rename_vault_folder',
+  // upstream v2026-09-08 additions
+  'git_workspace_info',
+  'rename_attachment',
 ])
 
 /**

@@ -1,5 +1,6 @@
 //! Tolaria web server library — re-exports all modules for integration testing.
 
+mod attachment_handlers;
 pub mod auth_middleware;
 pub mod auth_routes;
 pub mod config;

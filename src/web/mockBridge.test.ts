@@ -37,6 +37,12 @@ describe('mockBridge SERVER_COMMANDS', () => {
     }
   })
 
+  it('routes git workspace info and attachment renames to the server', () => {
+    for (const cmd of ['git_workspace_info', 'rename_attachment']) {
+      expect(SERVER_COMMANDS.has(cmd)).toBe(true)
+    }
+  })
+
   it('no-ops desktop-only commands without hitting the server', async () => {
     const fetchMock = vi.fn()
     vi.stubGlobal('fetch', fetchMock)
