@@ -95,12 +95,7 @@ export function resolveBaseRef({ branch, envBase, upstreamRef }) {
   return upstreamRef || 'origin/main'
 }
 
-/**
- * Drop additions in files whose content is identical to `origin/main`. Merging
- * upstream replays its commits onto the branch, so its files look like new
- * additions here even though they are unchanged upstream code that main's own
- * gate already covers.
- */
-export function withoutUpstreamFiles(additions, upstreamIdenticalPaths) {
-  return new Map([...additions].filter(([path]) => !upstreamIdenticalPaths.has(path)))
+/** Combine per-file addition maps (one per changed file) into a single map. */
+export function mergeAdditions(perFileAdditions) {
+  return new Map(perFileAdditions.flatMap((additions) => [...additions]))
 }

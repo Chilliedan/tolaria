@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { addedLinesFromDiff, biomeGateFailures, eslintGateFailures, resolveBaseRef, withoutUpstreamFiles } from './codacy-gate-lib.mjs'
+import { addedLinesFromDiff, biomeGateFailures, eslintGateFailures, mergeAdditions, resolveBaseRef } from './codacy-gate-lib.mjs'
 import { sarifGateFailures } from './codacy-sarif.mjs'
 
 const root = execFileSync('git', ['rev-parse', '--show-toplevel'], { encoding: 'utf8' }).trim()
@@ -13,21 +13,25 @@ function gitOrNull(args) {
 }
 
 /**
- * Paths whose content at HEAD is byte-identical to upstream — either
- * `origin/main` itself or the newest upstream commit this branch has merged.
- * Both are needed: `origin/main` moves on after a release, so a merged file can
- * match the merged commit without matching main's tip.
+ * Lines this branch added, judged per file.
+ *
+ * A file upstream also has is compared against upstream's own copy, so only
+ * this branch's edits to it are analyzed rather than upstream's existing code
+ * (which main's gate already covers). A file that exists only on this branch
+ * is compared against the branch's last pushed state. Without this split, the
+ * first baseline reports upstream's whole file as new and the second reports
+ * the branch's whole file as new, and neither is what the push introduced.
  */
-function upstreamIdenticalPaths(paths) {
-  const upstreamRefs = ['origin/main', gitOrNull(['merge-base', 'HEAD', 'origin/main'])].filter(Boolean)
-  const identical = new Set()
-  for (const path of paths) {
-    const relative = path.slice(root.length + 1)
+function branchAdditions(baseRef, upstreamRef) {
+  const changedFiles = (gitOrNull(['diff', '--name-only', `${baseRef}...HEAD`]) ?? '').split('\n').filter(Boolean)
+  return mergeAdditions(changedFiles.map((relative) => {
     const here = gitOrNull(['rev-parse', `HEAD:${relative}`])
-    if (!here) continue
-    if (upstreamRefs.some((ref) => here === gitOrNull(['rev-parse', `${ref}:${relative}`]))) identical.add(path)
-  }
-  return identical
+    const upstream = gitOrNull(['rev-parse', `${upstreamRef}:${relative}`])
+    if (here && here === upstream) return new Map()
+    const range = upstream ? [upstreamRef, 'HEAD'] : [`${baseRef}...HEAD`]
+    const fileDiff = gitOrNull(['diff', '--unified=0', ...range, '--', relative]) ?? ''
+    return addedLinesFromDiff(fileDiff, root)
+  }))
 }
 
 const branch = gitOrNull(['rev-parse', '--abbrev-ref', 'HEAD'])
@@ -39,15 +43,14 @@ const requestedBase = resolveBaseRef({
 })
 const verifiedBase = spawnSync('git', ['rev-parse', '--verify', `${requestedBase}^{commit}`], { cwd: root })
 const base = verifiedBase.status === 0 ? requestedBase : 'HEAD^'
-console.log(`Codacy gate: analyzing lines added since ${base}.`)
-const diff = execFileSync('git', ['diff', '--unified=0', `${base}...HEAD`], {
-  cwd: root,
-  encoding: 'utf8',
-  maxBuffer: 20 * 1024 * 1024,
-})
-const changed = addedLinesFromDiff(diff, root)
-// Upstream files replayed onto this branch by a merge are not new work.
-const additions = branch === 'main' ? changed : withoutUpstreamFiles(changed, upstreamIdenticalPaths(changed.keys()))
+const upstreamRef = gitOrNull(['merge-base', 'HEAD', 'origin/main']) ?? 'origin/main'
+const additions = branch === 'main'
+  ? addedLinesFromDiff(execFileSync('git', ['diff', '--unified=0', `${base}...HEAD`], {
+      cwd: root,
+      encoding: 'utf8',
+      maxBuffer: 20 * 1024 * 1024,
+    }), root)
+  : branchAdditions(base, upstreamRef)
 
 if (additions.size === 0) {
   console.log('Codacy gate: no added lines to analyze.')

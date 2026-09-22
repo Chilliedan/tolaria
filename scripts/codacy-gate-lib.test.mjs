@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { addedLinesFromDiff, biomeGateFailures, eslintGateFailures, resolveBaseRef, withoutUpstreamFiles } from './codacy-gate-lib.mjs'
+import { addedLinesFromDiff, biomeGateFailures, eslintGateFailures, mergeAdditions, resolveBaseRef } from './codacy-gate-lib.mjs'
 import { isAuditedRustUnsafe, sarifGateFailures } from './codacy-sarif.mjs'
 
 test('reports findings only on added lines', () => {
@@ -95,14 +95,12 @@ test('other branches measure what they added since their last push', () => {
   assert.equal(resolveBaseRef({ branch: 'web-client', upstreamRef: null }), 'origin/main')
 })
 
-test('drops additions in files whose content matches upstream', () => {
-  // Merging upstream brings its files onto the branch; they are not new work,
-  // and they are already gated on main.
-  const additions = new Map([
-    ['/repo/src/mine.ts', new Map([[1, 'mine']])],
-    ['/repo/tests/upstream.spec.ts', new Map([[1, 'theirs']])],
+test('merges per-file addition maps into one', () => {
+  const merged = mergeAdditions([
+    new Map([['/repo/a.ts', new Map([[1, 'one']])]]),
+    new Map([['/repo/b.ts', new Map([[2, 'two']])]]),
   ])
-  const kept = withoutUpstreamFiles(additions, new Set(['/repo/tests/upstream.spec.ts']))
 
-  assert.deepEqual([...kept.keys()], ['/repo/src/mine.ts'])
+  assert.deepEqual([...merged.keys()], ['/repo/a.ts', '/repo/b.ts'])
+  assert.equal(merged.get('/repo/b.ts').get(2), 'two')
 })
