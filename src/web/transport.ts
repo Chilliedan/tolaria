@@ -92,20 +92,24 @@ function reloadAfterConflict(): void {
   window.location.reload()
 }
 
-/** Statuses that degrade to `undefined` instead of throwing. */
-const DEGRADED_STATUS_ACTIONS: Record<number, () => void> = {
-  // Command not implemented on web — degrade gracefully.
-  501: () => {},
-  // Session expired or missing — bounce to login instead of throwing.
-  401: () => window.location.assign('/login'),
-  409: reloadAfterConflict,
-}
-
+/** Statuses that degrade to `undefined` instead of throwing, rather than
+ *  surfacing a server error the app has no way to act on. */
 function handleDegradedStatus(status: number): boolean {
-  const action = DEGRADED_STATUS_ACTIONS[status]
-  if (!action) return false
-  if (typeof window !== 'undefined') action()
-  return true
+  if (typeof window === 'undefined') return status === 501 || status === 401 || status === 409
+  switch (status) {
+    // Command not implemented on web — degrade gracefully.
+    case 501:
+      return true
+    // Session expired or missing — bounce to login instead of throwing.
+    case 401:
+      window.location.assign('/login')
+      return true
+    case 409:
+      reloadAfterConflict()
+      return true
+    default:
+      return false
+  }
 }
 
 type ErrorBody = { error?: unknown }
@@ -131,7 +135,7 @@ export async function invoke<T = unknown>(
   command: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
-  const res = await fetch(`/api/cmd/${command}`, {
+  const res = await fetch(`/api/cmd/${encodeURIComponent(command)}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'X-CSRF-Token': csrfToken() },
     body: JSON.stringify(requestBody(command, args)),

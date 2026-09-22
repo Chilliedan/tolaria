@@ -126,6 +126,10 @@ export function isTauri(): boolean {
 // can detect it without every mock-tauri test mock having to declare a flag.
 markWebServerBridge()
 
+// Looked up through a Map rather than by indexing the handler object, so a
+// command name can never reach inherited/prototype properties.
+const MOCK_HANDLERS = new Map(Object.entries(mockHandlers))
+
 export function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (DESKTOP_ONLY.has(cmd)) {
     return Promise.resolve(undefined as T)
@@ -133,7 +137,7 @@ export function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
   if (SERVER_COMMANDS.has(cmd)) {
     return invoke<T>(cmd, args)
   }
-  const handler = mockHandlers[cmd]
+  const handler = MOCK_HANDLERS.get(cmd)
   if (handler) {
     return Promise.resolve(handler(args) as T)
   }
