@@ -126,9 +126,15 @@ export function isTauri(): boolean {
 // can detect it without every mock-tauri test mock having to declare a flag.
 markWebServerBridge()
 
+/** A mock handler as the bridge calls it: the command's own argument shape is
+ *  checked at each mock's definition, not at this dynamic dispatch point. */
+type MockHandler = (args?: Record<string, unknown>) => unknown
+
 // Looked up through a Map rather than by indexing the handler object, so a
 // command name can never reach inherited/prototype properties.
-const MOCK_HANDLERS = new Map(Object.entries(mockHandlers))
+const MOCK_HANDLERS = new Map<string, MockHandler>(
+  Object.entries(mockHandlers).map(([name, handler]) => [name, handler as MockHandler]),
+)
 
 export function mockInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (DESKTOP_ONLY.has(cmd)) {
