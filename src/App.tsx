@@ -27,6 +27,8 @@ import { useAiAgentsStatus } from './hooks/useAiAgentsStatus'
 import { useVaultAiGuidanceStatus } from './hooks/useVaultAiGuidanceStatus'
 import { useAutoGit } from './hooks/useAutoGit'
 import { isWebServerBridge } from './lib/webServerBridge'
+import { isAutoGitCheckpointEnabled } from './utils/autoGitEnablement'
+import { refreshGitSurfacesAfterWrite } from './utils/gitWriteRefresh'
 import { useVaultLoader } from './hooks/useVaultLoader'
 import { useRecentVaultWrites, useVaultWatcher } from './hooks/useVaultWatcher'
 import { useSettings } from './hooks/useSettings'
@@ -464,11 +466,20 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
   )
   const refreshGitModifiedFiles = useCallback(async () => {
     if (!automaticGitEnabled) return
-    await Promise.all([
-      loadDefaultVaultModifiedFiles(),
-      loadAllGitModifiedFiles({ includeStats: isChangesSelection }),
-    ])
-  }, [automaticGitEnabled, isChangesSelection, loadAllGitModifiedFiles, loadDefaultVaultModifiedFiles])
+    await refreshGitSurfacesAfterWrite({
+      // The web server commits every write, so the working tree is clean by
+      // the time a save returns and "ahead of remote" is the only pending-work
+      // signal AutoGit can still see.
+      serverCommitsWrites: isWebServerBridge(),
+      refreshModifiedFiles: async () => {
+        await Promise.all([
+          loadDefaultVaultModifiedFiles(),
+          loadAllGitModifiedFiles({ includeStats: isChangesSelection }),
+        ])
+      },
+      refreshRemoteStatuses: refreshAllGitRemoteStatuses,
+    })
+  }, [automaticGitEnabled, isChangesSelection, loadAllGitModifiedFiles, loadDefaultVaultModifiedFiles, refreshAllGitRemoteStatuses])
   const loadVaultModifiedFiles = refreshGitModifiedFiles
 
   useEffect(() => {
@@ -1053,10 +1064,11 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
     remoteStatusForRepository: gitSurfaces.remoteStatusForRepository,
   })
   const autoGit = useAutoGit({
-    // The web server is a git peer whose purpose is to sync; enable the
-    // debounced auto-commit+push there by default (the server also commits each
-    // save, so this mainly drives the periodic push). Desktop keeps the setting.
-    enabled: automaticGitEnabled && (settings.autogit_enabled === true || isWebServerBridge()),
+    enabled: isAutoGitCheckpointEnabled({
+      automaticGitEnabled,
+      autoGitSetting: settings.autogit_enabled,
+      serverCommitsWrites: isWebServerBridge(),
+    }),
     idleThresholdSeconds: settings.autogit_idle_threshold_seconds ?? 90,
     inactiveThresholdSeconds: settings.autogit_inactive_threshold_seconds ?? 30,
     isGitVault,
