@@ -476,11 +476,11 @@ pnpm test
 # Unit tests with coverage (must pass ≥70%)
 pnpm test:coverage
 
-# Rust tests
-cargo test
+# Rust tests (the app plus the tolaria-core / tolaria-server crates)
+cargo test --workspace
 
-# Rust coverage (must pass ≥85% line coverage)
-cargo llvm-cov --manifest-path src-tauri/Cargo.toml --no-clean --fail-under-lines 85
+# Rust coverage (must pass ≥85% line coverage, measured across the workspace)
+cargo llvm-cov --manifest-path src-tauri/Cargo.toml --workspace --no-clean --fail-under-lines 85
 
 # Playwright core smoke lane (requires dev server)
 BASE_URL="http://localhost:5173" pnpm playwright:smoke
