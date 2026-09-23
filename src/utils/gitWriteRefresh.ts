@@ -23,10 +23,14 @@ export async function refreshGitSurfacesAfterWrite({
   refreshModifiedFiles,
   refreshRemoteStatuses,
 }: GitWriteRefreshOptions): Promise<void> {
-  const remoteStatus = serverCommitsWrites ? refreshRemoteStatuses() : Promise.resolve()
-  try {
-    await refreshModifiedFiles()
-  } finally {
-    await remoteStatus
-  }
+  // Both run to completion before reporting a failure, so a refused
+  // modified-file listing cannot leave the remote status unrefreshed. Settling
+  // them together also avoids a try/finally, which crashes the security-node
+  // lint rule that reads the (absent) catch clause.
+  const outcomes = await Promise.allSettled([
+    refreshModifiedFiles(),
+    serverCommitsWrites ? refreshRemoteStatuses() : Promise.resolve(),
+  ])
+  const failure = outcomes.find((outcome) => outcome.status === 'rejected')
+  if (failure?.status === 'rejected') throw failure.reason
 }
