@@ -18,19 +18,18 @@ interface GitWriteRefreshOptions {
  * and after explicit commit flows, so without this AutoGit would never see
  * the work and would silently skip every checkpoint.
  */
-export async function refreshGitSurfacesAfterWrite({
+export function refreshGitSurfacesAfterWrite({
   serverCommitsWrites,
   refreshModifiedFiles,
   refreshRemoteStatuses,
 }: GitWriteRefreshOptions): Promise<void> {
-  // Both run to completion before reporting a failure, so a refused
-  // modified-file listing cannot leave the remote status unrefreshed. Settling
-  // them together also avoids a try/finally, which crashes the security-node
-  // lint rule that reads the (absent) catch clause.
-  const outcomes = await Promise.allSettled([
+  // Both run to completion before any failure is reported, so a refused
+  // modified-file listing cannot leave the remote status unrefreshed.
+  return Promise.allSettled([
     refreshModifiedFiles(),
     serverCommitsWrites ? refreshRemoteStatuses() : Promise.resolve(),
-  ])
-  const failure = outcomes.find((outcome) => outcome.status === 'rejected')
-  if (failure?.status === 'rejected') throw failure.reason
+  ]).then((outcomes) => {
+    const failure = outcomes.find((outcome) => outcome.status === 'rejected')
+    if (failure?.status === 'rejected') throw failure.reason
+  })
 }
