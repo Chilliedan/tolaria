@@ -242,8 +242,13 @@ if ! run_sidecar_automatic_checks; then
     # Unset GIT_DIR so git tests create isolated repos without inheriting hook context
     unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
     # shellcheck disable=SC2086
+    # --workspace so tolaria-core and tolaria-server count: the vault, git and
+    # search code they hold used to live in the src-tauri package and was always
+    # part of this percentage. Measuring the package alone silently drops it and
+    # scores the desktop shell on its own.
     cargo llvm-cov \
       --manifest-path src-tauri/Cargo.toml \
+      --workspace \
       $LLVM_COV_FLAGS \
       --ignore-filename-regex "lib\.rs|main\.rs|menu\.rs" \
       --fail-under-lines 85 \
