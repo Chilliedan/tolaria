@@ -6,10 +6,16 @@ import { THEME_MODE_STORAGE_KEY } from '../lib/themeMode'
 import type { AiAgentsStatus } from '../lib/aiAgents'
 import type { VaultOption } from './StatusBar'
 
-const { trackEventMock, registerEscapeSurfaceMock, unregisterEscapeSurfaceMock } = vi.hoisted(() => ({
+const { trackEventMock, registerEscapeSurfaceMock, unregisterEscapeSurfaceMock, webServerBridgeMock } = vi.hoisted(() => ({
   trackEventMock: vi.fn(),
   registerEscapeSurfaceMock: vi.fn(),
   unregisterEscapeSurfaceMock: vi.fn(),
+  webServerBridgeMock: vi.fn(() => false),
+}))
+
+vi.mock('../lib/webServerBridge', () => ({
+  isWebServerBridge: webServerBridgeMock,
+  markWebServerBridge: () => {},
 }))
 
 vi.mock('../lib/telemetry', () => ({
@@ -139,6 +145,8 @@ describe('SettingsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     trackEventMock.mockClear()
+    // Desktop unless a test opts into the web client.
+    webServerBridgeMock.mockReturnValue(false)
     Object.defineProperty(window, 'localStorage', { value: localStorageMock, configurable: true })
     installMatchMedia(false)
     window.localStorage.clear()
@@ -770,6 +778,25 @@ describe('SettingsPanel', () => {
     expect(screen.getByRole('switch', { name: 'Enable AutoGit' })).toHaveAttribute('aria-checked', 'false')
     expect(screen.getByTestId('settings-autogit-idle-threshold')).toHaveValue(90)
     expect(screen.getByTestId('settings-autogit-inactive-threshold')).toHaveValue(30)
+  })
+
+  it('hides the server-owned Git provider controls on the web client', () => {
+    // The web server runs its own git binary; choosing native vs WSL in a
+    // browser would be a setting the client cannot honour.
+    webServerBridgeMock.mockReturnValue(true)
+    renderOpenSettings()
+
+    expect(screen.queryByTestId('settings-git-provider')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-git-provider-test-row')).not.toBeInTheDocument()
+    expect(screen.getByTestId('settings-git-server-managed')).toBeInTheDocument()
+  })
+
+  it('keeps AutoGit switchable on the web client but disables AI commit messages', () => {
+    webServerBridgeMock.mockReturnValue(true)
+    renderOpenSettings()
+
+    expect(screen.getByRole('switch', { name: 'Enable AutoGit' })).not.toBeDisabled()
+    expect(screen.getByRole('switch', { name: 'Use AI for AutoGit commit messages' })).toBeDisabled()
   })
 
   it('defaults the Git provider selector to native Git', () => {

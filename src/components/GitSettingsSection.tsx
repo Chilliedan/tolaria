@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { useEffect, useState } from 'react'
 import type { createTranslator } from '../lib/i18n'
+import { isWebServerBridge } from '../lib/webServerBridge'
 import { isTauri, mockInvoke } from '../mock-tauri'
 import type { GitProviderId, GitWorkspaceInfo } from '../types'
 import { GitProviderSettingsRows } from './GitProviderSettingsRows'
@@ -85,6 +86,26 @@ function GitRepositoryRootRow({ t, workspace }: { t: Translate; workspace: GitWo
   )
 }
 
+/** The server commits each save itself, so the switch governs pushing there. */
+function autoGitEnableDescription({
+  gitControlsAvailable,
+  gitFeaturesEnabled,
+  isGitVault,
+  serverManagedGit,
+  t,
+}: {
+  gitControlsAvailable: boolean
+  gitFeaturesEnabled: boolean
+  isGitVault: boolean
+  serverManagedGit: boolean
+  t: Translate
+}): string {
+  if (!gitControlsAvailable) return describeAutoGitAvailability(gitFeaturesEnabled, isGitVault, t)
+  return serverManagedGit
+    ? t('settings.autogit.enableDescriptionServer')
+    : t('settings.autogit.enableDescription')
+}
+
 function AutoGitSettingsRows({
   autoGitAiCommitMessagesEnabled,
   autoGitEnabled,
@@ -97,6 +118,7 @@ function AutoGitSettingsRows({
   setAutoGitEnabled,
   setAutoGitIdleThresholdSeconds,
   setAutoGitInactiveThresholdSeconds,
+  serverManagedGit,
   t,
 }: Pick<GitSettingsSectionProps,
   | 'autoGitAiCommitMessagesEnabled'
@@ -110,14 +132,12 @@ function AutoGitSettingsRows({
   | 'setAutoGitIdleThresholdSeconds'
   | 'setAutoGitInactiveThresholdSeconds'
   | 't'
-> & { gitControlsAvailable: boolean }) {
+> & { gitControlsAvailable: boolean; serverManagedGit: boolean }) {
   return (
     <>
       <SettingsSwitchRow
         label={t('settings.autogit.enable')}
-        description={gitControlsAvailable
-          ? t('settings.autogit.enableDescription')
-          : describeAutoGitAvailability(gitFeaturesEnabled, isGitVault, t)}
+        description={autoGitEnableDescription({ gitControlsAvailable, gitFeaturesEnabled, isGitVault, serverManagedGit, t })}
         checked={autoGitEnabled}
         onChange={setAutoGitEnabled}
         disabled={!gitControlsAvailable}
@@ -125,10 +145,12 @@ function AutoGitSettingsRows({
       />
       <SettingsSwitchRow
         label={t('settings.autogit.aiCommitMessages')}
-        description={t('settings.autogit.aiCommitMessagesDescription')}
+        description={serverManagedGit
+          ? t('settings.autogit.aiCommitMessagesServerDescription')
+          : t('settings.autogit.aiCommitMessagesDescription')}
         checked={autoGitAiCommitMessagesEnabled}
         onChange={setAutoGitAiCommitMessagesEnabled}
-        disabled={!gitControlsAvailable}
+        disabled={!gitControlsAvailable || serverManagedGit}
         testId="settings-autogit-ai-commit-messages"
       />
       <SettingsRow label={t('settings.autogit.idleThreshold')} description={t('settings.autogit.idleThresholdDescription')} controlWidth="compact">
@@ -155,6 +177,8 @@ export function GitSettingsSection(props: GitSettingsSectionProps) {
   } = props
   const workspace = useGitWorkspaceInfo(vaultPath)
   const gitControlsAvailable = gitFeaturesEnabled && isGitVault
+  // The web server owns the Git executable, credentials and push access.
+  const serverManagedGit = isWebServerBridge()
 
   return (
     <>
@@ -169,17 +193,27 @@ export function GitSettingsSection(props: GitSettingsSectionProps) {
           testId="settings-git-enabled"
         />
 
-        <GitProviderSettingsRows
-          gitProvider={gitProvider}
-          gitWslDistro={gitWslDistro}
-          setGitProvider={setGitProvider}
-          setGitWslDistro={setGitWslDistro}
-          t={t}
-        />
+        {serverManagedGit ? (
+          <SettingsRow
+            label={t('settings.git.serverManaged')}
+            description={t('settings.git.serverManagedDescription')}
+            testId="settings-git-server-managed"
+          >
+            <span />
+          </SettingsRow>
+        ) : (
+          <GitProviderSettingsRows
+            gitProvider={gitProvider}
+            gitWslDistro={gitWslDistro}
+            setGitProvider={setGitProvider}
+            setGitWslDistro={setGitWslDistro}
+            t={t}
+          />
+        )}
 
         <GitRepositoryRootRow t={t} workspace={workspace} />
 
-        <AutoGitSettingsRows {...props} gitControlsAvailable={gitControlsAvailable} />
+        <AutoGitSettingsRows {...props} gitControlsAvailable={gitControlsAvailable} serverManagedGit={serverManagedGit} />
       </SettingsGroup>
     </>
   )
