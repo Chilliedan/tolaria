@@ -91,12 +91,12 @@ Use Codacy as a security and static-analysis gate before a task is considered re
 ### Check suite (runs on every push)
 ```bash
 pnpm lint && npx tsc --noEmit && pnpm test && pnpm test:coverage  # frontend ≥70%
-cargo test && cargo llvm-cov --manifest-path src-tauri/Cargo.toml --no-clean --fail-under-lines 85
+cargo test --workspace && cargo llvm-cov --manifest-path src-tauri/Cargo.toml --workspace --no-clean --fail-under-lines 85
 ```
 
 Coverage is a release gate, not a vanity metric:
 - Frontend coverage must stay ≥70%. Exception: if coverage cannot be measured after one retry because the coverage service is unavailable, use the mandatory-rule exception protocol and obtain repository-owner approval before release.
-- Rust line coverage must stay ≥85%. Exception: if coverage cannot be measured after one retry because the coverage service is unavailable, use the mandatory-rule exception protocol and obtain repository-owner approval before release.
+- Rust line coverage must stay ≥85%, measured across the whole Cargo workspace (`src-tauri` plus `tolaria-core` and `tolaria-server`), since the vault, git and search code that percentage covers now lives in those crates. Exception: if coverage cannot be measured after one retry because the coverage service is unavailable, use the mandatory-rule exception protocol and obtain repository-owner approval before release.
 - For bug fixes, add a regression test when practical.
 - For new behavior, add targeted coverage close to the changed code; do not rely only on broad E2E coverage.
 
