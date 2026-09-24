@@ -41,6 +41,8 @@ pnpm l10n:translate
 
 Use `pnpm l10n:translate:force` only when intentionally regenerating existing translations. Commit `src/lib/locales/*.json`, `lara.yaml`/`lara.lock` changes if produced, and verify placeholders/product names stayed intact.
 
+**Fork note (`Chilliedan/tolaria`):** this fork has no Lara access keys — Lara is the upstream project's workflow — and copy that exists only in the fork will never be translated by an upstream Lara run. For fork-only copy, translate the new keys directly into every catalog in `src/lib/locales/` (all targets in `lara.yaml`, plus `be-Latn`) instead of running `pnpm l10n:translate`. This is the standing route here, not an exception. Match each catalog's existing terminology for the same concepts, keep product names (Tolaria, Git, AutoGit) and placeholders unchanged, append new keys without reordering existing ones (not every catalog follows `en.json` order), and confirm `pnpm l10n:validate` passes. `lara.lock` stays untouched, so a later Lara run may re-translate those keys, which is harmless.
+
 ### Product analytics (mandatory for meaningful features)
 
 New features should emit a PostHog event so we can see whether users actually discover and use them. Skip instrumentation when the change has no meaningful user action or when a dedicated event would create noise; record that reason in the completion comment. If the correct instrumentation remains unclear, obtain repository-owner direction before release. Use clear, stable event names, avoid PII or note content, and include only safe metadata that helps evaluate adoption and failures.
