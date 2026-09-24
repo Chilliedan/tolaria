@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ukraina",
   "locale.svSE": "Swedia",
   "locale.skSK": "Slovakia",
-  "telemetryConsent.saveError": "Tolaria tidak dapat menyimpan pilihan ini. Periksa apakah akun Anda dapat menulis pengaturan aplikasinya, lalu coba lagi."
+  "telemetryConsent.saveError": "Tolaria tidak dapat menyimpan pilihan ini. Periksa apakah akun Anda dapat menulis pengaturan aplikasinya, lalu coba lagi.",
+  "settings.git.serverManaged": "Git dikelola oleh server",
+  "settings.git.serverManagedDescription": "Vault ini disajikan melalui web, jadi server yang menjalankan Git dan mengelola penyedia, kredensial, serta akses push.",
+  "settings.autogit.enableDescriptionServer": "Server melakukan commit setiap perubahan yang disimpan begitu perubahan itu masuk. Jika diaktifkan, Tolaria juga mendorong commit tersebut setelah jeda idle atau saat tab ini menjadi tidak aktif.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Tidak tersedia melalui web: pesan commit AI memerlukan agen AI yang berjalan di komputer Anda sendiri."
 }

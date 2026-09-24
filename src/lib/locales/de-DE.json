@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ukrainisch",
   "locale.svSE": "Schwedisch",
   "locale.skSK": "Slowakisch",
-  "telemetryConsent.saveError": "Tolaria konnte diese Auswahl nicht speichern. Überprüfe, ob dein Konto seine App-Einstellungen schreiben kann, und versuche es dann erneut."
+  "telemetryConsent.saveError": "Tolaria konnte diese Auswahl nicht speichern. Überprüfe, ob dein Konto seine App-Einstellungen schreiben kann, und versuche es dann erneut.",
+  "settings.git.serverManaged": "Git wird vom Server verwaltet",
+  "settings.git.serverManagedDescription": "Dieser Vault wird über das Web bereitgestellt. Daher führt der Server Git aus und verwaltet den Provider, die Anmeldedaten und den Push-Zugriff.",
+  "settings.autogit.enableDescriptionServer": "Der Server committet jede gespeicherte Änderung, sobald sie eingeht. Wenn diese Option aktiviert ist, pusht Tolaria diese Commits zusätzlich nach einer Inaktivitätspause oder sobald dieser Tab inaktiv wird.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Im Web nicht verfügbar: KI-Commit-Nachrichten erfordern einen KI-Agenten, der auf Ihrem eigenen Computer läuft."
 }

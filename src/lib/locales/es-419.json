@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ucraniano",
   "locale.svSE": "Sueco",
   "locale.skSK": "Eslovaco",
-  "telemetryConsent.saveError": "Tolaria no pudo guardar esta opción. Comprueba que tu cuenta pueda escribir la configuración de la aplicación y vuelve a intentarlo."
+  "telemetryConsent.saveError": "Tolaria no pudo guardar esta opción. Comprueba que tu cuenta pueda escribir la configuración de la aplicación y vuelve a intentarlo.",
+  "settings.git.serverManaged": "Git es administrado por el servidor",
+  "settings.git.serverManagedDescription": "Este repositorio se sirve a través de la web, así que el servidor ejecuta Git y administra el proveedor, las credenciales y el acceso para enviar cambios.",
+  "settings.autogit.enableDescriptionServer": "El servidor confirma cada cambio guardado apenas llega. Cuando esté habilitado, Tolaria también enviará esas confirmaciones después de una pausa por inactividad o cuando esta pestaña deje de estar activa.",
+  "settings.autogit.aiCommitMessagesServerDescription": "No disponible en la web: los mensajes de confirmación con IA necesitan un agente de IA que se ejecute en su propia computadora."
 }

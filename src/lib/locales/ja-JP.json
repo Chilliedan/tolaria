@@ -1061,5 +1061,9 @@
   "locale.ukUA": "ウクライナ語",
   "locale.svSE": "スウェーデン語",
   "locale.skSK": "スロバキア語",
-  "telemetryConsent.saveError": "Tolariaはこの選択を保存できませんでした。アカウントがアプリの設定を書き込めることを確認してから、もう一度お試しください。"
+  "telemetryConsent.saveError": "Tolariaはこの選択を保存できませんでした。アカウントがアプリの設定を書き込めることを確認してから、もう一度お試しください。",
+  "settings.git.serverManaged": "Git はサーバーによって管理されています",
+  "settings.git.serverManagedDescription": "このボールトは Web 経由で提供されているため、Git はサーバーが実行し、プロバイダー、認証情報、プッシュ権限もサーバーが管理します。",
+  "settings.autogit.enableDescriptionServer": "サーバーは保存された変更をそのつどコミットします。有効にすると、Tolaria はアイドル状態の後、またはこのタブが非アクティブになったときに、それらのコミットもプッシュします。",
+  "settings.autogit.aiCommitMessagesServerDescription": "Web では利用できません：AI によるコミットメッセージには、お使いのマシンで動作する AI エージェントが必要です。"
 }

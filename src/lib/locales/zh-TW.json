@@ -1061,5 +1061,9 @@
   "locale.ukUA": "烏克蘭語",
   "locale.svSE": "瑞典語",
   "locale.skSK": "斯洛伐克語",
-  "telemetryConsent.saveError": "Tolaria 無法儲存此選項。請檢查您的帳戶是否可以寫入其應用程式設定，然後再試一次。"
+  "telemetryConsent.saveError": "Tolaria 無法儲存此選項。請檢查您的帳戶是否可以寫入其應用程式設定，然後再試一次。",
+  "settings.git.serverManaged": "Git 由伺服器管理",
+  "settings.git.serverManagedDescription": "此保管庫透過網頁提供，因此由伺服器執行 Git，並管理提供者、憑證和推送權限。",
+  "settings.autogit.enableDescriptionServer": "伺服器會在每次儲存的變更抵達時立即提交。啟用後，Tolaria 也會在閒置暫停後或此分頁變為非活躍時推送這些提交。",
+  "settings.autogit.aiCommitMessagesServerDescription": "網頁版無法使用：AI 提交訊息需要在你自己的電腦上執行的 AI 代理程式。"
 }

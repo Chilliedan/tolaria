@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Tiếng Ukraina",
   "locale.svSE": "Tiếng Thụy Điển",
   "locale.skSK": "Tiếng Slovak",
-  "telemetryConsent.saveError": "Tolaria không thể lưu lựa chọn này. Hãy kiểm tra xem tài khoản của bạn có thể ghi cài đặt ứng dụng hay không, sau đó thử lại."
+  "telemetryConsent.saveError": "Tolaria không thể lưu lựa chọn này. Hãy kiểm tra xem tài khoản của bạn có thể ghi cài đặt ứng dụng hay không, sau đó thử lại.",
+  "settings.git.serverManaged": "Git do máy chủ quản lý",
+  "settings.git.serverManagedDescription": "Vault này được phục vụ qua web, vì vậy máy chủ chạy Git và quản lý nhà cung cấp, thông tin xác thực cũng như quyền đẩy.",
+  "settings.autogit.enableDescriptionServer": "Máy chủ sẽ commit mọi thay đổi đã lưu ngay khi nhận được. Khi bật, Tolaria cũng sẽ đẩy các commit đó sau một khoảng nghỉ hoặc khi tab này chuyển sang trạng thái không hoạt động.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Không khả dụng qua web: thông điệp commit bằng AI cần một tác nhân AI chạy trên máy tính của chính bạn."
 }

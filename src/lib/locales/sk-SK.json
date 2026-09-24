@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ukrajinčina",
   "locale.svSE": "Švédčina",
   "locale.skSK": "Slovenčina",
-  "telemetryConsent.saveError": "Tolaria nemohla uložiť tento výber. Skontrolujte, či váš účet môže zapisovať nastavenia aplikácie, a potom to skúste znova."
+  "telemetryConsent.saveError": "Tolaria nemohla uložiť tento výber. Skontrolujte, či váš účet môže zapisovať nastavenia aplikácie, a potom to skúste znova.",
+  "settings.git.serverManaged": "Git spravuje server",
+  "settings.git.serverManagedDescription": "Tento trezor je sprístupnený cez web, preto Git spúšťa server, ktorý spravuje aj poskytovateľa, prihlasovacie údaje a oprávnenie na nahrávanie zmien.",
+  "settings.autogit.enableDescriptionServer": "Server potvrdí každú uloženú zmenu hneď, ako dorazí. Keď je povolená, Tolaria tieto commity navyše nahrá po prestávke z dôvodu nečinnosti alebo keď sa táto karta stane neaktívnou.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Nedostupné cez web: správy o commitoch vytvárané umelou inteligenciou vyžadujú AI agenta spusteného na vašom vlastnom počítači."
 }

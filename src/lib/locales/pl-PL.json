@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ukraiński",
   "locale.svSE": "Szwedzki",
   "locale.skSK": "Słowacki",
-  "telemetryConsent.saveError": "Tolaria nie mogła zapisać tego wyboru. Sprawdź, czy Twoje konto może zapisywać ustawienia aplikacji, a następnie spróbuj ponownie."
+  "telemetryConsent.saveError": "Tolaria nie mogła zapisać tego wyboru. Sprawdź, czy Twoje konto może zapisywać ustawienia aplikacji, a następnie spróbuj ponownie.",
+  "settings.git.serverManaged": "Git jest zarządzany przez serwer",
+  "settings.git.serverManagedDescription": "Ten skarbiec jest udostępniany przez sieć, dlatego to serwer uruchamia Git i zarządza dostawcą, danymi uwierzytelniającymi oraz uprawnieniami do wypychania.",
+  "settings.autogit.enableDescriptionServer": "Serwer zatwierdza każdą zapisaną zmianę, gdy tylko do niego trafi. Po włączeniu Tolaria dodatkowo wypycha te zatwierdzenia po przerwie w aktywności lub gdy ta karta stanie się nieaktywna.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Niedostępne w wersji webowej: komunikaty commitów generowane przez sztuczną inteligencję wymagają agenta AI uruchomionego na Twoim komputerze."
 }

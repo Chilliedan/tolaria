@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ucraniano",
   "locale.svSE": "Sueco",
   "locale.skSK": "Eslovaco",
-  "telemetryConsent.saveError": "A Tolaria não conseguiu guardar esta escolha. Verifique se a sua conta pode gravar as definições da aplicação e tente novamente."
+  "telemetryConsent.saveError": "A Tolaria não conseguiu guardar esta escolha. Verifique se a sua conta pode gravar as definições da aplicação e tente novamente.",
+  "settings.git.serverManaged": "O Git é gerido pelo servidor",
+  "settings.git.serverManagedDescription": "Este cofre é disponibilizado através da web, pelo que o servidor executa o Git e gere o fornecedor, as credenciais e o acesso de push.",
+  "settings.autogit.enableDescriptionServer": "O servidor faz o commit de cada alteração guardada assim que é recebida. Quando ativado, o Tolaria também faz o push desses commits após uma pausa por inatividade ou quando este separador ficar inativo.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Indisponível na web: as mensagens de commit com IA precisam de um agente de IA a ser executado no seu próprio computador."
 }

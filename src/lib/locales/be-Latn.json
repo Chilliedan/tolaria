@@ -1061,5 +1061,9 @@
   "editor.sheet.formula.description.vlookup": "Šukaie značennie pa viertykali.",
   "editor.sheet.formula.description.xlookup": "Šukaie značennie ŭ dyiapazonie.",
   "editor.sheet.formula.description.year": "Vylučaie hod z daty.",
-  "telemetryConsent.saveError": "Tolaria nie zmahła zachavać hety vybar. Praviercie, ci vaš ulikaŭy zapis moža zapisvać nałady prahramy, zatym pasprabujcie jašče raz."
+  "telemetryConsent.saveError": "Tolaria nie zmahła zachavać hety vybar. Praviercie, ci vaš ulikaŭy zapis moža zapisvać nałady prahramy, zatym pasprabujcie jašče raz.",
+  "settings.git.serverManaged": "Git kirujecca serveram",
+  "settings.git.serverManagedDescription": "Heta schovišča dastupnaje praz veb, tamu Git zapuskaje server, i jon ža kiruje pravajdaram, ulikovymi danymi i pravami na adpraŭku zmien.",
+  "settings.autogit.enableDescriptionServer": "Server robić kamit kožnaj zachavanaj zmieny adrazu paslia jaje pastuplennia. Kali ŭkliučana, Tolaria taksama adpraŭliaje hetyja kamity paslia paŭzy ŭ biazdziejnaści abo kali hetaja ŭkladka stanovicca nieaktyŭnaj.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Niedastupna ŭ veb-versii: dlia paviedamlenniaŭ pra kamit z dapamohaj ŠI patrebny ŠI-ahient, zapuščany na vašym ulasnym kampjutary."
 }

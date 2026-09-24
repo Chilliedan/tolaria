@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ukrainska",
   "locale.svSE": "Svenska",
   "locale.skSK": "Slovakiska",
-  "telemetryConsent.saveError": "Tolaria kunde inte spara det här valet. Kontrollera att ditt konto kan skriva sina appinställningar och försök sedan igen."
+  "telemetryConsent.saveError": "Tolaria kunde inte spara det här valet. Kontrollera att ditt konto kan skriva sina appinställningar och försök sedan igen.",
+  "settings.git.serverManaged": "Git hanteras av servern",
+  "settings.git.serverManagedDescription": "Det här valvet tillhandahålls via webben, så servern kör Git och ansvarar för leverantören, inloggningsuppgifterna och push-behörigheten.",
+  "settings.autogit.enableDescriptionServer": "Servern checkar in varje sparad ändring så fort den kommer in. När detta är aktiverat pushar Tolaria också dessa commits efter en inaktiv paus eller när den här fliken blir inaktiv.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Inte tillgängligt via webben: AI-genererade commit-meddelanden kräver en AI-agent som körs på din egen dator."
 }

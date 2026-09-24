@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ukrainien",
   "locale.svSE": "Suédois",
   "locale.skSK": "Slovaque",
-  "telemetryConsent.saveError": "Tolaria n'a pas pu enregistrer ce choix. Vérifiez que votre compte peut écrire ses paramètres d'application, puis réessayez."
+  "telemetryConsent.saveError": "Tolaria n'a pas pu enregistrer ce choix. Vérifiez que votre compte peut écrire ses paramètres d'application, puis réessayez.",
+  "settings.git.serverManaged": "Git est géré par le serveur",
+  "settings.git.serverManagedDescription": "Ce coffre-fort est servi via le Web : le serveur exécute donc Git et gère le fournisseur, les identifiants et l'accès en push.",
+  "settings.autogit.enableDescriptionServer": "Le serveur valide chaque modification enregistrée dès sa réception. Lorsque cette option est activée, Tolaria pousse également ces validations après une pause d'inactivité ou dès que cet onglet devient inactif.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Indisponible sur le Web : les messages de validation par IA nécessitent un agent d'IA exécuté sur votre propre machine."
 }

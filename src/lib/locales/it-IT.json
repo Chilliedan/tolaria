@@ -1061,5 +1061,9 @@
   "locale.ukUA": "Ucraino",
   "locale.svSE": "Svedese",
   "locale.skSK": "Slovacco",
-  "telemetryConsent.saveError": "Tolaria non è riuscita a salvare questa scelta. Verifica che il tuo account possa scrivere le impostazioni dell'app, quindi riprova."
+  "telemetryConsent.saveError": "Tolaria non è riuscita a salvare questa scelta. Verifica che il tuo account possa scrivere le impostazioni dell'app, quindi riprova.",
+  "settings.git.serverManaged": "Git è gestito dal server",
+  "settings.git.serverManagedDescription": "Questo vault è servito via web, quindi è il server a eseguire Git e a gestire il provider, le credenziali e l'accesso in push.",
+  "settings.autogit.enableDescriptionServer": "Il server esegue il commit di ogni modifica salvata non appena arriva. Se abilitato, Tolaria esegue anche il push di quei commit dopo una pausa di inattività o quando questa scheda diventa inattiva.",
+  "settings.autogit.aiCommitMessagesServerDescription": "Non disponibile via web: i messaggi di commit con IA richiedono un agente IA in esecuzione sul tuo computer."
 }
