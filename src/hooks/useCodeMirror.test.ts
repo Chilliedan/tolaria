@@ -21,6 +21,19 @@ function setUserAgent(userAgent: string) {
   })
 }
 
+function dispatchKey(view: EditorView, key: string): boolean {
+  let handled = false
+  act(() => {
+    view.focus()
+    handled = !view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key,
+    }))
+  })
+  return handled
+}
+
 describe('useCodeMirror', () => {
   let container: HTMLDivElement
 
@@ -137,16 +150,24 @@ describe('useCodeMirror', () => {
     )
     const view = result.current.current!
 
-    act(() => {
-      view.focus()
-      view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', {
-        bubbles: true,
-        cancelable: true,
-        key: 'Escape',
-      }))
-    })
+    dispatchKey(view, 'Escape')
 
     expect(onEscape).toHaveBeenCalledOnce()
+  })
+
+  it('lets suggestion navigation run before the CodeMirror default keymap', () => {
+    const ref = { current: container }
+    const onSuggestionKey = vi.fn(() => true)
+    const { result } = renderHook(() =>
+      useCodeMirror(ref, 'first\nsecond', { ...noopCallbacks, onSuggestionKey }),
+    )
+    const view = result.current.current
+    if (!view) throw new Error('CodeMirror view was not created')
+
+    const handled = dispatchKey(view, 'ArrowDown')
+
+    expect(handled).toBe(true)
+    expect(onSuggestionKey).toHaveBeenCalledWith('ArrowDown')
   })
 
   it('inserts a literal tab instead of letting Tab move focus away', () => {
@@ -171,6 +192,33 @@ describe('useCodeMirror', () => {
     expect(handled).toBe(true)
     expect(view.state.doc.toString()).toBe('hello\t')
     expect(onDocChange).toHaveBeenCalledWith('hello\t')
+  })
+
+  it('outdents the current raw-editor line on Shift+Tab without moving focus away', () => {
+    const ref = { current: container }
+    const onDocChange = vi.fn()
+    const { result } = renderHook(() =>
+      useCodeMirror(ref, '- parent\n\t- child', { ...noopCallbacks, onDocChange }),
+    )
+    const view = result.current.current
+    if (!view) throw new Error('CodeMirror view was not created')
+
+    act(() => {
+      view.dispatch({ selection: { anchor: view.state.doc.length } })
+      view.focus()
+    })
+
+    const handled = !view.contentDOM.dispatchEvent(new KeyboardEvent('keydown', {
+      bubbles: true,
+      cancelable: true,
+      key: 'Tab',
+      shiftKey: true,
+    }))
+
+    expect(handled).toBe(true)
+    expect(view.hasFocus).toBe(true)
+    expect(view.state.doc.toString()).toBe('- parent\n- child')
+    expect(onDocChange).toHaveBeenCalledWith('- parent\n- child')
   })
 
   it('keeps Windows Home and End inside the current raw-editor line when visual boundary lookup crosses lines', () => {

@@ -233,6 +233,7 @@ proposed → active → superseded
 | [0173](0173-future-calendar-version-recovery.md) | Future calendar version rejection and recovery | active |
 | [0178](0178-custom-protocol-for-scripted-html-blocks.md) | Custom protocol for scripted HTML blocks | active |
 | [0180](0180-shared-cross-runtime-word-count-contract.md) | Shared cross-runtime word-count contract | active |
+| [0181](0181-shared-cross-runtime-inline-markdown-stripping-contract.md) | Shared cross-runtime inline-markdown stripping contract | active |
 | [0900](0900-tolaria-core-shared-crate.md) | tolaria-core shared transport-agnostic crate | active |
 | [0901](0901-web-server-read-only-phase.md) | Read-only web server phase (tolaria-server, Axum, Docker) | active |
 | [0902](0902-web-server-builtin-auth.md) | Built-in authentication for the web server (tolaria-server, Phase 3) | active |

@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   activateWorkbookRoot,
@@ -80,5 +80,63 @@ describe('SheetEditor edge navigation', () => {
       row: 1,
       top_row: 1,
     })
+  })
+
+  it('preserves a committed cell when IronCalc clears its editor before blur', async () => {
+    render(
+      <SheetEditor
+        content={'---\n_display: sheet\n---\nMetric,old\nRevenue,foo'}
+        path="/vault/budget.md"
+        onContentChange={vi.fn()}
+      />,
+    )
+    ironCalcMock.state.selectedView = {
+      column: 2,
+      left_column: 1,
+      range: [1, 2, 1, 2],
+      row: 1,
+      sheet: 0,
+      top_row: 1,
+    }
+    const { workbookRoot } = await activateWorkbookRoot()
+    const cellEditor = screen.getByLabelText<HTMLTextAreaElement>('Cell editor')
+    cellEditor.focus()
+
+    fireEvent.input(cellEditor, { target: { value: 'old' } })
+    fireEvent.pointerDown(workbookRoot)
+    ironCalcMock.state.selectedView = { ...ironCalcMock.state.selectedView, range: [2, 2, 2, 2], row: 2 }
+    cellEditor.value = ''
+    fireEvent.blur(cellEditor)
+
+    expect(ironCalcMock.state.lastModel?.getRawCellContent(0, 1, 2)).toBe('old')
+    expect(ironCalcMock.state.lastModel?.getRawCellContent(0, 2, 2)).toBe('foo')
+  })
+
+  it.each([
+    ['ArrowLeft', false, 1, 1],
+    ['ArrowUp', false, 1, 1],
+    ['Tab', true, 1, 1],
+    ['Enter', true, 1, 1],
+    ['ArrowRight', false, 1, MAX_SHEET_COLUMNS],
+    ['ArrowDown', false, MAX_SHEET_ROWS, 1],
+    ['Tab', false, 1, MAX_SHEET_COLUMNS],
+    ['Enter', false, MAX_SHEET_ROWS, 1],
+  ])('blocks %s navigation beyond the sheet boundary', async (key, shiftKey, row, column) => {
+    renderSheetEditor()
+    await activateWorkbookRoot()
+    ironCalcMock.state.selectedView = {
+      column,
+      left_column: column,
+      range: [row, column, row, column],
+      row,
+      sheet: 0,
+      top_row: row,
+    }
+    const cellEditor = screen.getByLabelText<HTMLTextAreaElement>('Cell editor')
+    cellEditor.focus()
+    fireEvent.input(cellEditor, { target: { value: 'boundary' } })
+
+    expect(fireEvent.keyDown(cellEditor, { key, shiftKey })).toBe(false)
+    expect(ironCalcMock.state.selectedView).toMatchObject({ column, row })
   })
 })

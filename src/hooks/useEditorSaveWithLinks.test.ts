@@ -274,6 +274,72 @@ describe('useEditorSaveWithLinks', () => {
     })
   })
 
+  describe('Type body template metadata', () => {
+    it('publishes an edited Type body template before deferred metadata settles', () => {
+      const { result } = renderHookWithLinks()
+
+      act(() => {
+        result.current.handleContentChange(
+          '/project.md',
+          '---\ntype: Type\n---\n# Project\n\n## Immediate template\n',
+        )
+      })
+
+      expect(updateEntry).toHaveBeenCalledWith('/project.md', {
+        template: '## Immediate template',
+      })
+    })
+
+    it('keeps a Type note body template live after editing the note', () => {
+      const { result } = renderHookWithLinks()
+
+      act(() => {
+        result.current.handleContentChange(
+          '/project.md',
+          '---\ntype: Type\n---\n# Project\n\n## Overview\n\n- [ ] First step\n',
+        )
+      })
+      flushDeferredMetadata()
+
+      expect(updateEntry).toHaveBeenCalledWith('/project.md', expect.objectContaining({
+        isA: 'Type',
+        template: '## Overview\n\n- [ ] First step',
+      }))
+    })
+
+    it('keeps an explicit Type template ahead of a template-shaped body', () => {
+      const { result } = renderHookWithLinks()
+
+      act(() => {
+        result.current.handleContentChange(
+          '/project.md',
+          '---\ntype: Type\ntemplate: Explicit template\n---\n# Project\n\n## Body template\n',
+        )
+      })
+      flushDeferredMetadata()
+
+      expect(updateEntry).toHaveBeenCalledWith('/project.md', expect.objectContaining({
+        template: 'Explicit template',
+      }))
+    })
+
+    it('does not turn descriptive Type documentation into a note template', () => {
+      const { result } = renderHookWithLinks()
+
+      act(() => {
+        result.current.handleContentChange(
+          '/project.md',
+          '---\ntype: Type\n---\n# Project\n\nProjects describe coordinated work.\n',
+        )
+      })
+      flushDeferredMetadata()
+
+      expect(updateEntry).toHaveBeenCalledWith('/project.md', expect.objectContaining({
+        template: null,
+      }))
+    })
+  })
+
   it('syncs custom relationships and properties from raw frontmatter immediately', () => {
     const { result } = renderHookWithLinks()
 
@@ -386,5 +452,84 @@ describe('useEditorSaveWithLinks', () => {
     // handleSave and savePendingForPath should be passed through from the mock
     expect(result.current.handleSave).toBeDefined()
     expect(result.current.savePendingForPath).toBeDefined()
+  })
+})
+
+class MetadataWorker {
+  static instances: MetadataWorker[] = []
+
+  onerror: ((event: ErrorEvent) => void) | null = null
+  onmessage: ((event: MessageEvent) => void) | null = null
+  postMessage = vi.fn()
+  terminate = vi.fn()
+
+  constructor() {
+    MetadataWorker.instances.push(this)
+  }
+}
+
+function firstMetadataWorker(): MetadataWorker {
+  const worker = MetadataWorker.instances[0]
+  if (!worker) throw new Error('Expected the metadata worker to start')
+  return worker
+}
+
+function postedMetadataRequest(worker: MetadataWorker, index: number): { requestId: number } {
+  const request = worker.postMessage.mock.calls.at(index)?.at(0) as { requestId: number } | undefined
+  if (!request) throw new Error(`Expected metadata request ${index}`)
+  return request
+}
+
+function deliverMetadata(worker: MetadataWorker, data: MessageEvent['data']): void {
+  const onmessage = worker.onmessage
+  if (!onmessage) throw new Error('Expected metadata worker message handler')
+  act(() => onmessage({ data } as MessageEvent))
+}
+
+describe('editor entry metadata worker', () => {
+  beforeEach(() => {
+    idleCallbacks = new Map()
+    MetadataWorker.instances = []
+    vi.stubGlobal('requestIdleCallback', vi.fn((callback: IdleRequestCallback) => {
+      idleCallbacks.set(1, callback)
+      return 1
+    }))
+    vi.stubGlobal('cancelIdleCallback', vi.fn())
+  })
+
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('derives metadata off the main thread and ignores superseded worker responses', () => {
+    vi.stubGlobal('Worker', MetadataWorker)
+    const updateEntry = vi.fn()
+    const { result } = renderHook(() => useEditorSaveWithLinks({
+      updateEntry,
+      setTabs: vi.fn(),
+      setToastMessage: vi.fn(),
+      onAfterSave: vi.fn(),
+    }))
+
+    act(() => result.current.handleContentChange('/note.md', 'see [[Alpha]]'))
+    flushDeferredMetadata()
+
+    const worker = firstMetadataWorker()
+    const firstRequest = postedMetadataRequest(worker, 0)
+    expect(firstRequest).toMatchObject({ requestId: 1 })
+    expect(updateEntry).not.toHaveBeenCalled()
+
+    act(() => result.current.handleContentChange('/note.md', 'see [[Beta]]'))
+    deliverMetadata(worker, {
+      metadata: { outgoingLinks: ['Alpha'], wordCount: 1 },
+      requestId: firstRequest.requestId,
+    })
+    expect(updateEntry).not.toHaveBeenCalled()
+
+    flushDeferredMetadata()
+    const secondRequest = postedMetadataRequest(worker, 1)
+    deliverMetadata(worker, {
+      metadata: { outgoingLinks: ['Beta'], wordCount: 1 },
+      requestId: secondRequest.requestId,
+    })
+    expect(updateEntry).toHaveBeenCalledWith('/note.md', { outgoingLinks: ['Beta'], wordCount: 1 })
   })
 })

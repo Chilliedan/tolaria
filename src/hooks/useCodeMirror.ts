@@ -11,8 +11,10 @@ import {
   type ViewUpdate,
 } from '@codemirror/view'
 import { EditorSelection, EditorState, Prec, type SelectionRange } from '@codemirror/state'
-import { defaultKeymap, history, historyKeymap, insertTab } from '@codemirror/commands'
+import { defaultKeymap, history, historyKeymap, indentLess, insertTab } from '@codemirror/commands'
+import { indentUnit } from '@codemirror/language'
 import { rawEditorLanguageExtensionsForPath } from '../extensions/rawEditorLanguage'
+import { editorFindHighlightExtension } from '../extensions/editorFindHighlight'
 import { RUNTIME_STYLE_NONCE } from '../lib/runtimeStyleNonce'
 import { resolveArrowLigatureInput } from '../utils/arrowLigatures'
 import { zoomCursorFix } from '../extensions/zoomCursorFix'
@@ -67,6 +69,7 @@ export interface CodeMirrorCallbacks {
   onCursorActivity: (view: EditorView) => void
   onSave: () => void
   onEscape: () => boolean
+  onSuggestionKey?: (key: 'ArrowDown' | 'ArrowUp' | 'Enter') => boolean
 }
 
 function buildBaseTheme() {
@@ -152,8 +155,12 @@ function buildAutoTextDirectionExtension() {
   ]
 }
 
-function buildSaveKeymap(callbacks: { current: CodeMirrorCallbacks }) {
-  return Prec.highest(keymap.of([{
+function buildApplicationKeymap(callbacks: { current: CodeMirrorCallbacks }) {
+  const suggestionKeys = ['ArrowDown', 'ArrowUp', 'Enter'] as const
+  return Prec.highest(keymap.of([...suggestionKeys.map((suggestionKey) => ({
+    key: suggestionKey,
+    run: () => callbacks.current.onSuggestionKey?.(suggestionKey) ?? false,
+  })), {
     key: 'Mod-s',
     run: () => { callbacks.current.onSave(); return true },
   }, {
@@ -162,6 +169,7 @@ function buildSaveKeymap(callbacks: { current: CodeMirrorCallbacks }) {
   }, {
     key: 'Tab',
     run: insertTab,
+    shift: indentLess,
   }]))
 }
 
@@ -362,8 +370,10 @@ export function useCodeMirror(
         history(),
         buildArrowLigaturesExtension(),
         buildRawEditorKeymap(),
-        buildSaveKeymap(callbacksRef),
+        buildApplicationKeymap(callbacksRef),
+        indentUnit.of('\t'),
         buildBaseTheme(),
+        editorFindHighlightExtension,
         EditorView.cspNonce.of(RUNTIME_STYLE_NONCE),
         EditorView.contentAttributes.of(rawEditorTextInputAttributes),
         rawEditorLanguageExtensionsForPath(sourcePath),

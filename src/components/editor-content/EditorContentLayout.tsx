@@ -94,6 +94,19 @@ function SheetEditorLoading({ locale = 'en' }: { locale?: AppLocale }) {
   )
 }
 
+function reportRawImageImportFailure(
+  result: { failedCount: number; totalCount: number },
+  onImageImportError: EditorContentModel['onImageImportError'],
+): void {
+  if (result.failedCount === 0) return
+
+  onImageImportError?.({
+    failedCount: result.failedCount,
+    kind: 'remote-download',
+    totalCount: result.totalCount,
+  })
+}
+
 function DiffModeView({
   diffContent,
   locale = 'en',
@@ -154,6 +167,40 @@ function RawModeEditorSection(
   if (!rawMode || !activeTab) return null
 
   return (
+    <ActiveRawModeEditorSection
+      activeTab={activeTab}
+      entries={entries}
+      findRequest={findRequest}
+      locale={locale}
+      onImageImportError={onImageImportError}
+      onRawContentChange={onRawContentChange}
+      onSave={onSave}
+      rawLatestContentRef={rawLatestContentRef}
+      rawModeContent={rawModeContent}
+      vaultPath={vaultPath}
+    />
+  )
+}
+
+function ActiveRawModeEditorSection(
+  options: Omit<Parameters<typeof RawModeEditorSection>[0], 'activeTab' | 'rawMode'> & {
+    activeTab: NonNullable<EditorContentModel['activeTab']>
+  },
+) {
+  const {
+    activeTab,
+    entries,
+    findRequest,
+    rawModeContent,
+    onRawContentChange,
+    onImageImportError,
+    onSave,
+    rawLatestContentRef,
+    vaultPath,
+    locale,
+  } = options
+
+  return (
     <EditorFindScope className="editor-scroll-area">
       <RawEditorView
         key={activeTab.entry.path}
@@ -163,15 +210,7 @@ function RawModeEditorSection(
         sourceEntry={activeTab.entry}
         findRequest={findRequest}
         onContentChange={onRawContentChange ?? (() => {})}
-        onImageImportResult={({ failedCount, totalCount }) => {
-          if (failedCount > 0) {
-            onImageImportError?.({
-              failedCount,
-              kind: 'remote-download',
-              totalCount,
-            })
-          }
-        }}
+        onImageImportResult={(result) => reportRawImageImportFailure(result, onImageImportError)}
         onSave={onSave ?? (() => {})}
         latestContentRef={rawLatestContentRef}
         vaultPath={vaultPath}
@@ -185,6 +224,16 @@ function bindPath(cb: ((path: string) => void) | undefined, path: string) {
   return cb ? () => cb(path) : undefined
 }
 
+type ActiveTabBreadcrumbProps = {
+  activeTab: NonNullable<EditorContentModel['activeTab']>
+  barRef: React.RefObject<HTMLDivElement | null>
+  wordCount: number
+  path: string
+  actions: BreadcrumbActions
+  locale?: AppLocale
+  loadingTitle?: boolean
+}
+
 function ActiveTabBreadcrumb({
   activeTab,
   barRef,
@@ -193,15 +242,7 @@ function ActiveTabBreadcrumb({
   actions,
   locale,
   loadingTitle,
-}: {
-  activeTab: NonNullable<EditorContentModel['activeTab']>
-  barRef: React.RefObject<HTMLDivElement | null>
-  wordCount: number
-  path: string
-  actions: BreadcrumbActions
-  locale?: AppLocale
-  loadingTitle?: boolean
-}) {
+}: ActiveTabBreadcrumbProps) {
   return (
     <BreadcrumbBar
       entry={activeTab.entry}
@@ -399,6 +440,7 @@ type EditorCanvasProps = Pick<
   | 'entries'
   | 'onNavigateWikilink'
   | 'onEditorChange'
+  | 'onToggleRaw'
   | 'onRawContentChange'
   | 'sheetFlushRef'
   | 'isDeletedPreview'
@@ -432,6 +474,7 @@ function StandardEditorCanvas(options: EditorCanvasProps) {
     entries,
     onNavigateWikilink,
     onEditorChange,
+    onToggleRaw,
     onRawContentChange,
     sheetFlushRef,
     isDeletedPreview,
@@ -472,6 +515,7 @@ function StandardEditorCanvas(options: EditorCanvasProps) {
           onNavigateWikilink={onNavigateWikilink}
           onChange={onEditorChange}
           onImageImportError={onImageImportError}
+          onRecoveryFallback={onToggleRaw}
           sourceEntry={activeTab?.entry ?? null}
           vaultPath={vaultPath}
           editable={!isDeletedPreview}
@@ -612,6 +656,7 @@ export function EditorContentLayout(model: EditorContentModel) {
             entries={entries}
             onNavigateWikilink={onNavigateWikilink}
             onEditorChange={onEditorChange}
+            onToggleRaw={model.onToggleRaw}
             onRawContentChange={onRawContentChange}
             onImageImportError={onImageImportError}
             sheetFlushRef={sheetFlushRef}

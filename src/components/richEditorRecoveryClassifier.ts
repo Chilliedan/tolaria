@@ -1,5 +1,6 @@
 const BLOCKNOTE_MISSING_ID_ERROR = "Block doesn't have id"
 const BLOCKNOTE_BLOCK_TYPE_MISMATCH_ERROR = 'Block type does not match'
+const BLOCKNOTE_MISSING_BLOCK_CONTENT_ERROR = 'blockContainer node does not contain a blockContent node in its children:'
 const BLOCKNOTE_EMPTY_FRAGMENT_INDEX_ERROR = /^Index \d+ out of range for <>$/
 const BLOCKNOTE_TABLE_INDEX_ERROR = /^Index \d+ out of range for <table(?:Row)?\(/
 const BLOCKNOTE_PARAGRAPH_INDEX_ERROR = /^Index \d+ out of range for <paragraph\(/
@@ -10,6 +11,7 @@ const NULL_APPEND_PROPERTY_ERROR = "Cannot read properties of null (reading 'app
 const NULL_FIRST_CHILD_PROPERTY_ERROR = "Cannot read properties of null (reading 'firstChild')"
 const WEBKIT_NULL_COMPARE_DOCUMENT_POSITION_ERROR = /^null is not an object \(evaluating '[A-Za-z_$][\w$]*\.compareDocumentPosition'\)$/
 const UNDEFINED_NODE_TYPE_PROPERTY_ERROR = "Cannot read properties of undefined (reading 'type')"
+const INVALID_ARRAY_LENGTH_ERROR = 'Invalid array length'
 const REACT_UPDATE_DEPTH_EXCEEDED_ERROR = 'Maximum update depth exceeded'
 const REACT_MINIFIED_UPDATE_DEPTH_ERROR = /\b(?:React error #185|errors\/185|#185)\b/
 const WEBKIT_DOM_NOT_FOUND_MESSAGES = [
@@ -30,8 +32,11 @@ export const SHARED_RICH_EDITOR_RECOVERY_REASONS = [
 ] as const
 
 export type RichEditorSharedRecoveryReason = typeof SHARED_RICH_EDITOR_RECOVERY_REASONS[number]
-type BlockNoteRenderOnlyRecoveryReason = 'react_update_depth_exceeded'
+type BlockNoteRenderOnlyRecoveryReason =
+  | 'invalid_array_length'
+  | 'react_update_depth_exceeded'
 type RichEditorTransformOnlyRecoveryReason =
+  | 'block_content_missing'
   | 'dom_index_size'
   | 'invalid_block_join'
   | 'invalid_insertion_depth'
@@ -87,6 +92,10 @@ function isMismatchedTransactionError(error: unknown): boolean {
 
 function isInvalidContentTransactionError(error: unknown): boolean {
   return error instanceof RangeError && error.message.startsWith('Invalid content for node ')
+}
+
+function isMissingBlockContentError(error: unknown): boolean {
+  return messageIncludes(error, BLOCKNOTE_MISSING_BLOCK_CONTENT_ERROR)
 }
 
 function isReactUpdateDepthExceededError(error: unknown): boolean {
@@ -185,6 +194,11 @@ const RECOVERY_ERROR_MATCHERS: RecoveryErrorMatcher[] = [
     surfaces: ['render', 'transform'],
   },
   {
+    matches: (error) => error instanceof RangeError && isMessage(error, INVALID_ARRAY_LENGTH_ERROR),
+    reason: 'invalid_array_length',
+    surfaces: ['render'],
+  },
+  {
     matches: isReactUpdateDepthExceededError,
     reason: 'react_update_depth_exceeded',
     surfaces: ['render'],
@@ -217,6 +231,12 @@ const RECOVERY_ERROR_MATCHERS: RecoveryErrorMatcher[] = [
   {
     matches: isMismatchedTransactionError,
     reason: 'mismatched_transaction',
+    surfaces: ['transform'],
+  },
+  {
+    matches: isMissingBlockContentError,
+    reason: 'block_content_missing',
+    repairsDocument: true,
     surfaces: ['transform'],
   },
   {

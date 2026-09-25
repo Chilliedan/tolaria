@@ -54,6 +54,7 @@ import { EditorInteractionControllers } from './EditorInteractionControllers'
 import { handleEditorCopy } from './editorCopyHandlers'
 import { CodeBlockCopyButton } from './codeBlockCopyControls'
 import { useCodeBlockCopyTarget } from './useCodeBlockCopyTarget'
+import { observeRichEditorAccessibility } from './richEditorAccessibility'
 
 const TOOLBAR_MOUSE_DOWN_ALLOW_SELECTOR = [
   '[role="menu"]',
@@ -74,10 +75,13 @@ type BlockNoteRenderRecoveryState = {
 class BlockNoteRenderRecoveryBoundary extends Component<
   {
   children: (recoveryKey: number) => ReactNode
+  onFallback?: (reason: BlockNoteRenderRecoveryReason) => void
   onRecover?: (attempt: number, reason: BlockNoteRenderRecoveryReason) => void
   },
   BlockNoteRenderRecoveryState
 > {
+  private fallbackRequested = false
+
   state: BlockNoteRenderRecoveryState = {
     error: null,
     recoveryKey: 0,
@@ -92,7 +96,15 @@ class BlockNoteRenderRecoveryBoundary extends Component<
   componentDidCatch(error: unknown) {
     const reason = blockNoteRenderRecoveryReason(error)
     if (!reason) return
-    if (this.state.retries >= MAX_BLOCKNOTE_RENDER_RECOVERY_RETRIES) return
+    if (this.state.retries >= MAX_BLOCKNOTE_RENDER_RECOVERY_RETRIES) {
+      if (this.fallbackRequested) return
+
+      this.fallbackRequested = true
+      trackEvent('editor_render_fallback', { reason })
+      const { onFallback } = this.props
+      queueMicrotask(() => onFallback?.(reason))
+      return
+    }
 
     const attempt = this.state.retries + 1
     trackEvent('editor_render_recovered', { reason, attempt })
@@ -147,11 +159,11 @@ function runSuggestionActionSafely({
   }
 }
 
-function SharedContextBlockNoteView(props: React.ComponentProps<typeof BlockNoteViewRaw>) {
+function BlockNoteViewWithComponents(props: React.ComponentProps<typeof BlockNoteViewRaw>) {
   const { children, className, theme, ...rest } = props
-  const mantineContext = useContext(MantineContext)
   const colorScheme = theme === 'dark' ? 'dark' : 'light'
-  const view = (
+
+  return (
     <ComponentsContext.Provider value={components}>
       <BlockNoteViewRaw
         {...rest}
@@ -163,8 +175,12 @@ function SharedContextBlockNoteView(props: React.ComponentProps<typeof BlockNote
       </BlockNoteViewRaw>
     </ComponentsContext.Provider>
   )
+}
 
-  if (mantineContext) return view
+function SharedContextBlockNoteView(props: React.ComponentProps<typeof BlockNoteViewRaw>) {
+  const mantineContext = useContext(MantineContext)
+
+  if (mantineContext) return <BlockNoteViewWithComponents {...props} />
 
   return (
     <MantineProvider
@@ -173,7 +189,7 @@ function SharedContextBlockNoteView(props: React.ComponentProps<typeof BlockNote
       getStyleNonce={getRuntimeStyleNonce}
       getRootElement={() => undefined}
     >
-      {view}
+      <BlockNoteViewWithComponents {...props} />
     </MantineProvider>
   )
 }
@@ -182,10 +198,13 @@ function shouldAllowToolbarMouseDown(target: HTMLElement) {
   return Boolean(target.closest(TOOLBAR_MOUSE_DOWN_ALLOW_SELECTOR))
 }
 
+function shouldPreventToolbarMouseDown(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return !shouldAllowToolbarMouseDown(target)
+}
+
 function handleToolbarMouseDownCapture(event: Pick<React.MouseEvent<HTMLElement>, 'target' | 'preventDefault'>) {
-  if (!(event.target instanceof HTMLElement) || shouldAllowToolbarMouseDown(event.target)) {
-    return
-  }
+  if (!shouldPreventToolbarMouseDown(event.target)) return
 
   event.preventDefault()
 }
@@ -253,12 +272,13 @@ export function SingleEditorView(options: {
   onNavigateWikilink: (target: string) => void
   onChange?: () => void
   onImageImportError?: (error: ImageImportError) => void
+  onRecoveryFallback?: (reason: BlockNoteRenderRecoveryReason) => void
   sourceEntry?: VaultEntry | null
   vaultPath?: string
   editable?: boolean
   locale?: AppLocale
 }) {
-  const { currentContent = '', editor, entries, onNavigateWikilink, onChange, onImageImportError, sourceEntry, vaultPath, editable = true, locale = 'en' } = options
+  const { currentContent = '', editor, entries, onNavigateWikilink, onChange, onImageImportError, onRecoveryFallback, sourceEntry, vaultPath, editable = true, locale = 'en' } = options
   const { cssVars } = useEditorTheme()
   const themeMode = useDocumentThemeMode()
   const previousThemeModeRef = useRef(themeMode)
@@ -321,7 +341,12 @@ export function SingleEditorView(options: {
   useEffect(() => {
     const container = containerRef.current
     if (!container) return
-    return observeNativeTextAssistanceDisabled(container)
+    const stopNativeTextAssistanceObserver = observeNativeTextAssistanceDisabled(container)
+    const stopAccessibilityObserver = observeRichEditorAccessibility(container)
+    return () => {
+      stopNativeTextAssistanceObserver()
+      stopAccessibilityObserver()
+    }
   }, [])
 
   useSeedBlockNoteTableBridge(editor)
@@ -413,7 +438,10 @@ export function SingleEditorView(options: {
           <div className="editor__drop-overlay-label">Drop image here</div>
         </div>
       )}
-      <BlockNoteRenderRecoveryBoundary onRecover={(_, reason) => repairEditorDocumentForRenderRecovery(editor, reason)}>
+      <BlockNoteRenderRecoveryBoundary
+        onFallback={onRecoveryFallback}
+        onRecover={(_, reason) => repairEditorDocumentForRenderRecovery(editor, reason)}
+      >
         {(recoveryKey) => (
           <VaultExpressionProvider
             currentContent={currentContent}
