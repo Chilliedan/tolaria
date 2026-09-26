@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeEntry } from '../test-utils/noteListTestUtils'
+import { useTagManagerDialogState } from '../hooks/useTagManagerDialogState'
 import { TagManagerDialog } from './TagManagerDialog'
 
 vi.mock('../lib/telemetry', () => ({ trackEvent: vi.fn() }))
@@ -106,5 +107,54 @@ describe('TagManagerDialog', () => {
       <TagManagerDialog open onClose={vi.fn()} entries={[]} locale="en" onUpdateFrontmatter={vi.fn()} onOpenNote={vi.fn()} />,
     )
     expect(screen.getByText('No tags in this vault yet.')).toBeInTheDocument()
+  })
+
+  it('cancels the inline rename editor on Escape instead of closing the dialog', () => {
+    const { updateFrontmatter, onClose } = renderDialog()
+    openRowMenu('blues')
+    fireEvent.click(screen.getByText('Rename…'))
+    expect(screen.getByPlaceholderText('New tag name')).toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByPlaceholderText('New tag name'), { key: 'Escape' })
+
+    expect(screen.queryByPlaceholderText('New tag name')).not.toBeInTheDocument()
+    expect(onClose).not.toHaveBeenCalled()
+    expect(updateFrontmatter).not.toHaveBeenCalled()
+    expect(screen.getByTestId('tag-manager-row-blues')).toBeInTheDocument()
+  })
+})
+
+describe('useTagManagerDialogState property pinning', () => {
+  it('pins a pending action to the property selected when it was proposed, and clears it when the property changes', async () => {
+    const multiPropertyEntries = [
+      makeEntry({ path: '/a.md', title: 'Alpha', properties: { tags: ['urgent'], categories: ['urgent'] } }),
+    ]
+    const updateFrontmatter = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() =>
+      useTagManagerDialogState({ entries: multiPropertyEntries, locale: 'en', onUpdateFrontmatter: updateFrontmatter }),
+    )
+
+    expect(result.current.property).toBe('tags')
+    act(() => result.current.propose({ kind: 'delete', tag: 'urgent' }))
+    expect(result.current.pending?.property).toBe('tags')
+
+    // Switching the selected property must clear any pending confirmation, in-progress row
+    // edit, expanded notes, and the filter — never leave a confirmation dangling against a
+    // property the user has since navigated away from.
+    act(() => result.current.setSelectedProperty('categories'))
+    expect(result.current.property).toBe('categories')
+    expect(result.current.pending).toBeNull()
+    expect(result.current.rowEdit).toBeNull()
+    expect(result.current.expandedTag).toBeNull()
+    expect(result.current.filter).toBe('')
+
+    // Proposing again now pins to the newly selected property, and applying writes only that
+    // property — never the one that happened to be selected earlier.
+    act(() => result.current.propose({ kind: 'delete', tag: 'urgent' }))
+    expect(result.current.pending?.property).toBe('categories')
+    await act(async () => { await result.current.applyPending() })
+
+    expect(updateFrontmatter).toHaveBeenCalledTimes(1)
+    expect(updateFrontmatter).toHaveBeenCalledWith('/a.md', 'categories', [], { silent: true })
   })
 })

@@ -1,17 +1,18 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import {
-  useTagManager, type TagManagerApplyResult, type TagManagerProgress, type UpdateFrontmatter,
-} from '../hooks/useTagManager'
+  useTagManagerDialogState, NO_ESCAPE_GUARD,
+  type EscapeGuard, type PendingAction, type RowEdit, type TagManagerDialogState,
+} from '../hooks/useTagManagerDialogState'
+import type { UpdateFrontmatter } from '../hooks/useTagManager'
 import { translate, type AppLocale } from '../lib/i18n'
 import type { VaultEntry } from '../types'
-import type { TagUsage } from '../utils/tagInventory'
-import { resolveRenameOp, type TagRewriteOp } from '../utils/tagRewrite'
-import { TagManagerRow, type TagRowEditMode } from './TagManagerRow'
+import { resolveRenameOp } from '../utils/tagRewrite'
+import { TagManagerRow } from './TagManagerRow'
 import { TagManagerConfirm, TagManagerProgressLine, TagManagerResult } from './TagManagerStatus'
 
 interface TagManagerDialogProps {
@@ -23,33 +24,11 @@ interface TagManagerDialogProps {
   onOpenNote: (entry: VaultEntry) => void
 }
 
-interface PendingAction {
-  op: TagRewriteOp
-  message: string
-}
-
-interface RowEdit {
-  tag: string
-  mode: Exclude<TagRowEditMode, null>
-}
-
-function confirmMessage(op: TagRewriteOp, count: number, intoExisting: boolean, locale: AppLocale): string {
-  if (op.kind === 'delete') return translate(locale, 'tagManager.confirm.delete', { tag: op.tag, count })
-  if (op.kind === 'rename') return translate(locale, 'tagManager.confirm.rename', { from: op.from, to: op.to, count })
-  const key = intoExisting ? 'tagManager.confirm.renameIntoExisting' : 'tagManager.confirm.merge'
-  return translate(locale, key, { from: op.sources.join(', '), to: op.target, count })
-}
-
-function filterUsages(usages: TagUsage[], filter: string): TagUsage[] {
-  const needle = filter.trim().toLowerCase()
-  return needle ? usages.filter((usage) => usage.tag.toLowerCase().includes(needle)) : usages
-}
-
-function PropertyPicker({ properties, value, locale, onChange }: {
-  properties: string[]; value: string; locale: AppLocale; onChange: (property: string) => void
+function PropertyPicker({ properties, value, locale, disabled, onChange }: {
+  properties: string[]; value: string; locale: AppLocale; disabled: boolean; onChange: (property: string) => void
 }) {
   return (
-    <Select value={value} onValueChange={onChange}>
+    <Select value={value} onValueChange={onChange} disabled={disabled}>
       <SelectTrigger className="h-8 w-40" aria-label={translate(locale, 'tagManager.property')}>
         <SelectValue />
       </SelectTrigger>
@@ -58,87 +37,6 @@ function PropertyPicker({ properties, value, locale, onChange }: {
       </SelectContent>
     </Select>
   )
-}
-
-interface TagManagerDialogState {
-  property: string | null
-  usages: TagUsage[]
-  visible: TagUsage[]
-  filter: string
-  setFilter: (filter: string) => void
-  setSelectedProperty: (property: string) => void
-  expandedTag: string | null
-  rowEdit: RowEdit | null
-  pending: PendingAction | null
-  result: TagManagerApplyResult | null
-  progress: TagManagerProgress | null
-  busy: boolean
-  entriesByPath: Map<string, VaultEntry>
-  properties: string[]
-  toggleNotes: (tag: string) => void
-  startEdit: (tag: string, mode: Exclude<TagRowEditMode, null>) => void
-  cancelEdit: () => void
-  cancelPending: () => void
-  applyPending: () => Promise<void>
-  propose: (op: TagRewriteOp, intoExisting?: boolean) => void
-}
-
-function useTagManagerDialogState(
-  { entries, locale, onUpdateFrontmatter }: Omit<TagManagerDialogProps, 'open' | 'onClose' | 'onOpenNote'>,
-): TagManagerDialogState {
-  const manager = useTagManager({ entries, updateFrontmatter: onUpdateFrontmatter })
-  const [selectedProperty, setSelectedPropertyState] = useState<string | null>(null)
-  const [filter, setFilter] = useState('')
-  const [expandedTag, setExpandedTag] = useState<string | null>(null)
-  const [rowEdit, setRowEdit] = useState<RowEdit | null>(null)
-  const [pending, setPending] = useState<PendingAction | null>(null)
-  const [result, setResult] = useState<TagManagerApplyResult | null>(null)
-
-  const property = selectedProperty && manager.properties.includes(selectedProperty)
-    ? selectedProperty
-    : manager.properties[0] ?? null
-  const usages = useMemo(() => (property ? manager.inventory.get(property) ?? [] : []), [manager.inventory, property])
-  const visible = filterUsages(usages, filter)
-  const entriesByPath = useMemo(() => new Map(entries.map((entry) => [entry.path, entry])), [entries])
-  const busy = manager.progress !== null
-
-  const propose = (op: TagRewriteOp, intoExisting = false) => {
-    if (!property) return
-    setRowEdit(null)
-    setResult(null)
-    const count = manager.countAffected(property, op)
-    setPending({ op, message: confirmMessage(op, count, intoExisting, locale) })
-  }
-
-  const applyPending = async () => {
-    if (!property || !pending) return
-    const op = pending.op
-    setPending(null)
-    setResult(await manager.apply(property, op))
-  }
-
-  return {
-    property,
-    usages,
-    visible,
-    filter,
-    setFilter,
-    setSelectedProperty: setSelectedPropertyState,
-    expandedTag,
-    rowEdit,
-    pending,
-    result,
-    progress: manager.progress,
-    busy,
-    entriesByPath,
-    properties: manager.properties,
-    toggleNotes: (tag) => setExpandedTag((current) => (current === tag ? null : tag)),
-    startEdit: (tag, mode) => setRowEdit({ tag, mode }),
-    cancelEdit: () => setRowEdit(null),
-    cancelPending: () => setPending(null),
-    applyPending,
-    propose,
-  }
 }
 
 function TagManagerStatusArea({ state, locale }: { state: TagManagerDialogState; locale: AppLocale }) {
@@ -201,9 +99,28 @@ function TagManagerRowsList({ state, locale, onOpenNote }: {
   )
 }
 
-function TagManagerContent({ entries, locale, onUpdateFrontmatter, onOpenNote, onClose }: Omit<TagManagerDialogProps, 'open'>) {
+function useEscapeGuardSync(
+  escapeGuardRef: { current: EscapeGuard },
+  rowEdit: RowEdit | null,
+  pending: PendingAction | null,
+  cancelEdit: () => void,
+  cancelPending: () => void,
+): void {
+  useEffect(() => {
+    if (rowEdit) escapeGuardRef.current = { active: true, cancel: cancelEdit }
+    else if (pending) escapeGuardRef.current = { active: true, cancel: cancelPending }
+    else escapeGuardRef.current = NO_ESCAPE_GUARD
+  }, [escapeGuardRef, rowEdit, pending, cancelEdit, cancelPending])
+}
+
+interface TagManagerContentProps extends Omit<TagManagerDialogProps, 'open'> {
+  escapeGuardRef: { current: EscapeGuard }
+}
+
+function TagManagerContent({ entries, locale, onUpdateFrontmatter, onOpenNote, onClose, escapeGuardRef }: TagManagerContentProps) {
   const state = useTagManagerDialogState({ entries, locale, onUpdateFrontmatter })
   const { property } = state
+  useEscapeGuardSync(escapeGuardRef, state.rowEdit, state.pending, state.cancelEdit, state.cancelPending)
 
   const openNote = (entry: VaultEntry) => {
     onOpenNote(entry)
@@ -215,7 +132,13 @@ function TagManagerContent({ entries, locale, onUpdateFrontmatter, onOpenNote, o
   return (
     <div className="flex min-h-0 flex-col gap-3">
       <div className="flex items-center gap-2">
-        <PropertyPicker properties={state.properties} value={property} locale={locale} onChange={state.setSelectedProperty} />
+        <PropertyPicker
+          properties={state.properties}
+          value={property}
+          locale={locale}
+          disabled={state.busy}
+          onChange={state.setSelectedProperty}
+        />
         <Input
           value={state.filter}
           placeholder={translate(locale, 'tagManager.filterPlaceholder')}
@@ -230,14 +153,22 @@ function TagManagerContent({ entries, locale, onUpdateFrontmatter, onOpenNote, o
 }
 
 export function TagManagerDialog({ open, onClose, ...contentProps }: TagManagerDialogProps) {
+  const escapeGuardRef = useRef<EscapeGuard>(NO_ESCAPE_GUARD)
+
+  const handleEscapeKeyDown = (event: KeyboardEvent) => {
+    if (!escapeGuardRef.current.active) return
+    event.preventDefault()
+    escapeGuardRef.current.cancel()
+  }
+
   return (
     <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-[520px]">
+      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-[520px]" onEscapeKeyDown={handleEscapeKeyDown}>
         <DialogHeader>
           <DialogTitle>{translate(contentProps.locale, 'tagManager.title')}</DialogTitle>
           <DialogDescription>{translate(contentProps.locale, 'tagManager.description')}</DialogDescription>
         </DialogHeader>
-        {open && <TagManagerContent {...contentProps} onClose={onClose} />}
+        {open && <TagManagerContent {...contentProps} onClose={onClose} escapeGuardRef={escapeGuardRef} />}
       </DialogContent>
     </Dialog>
   )
