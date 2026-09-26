@@ -150,35 +150,19 @@ function currentFolderCreateOptions(selection: SidebarSelection | undefined): Im
   }
 }
 
-export function useCommandRegistry(config: CommandRegistryConfig): import('./commands/types').CommandAction[] {
-  const {
-    activeTabPath, entries, modifiedCount,
-    onQuickOpen, onCreateNote, onCreateNoteOfType, onSave, onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
-    onPastePlainText, onOpenSettings, onOpenFeedback,
-    onDeleteNote, onArchiveNote, onUnarchiveNote,
-    onCommitPush, onGenerateCommitMessage, onPull, onResolveConflicts, onSetViewMode, onToggleInspector, onToggleDiff, onToggleRawEditor, onFindInNote, onReplaceInNote,
-    noteWidth, defaultNoteWidth, onSetNoteWidth, onSetDefaultNoteWidth, onToggleAIChat, onToggleTableOfContents, onOpenVault, onCreateEmptyVault,
-    selectedViewName, onMoveSelectedViewUp, onMoveSelectedViewDown, canMoveSelectedViewUp, canMoveSelectedViewDown,
-    activeNoteModified,
-    onZoomIn, onZoomOut, onZoomReset, zoomLevel,
-    onSelect, onRenameFolder, onDeleteFolder, onRevealSelectedFolder, onCopySelectedFolderPath,
-    showInbox,
-    onGoBack, onGoForward, canGoBack, canGoForward,
-    onCheckForUpdates, onCreateType,
-    onRemoveActiveVault, onRestoreGettingStarted, isGettingStartedHidden, vaultCount,
-    mcpStatus, onInstallMcp, aiFeaturesEnabled,
-    aiAgentsStatus, vaultAiGuidanceStatus,
-    onOpenAiAgents, onRestoreVaultAiGuidance, onSetDefaultAiAgent, selectedAiAgent, onCycleDefaultAiAgent, selectedAiAgentLabel,
-    onReloadVault, onRepairVault,
-    locale, systemLocale, selectedUiLanguage, onSetUiLanguage, onSetThemeMode,
-    onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder, onTurnCurrentBlockInto,
-    onOpenInNewWindow, onRevealActiveFile, onCopyActiveFilePath, onCopyActiveDeepLink, onOpenActiveFileExternal, onExportNoteAsPdf, onToggleFavorite, onToggleOrganized,
-    onCustomizeNoteListColumns, canCustomizeNoteListColumns,
-    onRestoreDeletedNote, canRestoreDeletedNote,
-    selection, noteListFilter, onSetNoteListFilter,
-    gitFeaturesEnabled, isGitVault, gitRepositories, onInitializeGit, onPullRepository,
-  } = config
+interface CommandRegistryDerivedState {
+  hasActiveNote: boolean
+  activeEntry: VaultEntry | undefined
+  isArchived: boolean
+  isFavorite: boolean
+  isSectionGroup: boolean
+  folderCreateOptions: ImmediateCreateOptions | undefined
+  noteListColumnsLabel: string
+  vaultTypes: ReturnType<typeof extractVaultTypes>
+}
 
+function useCommandRegistryDerivedState(config: CommandRegistryConfig): CommandRegistryDerivedState {
+  const { activeTabPath, entries, selection } = config
   const hasActiveNote = activeTabPath !== null
 
   const activeEntry = useMemo(
@@ -194,29 +178,44 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
       ? 'Customize All Notes columns'
       : 'Customize Inbox columns'
   )
-
   const vaultTypes = useMemo(() => extractVaultTypes(entries), [entries])
 
-  const navigationCommands = useMemo(() => buildNavigationCommands({
-    onQuickOpen,
-    onSelect,
-    selection,
-    onRenameFolder,
-    onDeleteFolder,
-    onRevealSelectedFolder,
-    onCopySelectedFolderPath,
-    showInbox,
-    onGoBack,
-    onGoForward,
-    canGoBack,
-    canGoForward,
+  return { hasActiveNote, activeEntry, isArchived, isFavorite, isSectionGroup, folderCreateOptions, noteListColumnsLabel, vaultTypes }
+}
+
+function useNavigationGroupCommands(config: CommandRegistryConfig) {
+  const {
+    onQuickOpen, onSelect, selection, onRenameFolder, onDeleteFolder,
+    onRevealSelectedFolder, onCopySelectedFolderPath, showInbox,
+    onGoBack, onGoForward, canGoBack, canGoForward,
+  } = config
+
+  return useMemo(() => buildNavigationCommands({
+    onQuickOpen, onSelect, selection, onRenameFolder, onDeleteFolder,
+    onRevealSelectedFolder, onCopySelectedFolderPath, showInbox,
+    onGoBack, onGoForward, canGoBack, canGoForward,
   }), [
     onQuickOpen, onSelect, selection, onRenameFolder, onDeleteFolder,
     onRevealSelectedFolder, onCopySelectedFolderPath, showInbox,
     onGoBack, onGoForward, canGoBack, canGoForward,
   ])
+}
 
-  const noteCommands = useMemo(() => buildNoteCommands({
+function useNoteGroupCommands(config: CommandRegistryConfig, derived: CommandRegistryDerivedState) {
+  const {
+    activeTabPath, locale, onCreateNote, onCreateType, onSave,
+    onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
+    onFindInNote, onReplaceInNote, onPastePlainText,
+    onDeleteNote, onArchiveNote, onUnarchiveNote,
+    onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder, onTurnCurrentBlockInto,
+    onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onOpenInNewWindow,
+    onRevealActiveFile, onCopyActiveFilePath, onOpenActiveFileExternal,
+    onCopyActiveDeepLink, onExportNoteAsPdf, onToggleFavorite, onToggleOrganized,
+    onRestoreDeletedNote, canRestoreDeletedNote,
+  } = config
+  const { hasActiveNote, activeEntry, isArchived, isFavorite, folderCreateOptions } = derived
+
+  return useMemo(() => buildNoteCommands({
     hasActiveNote, activeTabPath, activeFileKind: activeEntry?.fileKind ?? 'markdown', isArchived, locale,
     currentFolderCreateOptions: folderCreateOptions, onCreateNote, onCreateType, onSave,
     onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
@@ -241,8 +240,15 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onToggleFavorite, isFavorite,
     onToggleOrganized, activeEntry?.organized, onRestoreDeletedNote, canRestoreDeletedNote,
   ])
+}
 
-  const gitCommands = useMemo(() => buildGitCommands({
+function useGitGroupCommands(config: CommandRegistryConfig) {
+  const {
+    modifiedCount, gitFeaturesEnabled, isGitVault, gitRepositories,
+    onCommitPush, onGenerateCommitMessage, onInitializeGit, onPull, onPullRepository, onResolveConflicts, onSelect,
+  } = config
+
+  return useMemo(() => buildGitCommands({
     modifiedCount,
     gitFeaturesEnabled,
     isGitVault,
@@ -260,8 +266,18 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     modifiedCount, gitFeaturesEnabled, isGitVault, gitRepositories, config.canAddRemote, config.onAddRemote,
     onCommitPush, onGenerateCommitMessage, onInitializeGit, onPull, onPullRepository, onResolveConflicts, onSelect,
   ])
+}
 
-  const viewCommands = useMemo(() => buildViewCommands({
+function useViewGroupCommands(config: CommandRegistryConfig, hasActiveNote: boolean, noteListColumnsLabel: string) {
+  const {
+    aiFeaturesEnabled, activeNoteModified, onSetViewMode, onToggleInspector,
+    onToggleDiff, onToggleRawEditor, noteWidth, defaultNoteWidth, onSetNoteWidth, onSetDefaultNoteWidth,
+    onToggleAIChat, onToggleTableOfContents, zoomLevel, onZoomIn, onZoomOut, onZoomReset,
+    onCustomizeNoteListColumns, canCustomizeNoteListColumns,
+    selectedViewName, onMoveSelectedViewUp, onMoveSelectedViewDown, canMoveSelectedViewUp, canMoveSelectedViewDown,
+  } = config
+
+  return useMemo(() => buildViewCommands({
     aiFeaturesEnabled,
     hasActiveNote, activeNoteModified, onSetViewMode, onToggleInspector,
     onToggleDiff, onToggleRawEditor, noteWidth, defaultNoteWidth, onSetNoteWidth, onSetDefaultNoteWidth, onToggleAIChat, onToggleTableOfContents, zoomLevel, onZoomIn, onZoomOut, onZoomReset,
@@ -275,8 +291,17 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onCustomizeNoteListColumns, canCustomizeNoteListColumns, noteListColumnsLabel,
     selectedViewName, onMoveSelectedViewUp, onMoveSelectedViewDown, canMoveSelectedViewUp, canMoveSelectedViewDown,
   ])
+}
 
-  const settingsCommands = useMemo(() => buildSettingsCommands({
+function useSettingsGroupCommands(config: CommandRegistryConfig) {
+  const {
+    mcpStatus, vaultCount, isGettingStartedHidden,
+    onOpenSettings, onOpenFeedback, onOpenVault, onCreateEmptyVault, onRemoveActiveVault, onRestoreGettingStarted,
+    onCheckForUpdates, onInstallMcp, onReloadVault, onRepairVault,
+    locale, systemLocale, selectedUiLanguage, onSetUiLanguage, onSetThemeMode,
+  } = config
+
+  return useMemo(() => buildSettingsCommands({
     mcpStatus, vaultCount, isGettingStartedHidden,
     onOpenSettings, onOpenFeedback, onOpenVault, onCreateEmptyVault, onRemoveActiveVault, onRestoreGettingStarted,
     onCheckForUpdates, onInstallMcp, onReloadVault, onRepairVault,
@@ -287,8 +312,15 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     onCheckForUpdates, onInstallMcp, onReloadVault, onRepairVault,
     locale, systemLocale, selectedUiLanguage, onSetUiLanguage, onSetThemeMode,
   ])
+}
 
-  const aiCommands = useMemo(() => buildAiAgentCommands({
+function useAiGroupCommands(config: CommandRegistryConfig) {
+  const {
+    aiFeaturesEnabled, aiAgentsStatus, vaultAiGuidanceStatus, selectedAiAgent, selectedAiAgentLabel,
+    onOpenAiAgents, onRestoreVaultAiGuidance, onSetDefaultAiAgent, onCycleDefaultAiAgent,
+  } = config
+
+  return useMemo(() => buildAiAgentCommands({
     aiFeaturesEnabled,
     aiAgentsStatus,
     vaultAiGuidanceStatus,
@@ -303,6 +335,11 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     aiAgentsStatus, vaultAiGuidanceStatus, selectedAiAgent, selectedAiAgentLabel,
     onOpenAiAgents, onRestoreVaultAiGuidance, onSetDefaultAiAgent, onCycleDefaultAiAgent,
   ])
+}
+
+function useTypeAndFilterGroupCommands(config: CommandRegistryConfig, derived: CommandRegistryDerivedState) {
+  const { onCreateNoteOfType, onSelect, noteListFilter, onSetNoteListFilter } = config
+  const { vaultTypes, isSectionGroup } = derived
 
   const typeCommands = useMemo(
     () => buildTypeCommands(vaultTypes, onCreateNoteOfType, onSelect),
@@ -312,6 +349,20 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     () => buildFilterCommands({ isSectionGroup, noteListFilter, onSetNoteListFilter }),
     [isSectionGroup, noteListFilter, onSetNoteListFilter],
   )
+
+  return { typeCommands, filterCommands }
+}
+
+export function useCommandRegistry(config: CommandRegistryConfig): import('./commands/types').CommandAction[] {
+  const derived = useCommandRegistryDerivedState(config)
+  const navigationCommands = useNavigationGroupCommands(config)
+  const noteCommands = useNoteGroupCommands(config, derived)
+  const gitCommands = useGitGroupCommands(config)
+  const viewCommands = useViewGroupCommands(config, derived.hasActiveNote, derived.noteListColumnsLabel)
+  const settingsCommands = useSettingsGroupCommands(config)
+  const aiCommands = useAiGroupCommands(config)
+  const { typeCommands, filterCommands } = useTypeAndFilterGroupCommands(config, derived)
+
   const commands = useMemo(() => [
     ...navigationCommands,
     ...noteCommands,
@@ -326,5 +377,5 @@ export function useCommandRegistry(config: CommandRegistryConfig): import('./com
     settingsCommands, aiCommands, typeCommands, filterCommands,
   ])
 
-  return useMemo(() => localizeCommandActions(commands, locale), [commands, locale])
+  return useMemo(() => localizeCommandActions(commands, config.locale), [commands, config.locale])
 }
