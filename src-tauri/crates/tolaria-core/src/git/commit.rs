@@ -145,8 +145,11 @@ fn run_commit_as(
     })
 }
 
+/// Git words an empty commit as "nothing to commit" on a clean tree, or
+/// "no changes added to commit" when other files are dirty but unstaged.
 fn is_nothing_to_commit(detail: &str) -> bool {
-    detail.to_ascii_lowercase().contains("nothing to commit")
+    let detail = detail.to_ascii_lowercase();
+    detail.contains("nothing to commit") || detail.contains("no changes added to commit")
 }
 
 /// Commit all changes with a message.
@@ -256,6 +259,15 @@ mod tests {
     use crate::git::tests::{setup_git_repo, GitConfigEnvGuard};
     use std::fs;
     use std::path::Path;
+
+    fn server_identity(author_name: &str, author_email: &str) -> CommitIdentity {
+        CommitIdentity {
+            author_name: author_name.into(),
+            author_email: author_email.into(),
+            committer_name: "Tolaria Server".into(),
+            committer_email: "server@tolaria.local".into(),
+        }
+    }
 
     fn unset_local_author_config(vault: &Path) {
         for key in ["user.name", "user.email"] {
@@ -500,12 +512,7 @@ mod tests {
         // A second unrelated edit must NOT be swept into Alice's scoped commit.
         fs::write(vault.join("other.md"), "# Other\n").unwrap();
 
-        let identity = CommitIdentity {
-            author_name: "Alice".into(),
-            author_email: "alice@example.com".into(),
-            committer_name: "Tolaria Server".into(),
-            committer_email: "server@tolaria.local".into(),
-        };
+        let identity = server_identity("Alice", "alice@example.com");
         let out = git_commit_paths_as(vp, &["alice-note.md".into()], "add alice note", &identity);
         assert!(out.is_ok(), "scoped commit should succeed: {out:?}");
 
@@ -538,14 +545,27 @@ mod tests {
         let vault = dir.path();
         let vp = vault.to_str().unwrap();
         fs::write(vault.join("x.md"), "# X\n").unwrap();
-        let identity = CommitIdentity {
-            author_name: "Bob".into(),
-            author_email: "bob@example.com".into(),
-            committer_name: "Tolaria Server".into(),
-            committer_email: "server@tolaria.local".into(),
-        };
+        let identity = server_identity("Bob", "bob@example.com");
         git_commit_paths_as(vp, &["x.md".into()], "first", &identity).unwrap();
         // No new changes → autogit no-op → Ok("").
+        let again = git_commit_paths_as(vp, &["x.md".into()], "again", &identity).unwrap();
+        assert_eq!(again, "");
+    }
+
+    // An unchanged autogit path must stay a no-op even when another file is
+    // dirty but unstaged: git then reports "no changes added to commit"
+    // instead of "nothing to commit".
+    #[test]
+    fn git_commit_paths_as_unchanged_path_with_other_dirty_file_is_ok_empty() {
+        let _env = GitConfigEnvGuard::isolated();
+        let dir = setup_git_repo();
+        let vault = dir.path();
+        let vp = vault.to_str().unwrap();
+        fs::write(vault.join("x.md"), "# X\n").unwrap();
+        fs::write(vault.join("other.md"), "# Other\n").unwrap();
+        let identity = server_identity("Bob", "bob@example.com");
+        git_commit_paths_as(vp, &["x.md".into(), "other.md".into()], "first", &identity).unwrap();
+        fs::write(vault.join("other.md"), "# Other edited\n").unwrap();
         let again = git_commit_paths_as(vp, &["x.md".into()], "again", &identity).unwrap();
         assert_eq!(again, "");
     }
@@ -559,12 +579,7 @@ mod tests {
         let dir = setup_git_repo();
         let vault = dir.path();
         let vp = vault.to_str().unwrap();
-        let identity = CommitIdentity {
-            author_name: "Bob".into(),
-            author_email: "bob@example.com".into(),
-            committer_name: "Tolaria Server".into(),
-            committer_email: "server@tolaria.local".into(),
-        };
+        let identity = server_identity("Bob", "bob@example.com");
         fs::write(vault.join("y.md"), "# Y\n").unwrap();
         git_commit_all_as(vp, "first", &identity).unwrap();
         // Working tree clean → no-op → Ok("").
