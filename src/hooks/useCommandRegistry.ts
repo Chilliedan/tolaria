@@ -150,6 +150,11 @@ function currentFolderCreateOptions(selection: SidebarSelection | undefined): Im
   }
 }
 
+function defaultNoteListColumnsLabel(selection: SidebarSelection | undefined): string {
+  const showsAllNotes = selection?.kind === 'filter' && selection.filter === 'all'
+  return showsAllNotes ? 'Customize All Notes columns' : 'Customize Inbox columns'
+}
+
 interface CommandRegistryDerivedState {
   hasActiveNote: boolean
   activeEntry: VaultEntry | undefined
@@ -173,11 +178,7 @@ function useCommandRegistryDerivedState(config: CommandRegistryConfig): CommandR
   const isFavorite = activeEntry?.favorite ?? false
   const isSectionGroup = selection?.kind === 'sectionGroup'
   const folderCreateOptions = useMemo(() => currentFolderCreateOptions(selection), [selection])
-  const noteListColumnsLabel = config.noteListColumnsLabel ?? (
-    selection?.kind === 'filter' && selection.filter === 'all'
-      ? 'Customize All Notes columns'
-      : 'Customize Inbox columns'
-  )
+  const noteListColumnsLabel = config.noteListColumnsLabel ?? defaultNoteListColumnsLabel(selection)
   const vaultTypes = useMemo(() => extractVaultTypes(entries), [entries])
 
   return { hasActiveNote, activeEntry, isArchived, isFavorite, isSectionGroup, folderCreateOptions, noteListColumnsLabel, vaultTypes }
