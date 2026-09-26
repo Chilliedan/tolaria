@@ -5,6 +5,7 @@ import { LazyEditor } from './components/LazyEditor'
 import { ResizeHandle } from './components/ResizeHandle'
 import { CreateTypeDialog } from './components/CreateTypeDialog'
 import { CreateViewDialog } from './components/CreateViewDialog'
+import { TagManagerDialog } from './components/TagManagerDialog'
 import { QuickOpenPalette } from './components/QuickOpenPalette'
 import { CommandPalette } from './components/CommandPalette'
 import { SearchPanel } from './components/SearchPanel'
@@ -201,7 +202,11 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [gitHistoryRefreshKey, setGitHistoryRefreshKey] = useState(0)
   const dialogs = useDialogs()
-  const { closeAIChat, openAIChat, showAIChat } = dialogs
+  const { closeAIChat, openAIChat, showAIChat, openTagManager: openTagManagerDialog } = dialogs
+  const openTagManager = useCallback(() => {
+    trackEvent('tag_manager_opened')
+    openTagManagerDialog()
+  }, [openTagManagerDialog])
   const [showFeedback, setShowFeedback] = useState(false)
   const openFeedback = useCallback(() => setShowFeedback(true), [])
   const closeFeedback = useCallback(() => setShowFeedback(false), [])
@@ -1622,6 +1627,7 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
     onOpenVault: vaultSwitcher.handleOpenLocalFolder,
     onCreateEmptyVault: vaultSwitcher.handleCreateEmptyVault,
     onCreateType: dialogs.openCreateType,
+    onManageTags: openTagManager,
     ...commandAiActions,
     onCheckForUpdates: handleCheckForUpdates,
     onRemoveActiveVault: removeActiveVaultCommand,
@@ -1904,6 +1910,14 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
           onSelectFolder={noteRetargetingUi.selectFolder}
         />
         <CreateViewDialog open={dialogs.showCreateViewDialog} onClose={dialogs.closeCreateView} onCreate={handleCreateOrUpdateView} availableFields={availableFields} locale={appLocale} editingView={dialogs.editingView?.definition ?? null} />
+        <TagManagerDialog
+          open={dialogs.showTagManager}
+          onClose={dialogs.closeTagManager}
+          entries={vault.entries}
+          locale={appLocale}
+          onUpdateFrontmatter={notes.handleUpdateFrontmatter}
+          onOpenNote={notes.handleSelectNote}
+        />
         <CommitDialog
           open={commitFlow.showCommitDialog}
           modifiedCount={commitModifiedFiles.length}

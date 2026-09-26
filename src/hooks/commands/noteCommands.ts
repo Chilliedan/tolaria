@@ -21,6 +21,7 @@ interface NoteCommandsConfig {
   activeNoteHasIcon?: boolean
   onCreateNote: (type?: string, options?: ImmediateCreateOptions) => void
   onCreateType?: () => void
+  onManageTags?: () => void
   currentFolderCreateOptions?: ImmediateCreateOptions
   onSave: () => void
   onUndo?: () => void
@@ -119,6 +120,13 @@ function buildCoreNoteCommands(config: NoteCommandsConfig): CommandAction[] {
       keywords: ['new', 'create', 'type', 'template'],
       enabled: !!config.onCreateType,
       execute: () => config.onCreateType?.(),
+    }),
+    createNoteCommand({
+      id: 'manage-tags',
+      label: 'Manage Tags',
+      keywords: ['tags', 'tag', 'rename', 'merge', 'delete', 'labels', 'categories', 'organize'],
+      enabled: !!config.onManageTags,
+      execute: () => config.onManageTags?.(),
     }),
     createNoteCommand({
       id: 'save-note',

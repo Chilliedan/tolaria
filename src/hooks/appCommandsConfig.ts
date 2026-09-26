@@ -85,6 +85,7 @@ type CommandRegistryVaultActions = Pick<
   | 'onInitializeGit'
   | 'onCheckForUpdates'
   | 'onCreateType'
+  | 'onManageTags'
   | 'locale'
   | 'systemLocale'
   | 'selectedUiLanguage'
@@ -231,6 +232,7 @@ function createCommandRegistryVaultConfig(
     onInitializeGit: config.onInitializeGit,
     onCheckForUpdates: config.onCheckForUpdates,
     onCreateType: config.onCreateType,
+    onManageTags: config.onManageTags,
     locale: config.locale,
     systemLocale: config.systemLocale,
     selectedUiLanguage: config.selectedUiLanguage,

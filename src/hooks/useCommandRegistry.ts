@@ -91,6 +91,7 @@ interface CommandRegistryConfig {
   gitRepositories?: GitRepositoryOption[]
   onInitializeGit?: () => void
   onCreateType?: () => void
+  onManageTags?: () => void
   onDeleteNote: (path: string) => void
   onArchiveNote: (path: string) => void
   onUnarchiveNote: (path: string) => void
@@ -204,7 +205,7 @@ function useNavigationGroupCommands(config: CommandRegistryConfig) {
 
 function useNoteGroupCommands(config: CommandRegistryConfig, derived: CommandRegistryDerivedState) {
   const {
-    activeTabPath, locale, onCreateNote, onCreateType, onSave,
+    activeTabPath, locale, onCreateNote, onCreateType, onManageTags, onSave,
     onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
     onFindInNote, onReplaceInNote, onPastePlainText,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
@@ -218,7 +219,7 @@ function useNoteGroupCommands(config: CommandRegistryConfig, derived: CommandReg
 
   return useMemo(() => buildNoteCommands({
     hasActiveNote, activeTabPath, activeFileKind: activeEntry?.fileKind ?? 'markdown', isArchived, locale,
-    currentFolderCreateOptions: folderCreateOptions, onCreateNote, onCreateType, onSave,
+    currentFolderCreateOptions: folderCreateOptions, onCreateNote, onCreateType, onManageTags, onSave,
     onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
     onFindInNote, onReplaceInNote, onPastePlainText,
     onDeleteNote, onArchiveNote, onUnarchiveNote,
@@ -232,7 +233,7 @@ function useNoteGroupCommands(config: CommandRegistryConfig, derived: CommandReg
     onRestoreDeletedNote, canRestoreDeletedNote,
   }), [
     hasActiveNote, activeTabPath, activeEntry?.fileKind, isArchived, locale,
-    folderCreateOptions, onCreateNote, onCreateType, onSave, onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
+    folderCreateOptions, onCreateNote, onCreateType, onManageTags, onSave, onUndo, onRedo, canUndo, canRedo, undoLabel, redoLabel,
     onFindInNote, onReplaceInNote, onPastePlainText, onDeleteNote, onArchiveNote, onUnarchiveNote,
     onChangeNoteType, onMoveNoteToFolder, canMoveNoteToFolder, onTurnCurrentBlockInto,
     onSetNoteIcon, onRemoveNoteIcon, activeNoteHasIcon, onOpenInNewWindow,

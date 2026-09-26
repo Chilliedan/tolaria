@@ -12,6 +12,7 @@ export function useDialogs() {
   const [showConflictResolver, setShowConflictResolver] = useState(false)
   const [showCreateViewDialog, setShowCreateViewDialog] = useState(false)
   const [editingView, setEditingView] = useState<{ filename: string; definition: ViewDefinition; rootPath?: string } | null>(null)
+  const [showTagManager, setShowTagManager] = useState(false)
 
   const openCreateType = useCallback(() => setShowCreateTypeDialog(true), [])
   const closeCreateType = useCallback(() => setShowCreateTypeDialog(false), [])
@@ -36,6 +37,8 @@ export function useDialogs() {
     setEditingView({ filename, definition, rootPath })
     setShowCreateViewDialog(true)
   }, [])
+  const openTagManager = useCallback(() => setShowTagManager(true), [])
+  const closeTagManager = useCallback(() => setShowTagManager(false), [])
 
   return {
     showCreateTypeDialog, openCreateType, closeCreateType,
@@ -47,5 +50,6 @@ export function useDialogs() {
     showSearch, openSearch, closeSearch,
     showConflictResolver, openConflictResolver, closeConflictResolver,
     showCreateViewDialog, openCreateView, closeCreateView, editingView, openEditView,
+    showTagManager, openTagManager, closeTagManager,
   }
 }

@@ -88,6 +88,7 @@ export interface AppCommandsConfig {
   gitRepositories?: GitRepositoryOption[]
   onInitializeGit?: () => void
   onCreateType?: () => void
+  onManageTags?: () => void
   aiFeaturesEnabled?: boolean
   onToggleAIChat?: () => void
   onToggleTableOfContents?: () => void
