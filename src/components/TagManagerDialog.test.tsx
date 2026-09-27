@@ -72,6 +72,26 @@ describe('TagManagerDialog', () => {
     expect(updateFrontmatter).toHaveBeenCalledWith('/a.md', 'tags', ['soul', 'live'], { silent: true })
   })
 
+  it('focuses the rename input once the row menu has closed', async () => {
+    renderDialog()
+    openRowMenu('blues')
+    fireEvent.click(screen.getByText('Rename…'))
+
+    const input = screen.getByPlaceholderText('New tag name')
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    await waitFor(() => expect(document.activeElement).toBe(input))
+  })
+
+  it('focuses the merge target picker once the row menu has closed', async () => {
+    renderDialog()
+    openRowMenu('blues')
+    fireEvent.click(screen.getByText('Merge into…'))
+
+    const trigger = screen.getByTestId('tag-manager-merge-target')
+    await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
+    await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
   it('warns when a rename targets an existing tag', () => {
     renderDialog()
     openRowMenu('live')

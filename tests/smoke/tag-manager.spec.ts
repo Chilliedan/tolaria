@@ -35,7 +35,13 @@ test.describe('Tag manager', () => {
     await expect(row).toContainText('2 notes')
     await page.getByTestId('tag-manager-menu-blues').click()
     await page.getByRole('menuitem', { name: 'Rename…' }).click()
-    await page.getByPlaceholder('New tag name').fill('soul')
+    // Type through the keyboard (not fill) so the test proves the inline editor
+    // actually holds focus once the row menu has closed.
+    const renameInput = page.getByPlaceholder('New tag name')
+    await expect(renameInput).toBeFocused()
+    await page.keyboard.press('ControlOrMeta+A')
+    await page.keyboard.type('soul')
+    await expect(renameInput).toHaveValue('soul')
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByText('Rename “blues” to “soul” in 2 notes?')).toBeVisible()
     // Mark this document so a full page reload (which would rebuild the inventory

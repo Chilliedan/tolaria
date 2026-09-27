@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState, type RefObject } from 'react'
 import { DotsThree } from '@phosphor-icons/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -30,8 +30,8 @@ interface TagManagerRowProps {
   onOpenNote: (entry: VaultEntry) => void
 }
 
-function RenameEditor({ tag, locale, onRename, onCancel }: {
-  tag: string; locale: AppLocale; onRename: (next: string) => void; onCancel: () => void
+function RenameEditor({ tag, locale, inputRef, onRename, onCancel }: {
+  tag: string; locale: AppLocale; inputRef: RefObject<HTMLInputElement | null>; onRename: (next: string) => void; onCancel: () => void
 }) {
   const [value, setValue] = useState(tag)
   return (
@@ -40,7 +40,7 @@ function RenameEditor({ tag, locale, onRename, onCancel }: {
       onSubmit={(event) => { event.preventDefault(); onRename(value) }}
     >
       <Input
-        autoFocus
+        ref={inputRef}
         value={value}
         placeholder={translate(locale, 'tagManager.renamePlaceholder')}
         onChange={(event) => setValue(event.target.value)}
@@ -53,13 +53,13 @@ function RenameEditor({ tag, locale, onRename, onCancel }: {
   )
 }
 
-function MergeEditor({ otherTags, locale, onMerge, onCancel }: {
-  otherTags: string[]; locale: AppLocale; onMerge: (target: string) => void; onCancel: () => void
+function MergeEditor({ otherTags, locale, triggerRef, onMerge, onCancel }: {
+  otherTags: string[]; locale: AppLocale; triggerRef: RefObject<HTMLButtonElement | null>; onMerge: (target: string) => void; onCancel: () => void
 }) {
   return (
     <div className="flex items-center gap-2 px-2 pb-2">
       <Select onValueChange={onMerge}>
-        <SelectTrigger className="h-7 w-full" data-testid="tag-manager-merge-target">
+        <SelectTrigger ref={triggerRef} className="h-7 w-full" data-testid="tag-manager-merge-target">
           <SelectValue placeholder={translate(locale, 'tagManager.mergePlaceholder')} />
         </SelectTrigger>
         <SelectContent>
@@ -87,9 +87,37 @@ function NotesList({ notes, onOpenNote }: { notes: VaultEntry[]; onOpenNote: (en
   )
 }
 
-function RowMenu({ tag, expanded, canMerge, locale, disabled, onToggleNotes, onStartEdit, onDelete }: {
+interface RowEditStarter {
+  startEdit: (mode: 'rename' | 'merge') => void
+  onCloseAutoFocus: (event: Event) => void
+}
+
+// Choosing Rename/Merge mounts an inline editor while the row menu still traps
+// focus, and Radix then hands focus back to the menu trigger as the menu closes.
+// Redirect that close focus to the editor instead.
+function useRowEditStarter(onStartEdit: (mode: 'rename' | 'merge') => void) {
+  const renameInputRef = useRef<HTMLInputElement>(null)
+  const mergeTriggerRef = useRef<HTMLButtonElement>(null)
+  const editStartedRef = useRef(false)
+  const editStarter: RowEditStarter = {
+    startEdit: (mode) => {
+      editStartedRef.current = true
+      onStartEdit(mode)
+    },
+    onCloseAutoFocus: (event) => {
+      if (!editStartedRef.current) return
+      editStartedRef.current = false
+      event.preventDefault()
+      const editor = renameInputRef.current ?? mergeTriggerRef.current
+      editor?.focus()
+    },
+  }
+  return { renameInputRef, mergeTriggerRef, editStarter }
+}
+
+function RowMenu({ tag, expanded, canMerge, locale, disabled, editStarter, onToggleNotes, onDelete }: {
   tag: string; expanded: boolean; canMerge: boolean; locale: AppLocale; disabled: boolean
-  onToggleNotes: () => void; onStartEdit: (mode: 'rename' | 'merge') => void; onDelete: () => void
+  editStarter: RowEditStarter; onToggleNotes: () => void; onDelete: () => void
 }) {
   return (
     <DropdownMenu>
@@ -104,12 +132,12 @@ function RowMenu({ tag, expanded, canMerge, locale, disabled, onToggleNotes, onS
           <DotsThree size={16} weight="bold" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" onCloseAutoFocus={editStarter.onCloseAutoFocus}>
         <DropdownMenuItem onSelect={onToggleNotes}>
           {translate(locale, expanded ? 'tagManager.hideNotes' : 'tagManager.showNotes')}
         </DropdownMenuItem>
-        <DropdownMenuItem onSelect={() => onStartEdit('rename')}>{translate(locale, 'tagManager.rename')}</DropdownMenuItem>
-        <DropdownMenuItem disabled={!canMerge} onSelect={() => onStartEdit('merge')}>
+        <DropdownMenuItem onSelect={() => editStarter.startEdit('rename')}>{translate(locale, 'tagManager.rename')}</DropdownMenuItem>
+        <DropdownMenuItem disabled={!canMerge} onSelect={() => editStarter.startEdit('merge')}>
           {translate(locale, 'tagManager.merge')}
         </DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onSelect={onDelete}>{translate(locale, 'tagManager.delete')}</DropdownMenuItem>
@@ -120,6 +148,7 @@ function RowMenu({ tag, expanded, canMerge, locale, disabled, onToggleNotes, onS
 
 export function TagManagerRow(props: TagManagerRowProps) {
   const { usage, otherTags, editMode, expanded, notes, locale, disabled } = props
+  const { renameInputRef, mergeTriggerRef, editStarter } = useRowEditStarter(props.onStartEdit)
   return (
     <li className="rounded-md hover:bg-muted/50" data-testid={`tag-manager-row-${usage.tag}`}>
       <div className="flex items-center gap-2 px-2 py-1">
@@ -133,16 +162,16 @@ export function TagManagerRow(props: TagManagerRowProps) {
           canMerge={otherTags.length > 0}
           locale={locale}
           disabled={disabled}
+          editStarter={editStarter}
           onToggleNotes={props.onToggleNotes}
-          onStartEdit={props.onStartEdit}
           onDelete={props.onDelete}
         />
       </div>
       {editMode === 'rename' && (
-        <RenameEditor tag={usage.tag} locale={locale} onRename={props.onRename} onCancel={props.onCancelEdit} />
+        <RenameEditor tag={usage.tag} locale={locale} inputRef={renameInputRef} onRename={props.onRename} onCancel={props.onCancelEdit} />
       )}
       {editMode === 'merge' && (
-        <MergeEditor otherTags={otherTags} locale={locale} onMerge={props.onMerge} onCancel={props.onCancelEdit} />
+        <MergeEditor otherTags={otherTags} locale={locale} triggerRef={mergeTriggerRef} onMerge={props.onMerge} onCancel={props.onCancelEdit} />
       )}
       {expanded && <NotesList notes={notes} onOpenNote={props.onOpenNote} />}
     </li>
