@@ -1086,7 +1086,7 @@
   "tagManager.continue": "Continuer",
   "tagManager.confirm.rename": "Renommer « {from} » en « {to} » dans {count} notes ?",
   "tagManager.confirm.merge": "Fusionner « {from} » dans « {to} » dans {count} notes ?",
-  "tagManager.confirm.renameIntoExisting": "« {to} » existe déjà. Fusionner « {from} » avec dans {count} notes ?",
+  "tagManager.confirm.renameIntoExisting": "« {to} » existe déjà. Fusionner « {from} » avec elle dans {count} notes ?",
   "tagManager.confirm.delete": "Retirer « {tag} » de {count} notes ?",
   "tagManager.apply": "Appliquer",
   "tagManager.applying": "Mise à jour de {done} sur {total} notes…",
