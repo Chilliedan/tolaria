@@ -3,7 +3,7 @@ import { planTagColorChanges } from './tagColorMigration'
 
 function context(colors: Record<string, string>, stillUsed: string[] = []) {
   return {
-    getColorKey: (tag: string) => colors[tag] ?? null,
+    getColorKey: (tag: string) => (Reflect.get(colors, tag) as string | undefined) ?? null,
     isTagStillUsed: (tag: string) => stillUsed.includes(tag),
   }
 }

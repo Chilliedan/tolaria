@@ -46,7 +46,9 @@ export function planTagRewrite(
   const target = targetTagOf(op)
   const steps: TagRewriteStep[] = []
   for (const entry of entries) {
-    const values = listValuesOf(entry.properties?.[property])
+    const values = listValuesOf(
+      entry.properties ? (Reflect.get(entry.properties, property) as VaultPropertyValue | undefined) : undefined,
+    )
     if (!values.some((value) => sources.has(value))) continue
     steps.push({ path: entry.path, nextValues: rewriteValues(values, sources, target) })
   }

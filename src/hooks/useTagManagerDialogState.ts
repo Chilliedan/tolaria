@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { translate, type AppLocale } from '../lib/i18n'
 import type { VaultEntry } from '../types'
 import type { TagUsage } from '../utils/tagInventory'
-import { type TagRewriteOp } from '../utils/tagRewrite'
+import type { TagRewriteOp } from '../utils/tagRewrite'
 import type { TagRowEditMode } from '../components/TagManagerRow'
 import { useTagManager, type TagManagerApplyResult, type TagManagerProgress, type UpdateFrontmatter } from './useTagManager'
 

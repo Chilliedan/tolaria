@@ -66,7 +66,7 @@ export function listTagProperties(inventory: TagInventory): string[] {
 
 export function isTagUsedOutside(inventory: TagInventory, tag: string, property: string): boolean {
   const propertyUsages = inventory.get(property)
-  if (!propertyUsages || !propertyUsages.some((usage) => usage.tag === tag)) return false
+  if (!propertyUsages?.some((usage) => usage.tag === tag)) return false
   return [...inventory.entries()].some(
     ([otherProperty, usages]) => otherProperty !== property && usages.some((usage) => usage.tag === tag),
   )

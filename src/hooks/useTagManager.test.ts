@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeEntry } from '../test-utils/noteListTestUtils'
-import { useTagManager } from './useTagManager'
+import { useTagManager, type TagManagerApplyResult } from './useTagManager'
 
 const { trackEventMock, setTagColorMock, colors } = vi.hoisted(() => ({
   trackEventMock: vi.fn(),
@@ -11,7 +11,7 @@ const { trackEventMock, setTagColorMock, colors } = vi.hoisted(() => ({
 
 vi.mock('../lib/telemetry', () => ({ trackEvent: trackEventMock }))
 vi.mock('../utils/tagStyles', () => ({
-  getTagColorKey: (tag: string) => colors[tag] ?? null,
+  getTagColorKey: (tag: string) => (Reflect.get(colors, tag) as string | undefined) ?? null,
   setTagColor: setTagColorMock,
 }))
 vi.mock('../utils/propertyTypes', async (importOriginal) => ({
@@ -42,7 +42,7 @@ describe('useTagManager', () => {
     const updateFrontmatter = vi.fn().mockResolvedValue(undefined)
     const { result } = renderHook(() => useTagManager({ entries, updateFrontmatter }))
 
-    let outcome
+    let outcome: TagManagerApplyResult | undefined
     await act(async () => {
       outcome = await result.current.apply('tags', { kind: 'rename', from: 'blues', to: 'soul' })
     })
@@ -63,7 +63,7 @@ describe('useTagManager', () => {
       .mockResolvedValueOnce(undefined)
     const { result } = renderHook(() => useTagManager({ entries, updateFrontmatter }))
 
-    let outcome
+    let outcome: TagManagerApplyResult | undefined
     await act(async () => {
       outcome = await result.current.apply('tags', { kind: 'delete', tag: 'blues' })
     })
@@ -77,7 +77,7 @@ describe('useTagManager', () => {
     const updateFrontmatter = vi.fn()
     const { result } = renderHook(() => useTagManager({ entries, updateFrontmatter }))
 
-    let outcome
+    let outcome: TagManagerApplyResult | undefined
     await act(async () => {
       outcome = await result.current.apply('tags', { kind: 'delete', tag: 'missing' })
     })
