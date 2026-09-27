@@ -911,6 +911,18 @@ The Inspector panel (`src/components/Inspector.tsx`) is composed of sub-panels:
 
 4. **GitHistoryPanel**: Shows recent commits from file history with relative timestamps.
 
+## Tag Manager
+
+Tags are ordinary frontmatter list (or scalar) properties, and the Tag Manager treats them as **per tags-mode property**: `blues` under `tags` and `blues` under a custom `genre` property are distinct inventory entries, matching the display-mode resolution the Properties panel already uses (`text`, `number`, `date`, `boolean`, `status`, `url`, `tags`, `color`, above). Inventory and rewrite planning are pure, side-effect-free functions:
+
+- `buildTagInventory` (`src/utils/tagInventory.ts`) scans vault entries and groups each tag by property into a `Map<property, TagUsage[]>`, one `TagUsage` per distinct tag with its note count and paths.
+- `planTagRewrite` (`src/utils/tagRewrite.ts`) computes the per-note steps for a rename, merge, or delete operation without touching any note.
+- `planTagColorChanges` (`src/utils/tagColorMigration.ts`) computes how the global `tag_colors` map should change for the same operation (colour follows a rename, is dropped on delete, and the merge target's colour wins over its sources).
+
+`useTagManager` (`src/hooks/useTagManager.ts`) is the only piece that writes: `apply(property, op)` builds the plan, then applies each step sequentially through the existing `handleUpdateFrontmatter` path with `{ silent: true }`, so Tag Manager writes do not create undo-history entries. Per-note failures are collected rather than thrown, so one failing note does not abort the remaining writes; on completion it migrates `tag_colors` (skipped entirely if nothing wrote successfully) and reports `{ total, changed, failedPaths }`. `useTagManagerDialogState` (`src/hooks/useTagManagerDialogState.ts`) owns the dialog's UI state (selected property, filter text, row edit mode) and pins each confirmation to the property it was raised against, so switching properties while a confirmation is pending cannot apply the operation against the wrong one.
+
+The feature emits two PostHog events with no tag names, property names, or note content attached: `tag_manager_opened` when the dialog opens, and `tag_manager_action` (`{ action: 'rename' | 'merge' | 'delete', notes_changed, failed }`) after an apply completes.
+
 ## Search
 
 ### Keyword Search
