@@ -38,9 +38,15 @@ test.describe('Tag manager', () => {
     await page.getByPlaceholder('New tag name').fill('soul')
     await page.getByRole('button', { name: 'Continue' }).click()
     await expect(page.getByText('Rename “blues” to “soul” in 2 notes?')).toBeVisible()
+    // Mark this document so a full page reload (which would rebuild the inventory
+    // from disk) cannot make the refreshed-row assertions below pass by accident.
+    await page.evaluate(() => { Reflect.set(window, '__tagManagerNoReload', true) })
     await page.getByRole('button', { name: 'Apply' }).click()
     await expect(page.getByText('Updated 2 notes.')).toBeVisible()
     await expect(page.getByTestId('tag-manager-row-soul')).toContainText('2 notes')
+    await expect(page.getByTestId('tag-manager-row-blues')).toHaveCount(0)
+    await expect(page.getByTestId('tag-manager-row-live')).toContainText('1 notes')
+    expect(await page.evaluate(() => Reflect.get(window, '__tagManagerNoReload'))).toBe(true)
 
     // The fixture harness's mocked `update_frontmatter` command serializes array
     // values as block-style YAML with each item JSON-stringified (quoted), e.g.

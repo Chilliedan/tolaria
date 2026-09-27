@@ -1913,7 +1913,7 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
         <TagManagerDialog
           open={dialogs.showTagManager}
           onClose={dialogs.closeTagManager}
-          entries={vault.entries}
+          entries={visibleEntries}
           locale={appLocale}
           onUpdateFrontmatter={notes.handleUpdateFrontmatter}
           onOpenNote={notes.handleSelectNote}

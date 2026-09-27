@@ -265,6 +265,20 @@ function configureNeighborhoodFavoritesVault() {
   mockCommandResults.get_note_content = ({ path }: { path: string }) => neighborhoodContent[path] ?? ''
 }
 
+// A second registered vault is loaded into the workspace graph but is not
+// visible while multi-workspace mode is off, so note actions cannot patch it.
+function configureHiddenWorkspaceTagVaults() {
+  const entriesByVault = new Map<string, unknown[]>([
+    ['/vault', [{ ...mockEntries[0], properties: { tags: ['visible-tag'] } }]],
+    ['/other-vault', [{ ...mockEntries[1], path: '/other-vault/hidden.md', properties: { tags: ['hidden-tag'] } }]],
+  ])
+  mockCommandResults.load_vault_list = {
+    ...mockVaultList,
+    vaults: [...mockVaultList.vaults, { label: 'Other Vault', path: '/other-vault' }],
+  }
+  mockCommandResults.list_vault = ({ path }: { path: string }) => entriesByVault.get(path)
+}
+
 function getHeaderForNoteList(noteListContainer: HTMLElement) {
   return within(noteListContainer.parentElement as HTMLElement).getByRole('heading', { level: 3 })
 }
@@ -1064,6 +1078,35 @@ describe('App', () => {
 
     promptSpy.mockRestore()
   })
+
+  it('builds the tag manager inventory from the same visible entries that note actions patch', async () => {
+    configureHiddenWorkspaceTagVaults()
+
+    render(<App />)
+    await waitFor(() => {
+      expect(screen.getAllByText('Test Project').length).toBeGreaterThan(0)
+    }, { timeout: SLOW_APP_READY_TIMEOUT_MS })
+
+    act(() => {
+      fireEvent.keyDown(window, { key: 'k', code: 'KeyK', metaKey: true })
+    })
+    const commandInput = await screen.findByPlaceholderText('Type a command...')
+    fireEvent.change(commandInput, { target: { value: 'manage tags' } })
+    fireEvent.keyDown(commandInput, { key: 'Enter' })
+
+    expect(await screen.findByTestId('tag-manager-row-visible-tag')).toBeInTheDocument()
+    expect(screen.queryByTestId('tag-manager-row-hidden-tag')).not.toBeInTheDocument()
+
+    fireEvent.pointerDown(screen.getByTestId('tag-manager-menu-visible-tag'), { button: 0, ctrlKey: false })
+    fireEvent.click(await screen.findByText('Rename…'))
+    fireEvent.change(screen.getByPlaceholderText('New tag name'), { target: { value: 'renamed-tag' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    expect(await screen.findByText('Updated 1 notes.')).toBeInTheDocument()
+    expect(await screen.findByTestId('tag-manager-row-renamed-tag')).toBeInTheDocument()
+    expect(screen.queryByTestId('tag-manager-row-visible-tag')).not.toBeInTheDocument()
+  }, 15000)
 
   it('renders sidebar with correct default selection (All Notes)', async () => {
     render(<App />)
