@@ -1,0 +1,62 @@
+import fs from 'node:fs'
+import path from 'node:path'
+import { test, expect } from '@playwright/test'
+import { createFixtureVaultCopy, openFixtureVault, removeFixtureVaultCopy } from '../helpers/fixtureVault'
+import { openCommandPalette } from './helpers'
+
+let tempVaultDir: string
+
+function writeTaggedNote(fileName: string, title: string, tags: string[]) {
+  const tagLines = tags.map((tag) => `  - ${tag}`).join('\n')
+  fs.writeFileSync(
+    path.join(tempVaultDir, fileName),
+    `---\ntitle: ${title}\ntags:\n${tagLines}\n---\n\n# ${title}\n`,
+  )
+}
+
+test.describe('Tag manager', () => {
+  test.beforeEach(() => {
+    tempVaultDir = createFixtureVaultCopy()
+    // Both fixture notes carry a single tag each. A note with 2+ tags in one
+    // property is invisible to the Tag Manager over this dev/web backend: see
+    // the `frontmatterPropertyValue` bug documented in task-8-report.md
+    // (`vite.config.ts`'s vault-list middleware drops any frontmatter array
+    // property with more than one item, so `properties.tags` never reaches the
+    // client for such a note). That is a genuine app bug tracked separately,
+    // not something this spec works around by masking it.
+    writeTaggedNote('tagged-one.md', 'Tagged One', ['blues'])
+    writeTaggedNote('tagged-two.md', 'Tagged Two', ['blues'])
+  })
+
+  test.afterEach(() => {
+    removeFixtureVaultCopy(tempVaultDir)
+  })
+
+  test('renames a tag across every note from the command palette', async ({ page }) => {
+    await openFixtureVault(page, tempVaultDir)
+    await openCommandPalette(page)
+    await page.locator('input[placeholder="Type a command..."]').fill('manage tags')
+    await page.keyboard.press('Enter')
+
+    const row = page.getByTestId('tag-manager-row-blues')
+    await expect(row).toContainText('2 notes')
+    await page.getByTestId('tag-manager-menu-blues').click()
+    await page.getByRole('menuitem', { name: 'Rename…' }).click()
+    await page.getByPlaceholder('New tag name').fill('soul')
+    await page.getByRole('button', { name: 'Continue' }).click()
+    await expect(page.getByText('Rename “blues” to “soul” in 2 notes?')).toBeVisible()
+    await page.getByRole('button', { name: 'Apply' }).click()
+    await expect(page.getByText('Updated 2 notes.')).toBeVisible()
+    await expect(page.getByTestId('tag-manager-row-soul')).toContainText('2 notes')
+
+    // The fixture harness's mocked `update_frontmatter` command serializes array
+    // values as block-style YAML with each item JSON-stringified (quoted), e.g.
+    // `  - "soul"` rather than the unquoted `  - soul` this test wrote initially.
+    await expect.poll(() => fs.readFileSync(path.join(tempVaultDir, 'tagged-one.md'), 'utf8'))
+      .toContain('- "soul"')
+    const one = fs.readFileSync(path.join(tempVaultDir, 'tagged-one.md'), 'utf8')
+    expect(one).not.toContain('blues')
+    expect(one).toContain('# Tagged One')
+    expect(fs.readFileSync(path.join(tempVaultDir, 'tagged-two.md'), 'utf8')).toContain('- "soul"')
+  })
+})
