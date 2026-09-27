@@ -17,14 +17,7 @@ function writeTaggedNote(fileName: string, title: string, tags: string[]) {
 test.describe('Tag manager', () => {
   test.beforeEach(() => {
     tempVaultDir = createFixtureVaultCopy()
-    // Both fixture notes carry a single tag each. A note with 2+ tags in one
-    // property is invisible to the Tag Manager over this dev/web backend: see
-    // the `frontmatterPropertyValue` bug documented in task-8-report.md
-    // (`vite.config.ts`'s vault-list middleware drops any frontmatter array
-    // property with more than one item, so `properties.tags` never reaches the
-    // client for such a note). That is a genuine app bug tracked separately,
-    // not something this spec works around by masking it.
-    writeTaggedNote('tagged-one.md', 'Tagged One', ['blues'])
+    writeTaggedNote('tagged-one.md', 'Tagged One', ['blues', 'live'])
     writeTaggedNote('tagged-two.md', 'Tagged Two', ['blues'])
   })
 
@@ -56,6 +49,7 @@ test.describe('Tag manager', () => {
       .toContain('- "soul"')
     const one = fs.readFileSync(path.join(tempVaultDir, 'tagged-one.md'), 'utf8')
     expect(one).not.toContain('blues')
+    expect(one).toContain('- "live"')
     expect(one).toContain('# Tagged One')
     expect(fs.readFileSync(path.join(tempVaultDir, 'tagged-two.md'), 'utf8')).toContain('- "soul"')
   })
