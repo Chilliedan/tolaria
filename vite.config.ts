@@ -18,6 +18,7 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import matter from 'gray-matter'
+import { frontmatterPropertyValue, type FrontmatterPropertyValue } from './src/utils/devVaultProperties'
 
 // --- Vault API middleware (dev only) ---
 
@@ -48,7 +49,7 @@ interface VaultEntry {
   view: string | null
   visible: boolean | null
   outgoingLinks: string[]
-  properties: Record<string, string | number | boolean | null>
+  properties: Record<string, FrontmatterPropertyValue>
 }
 
 /** Extract all [[wiki-links]] from a string. */
@@ -85,7 +86,6 @@ const DEDICATED_KEYS = new Set([
   '_organized', '_favorite', '_favorite_index', '_list_properties_display',
 ].map((key) => key.toLowerCase()))
 
-type FrontmatterPropertyValue = string | number | boolean | null
 type VaultSearchResult = { title: string; path: string; snippet: string; score: number; note_type: string | null }
 
 interface SearchEntryInput {
@@ -350,28 +350,6 @@ function frontmatterProperties(frontmatter: Record<string, unknown>): Record<str
     if (propertyValue !== undefined) properties[key] = propertyValue
   }
   return properties
-}
-
-function isScalarFrontmatterProperty(value: unknown): value is number | boolean {
-  return typeof value === 'number' || typeof value === 'boolean'
-}
-
-function singleStringArrayValue(value: unknown): string | undefined {
-  if (!Array.isArray(value)) return undefined
-  if (value.length !== 1) return undefined
-  return typeof value[0] === 'string' ? value[0] : undefined
-}
-
-function wikiLinkFreeString(value: string): string | undefined {
-  return extractWikiLinks(value).length === 0 ? value : undefined
-}
-
-function frontmatterPropertyValue(value: unknown): FrontmatterPropertyValue | undefined {
-  if (value === null) return null
-  if (isScalarFrontmatterProperty(value)) return value
-  if (typeof value === 'string') return wikiLinkFreeString(value)
-  const singleArrayValue = singleStringArrayValue(value)
-  return singleArrayValue === undefined ? undefined : wikiLinkFreeString(singleArrayValue)
 }
 
 function parseMarkdownFile(filePath: string): VaultEntry | null {
