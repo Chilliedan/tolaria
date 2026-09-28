@@ -1365,6 +1365,7 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
     || dialogs.showSearch
     || dialogs.showConflictResolver
     || dialogs.showCreateViewDialog
+    || dialogs.showTagManager
     || noteRetargetingUi.isDialogOpen
     || showFeedback
   )

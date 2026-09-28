@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
@@ -113,14 +113,26 @@ function useEscapeGuardSync(
   }, [escapeGuardRef, rowEdit, pending, cancelEdit, cancelPending])
 }
 
-interface TagManagerContentProps extends Omit<TagManagerDialogProps, 'open'> {
-  escapeGuardRef: { current: EscapeGuard }
+// Report whether an apply is running so the dialog shell can refuse to close mid-write.
+function useBusySync(busy: boolean, onBusyChange: (busy: boolean) => void): void {
+  useEffect(() => {
+    onBusyChange(busy)
+    return () => onBusyChange(false)
+  }, [busy, onBusyChange])
 }
 
-function TagManagerContent({ entries, locale, onUpdateFrontmatter, onOpenNote, onClose, escapeGuardRef }: TagManagerContentProps) {
+interface TagManagerContentProps extends Omit<TagManagerDialogProps, 'open'> {
+  escapeGuardRef: { current: EscapeGuard }
+  onBusyChange: (busy: boolean) => void
+}
+
+function TagManagerContent({
+  entries, locale, onUpdateFrontmatter, onOpenNote, onClose, escapeGuardRef, onBusyChange,
+}: TagManagerContentProps) {
   const state = useTagManagerDialogState({ entries, locale, onUpdateFrontmatter })
   const { property } = state
   useEscapeGuardSync(escapeGuardRef, state.rowEdit, state.pending, state.cancelEdit, state.cancelPending)
+  useBusySync(state.busy, onBusyChange)
 
   const openNote = (entry: VaultEntry) => {
     onOpenNote(entry)
@@ -154,21 +166,31 @@ function TagManagerContent({ entries, locale, onUpdateFrontmatter, onOpenNote, o
 
 export function TagManagerDialog({ open, onClose, ...contentProps }: TagManagerDialogProps) {
   const escapeGuardRef = useRef<EscapeGuard>(NO_ESCAPE_GUARD)
+  // While an apply is writing notes the dialog must stay open: closing it would drop the
+  // progress and result, and a reopened dialog could plan a second apply from stale entries.
+  const [busy, setBusy] = useState(false)
 
   const handleEscapeKeyDown = (event: KeyboardEvent) => {
-    if (!escapeGuardRef.current.active) return
+    if (!busy && !escapeGuardRef.current.active) return
     event.preventDefault()
-    escapeGuardRef.current.cancel()
+    if (!busy) escapeGuardRef.current.cancel()
   }
 
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen) onClose() }}>
-      <DialogContent className="flex max-h-[80vh] flex-col sm:max-w-[520px]" onEscapeKeyDown={handleEscapeKeyDown}>
+    <Dialog open={open} onOpenChange={(isOpen) => { if (!isOpen && !busy) onClose() }}>
+      <DialogContent
+        className="flex max-h-[80vh] flex-col sm:max-w-[520px]"
+        showCloseButton={!busy}
+        onEscapeKeyDown={handleEscapeKeyDown}
+        onInteractOutside={(event) => { if (busy) event.preventDefault() }}
+      >
         <DialogHeader>
           <DialogTitle>{translate(contentProps.locale, 'tagManager.title')}</DialogTitle>
           <DialogDescription>{translate(contentProps.locale, 'tagManager.description')}</DialogDescription>
         </DialogHeader>
-        {open && <TagManagerContent {...contentProps} onClose={onClose} escapeGuardRef={escapeGuardRef} />}
+        {open && (
+          <TagManagerContent {...contentProps} onClose={onClose} escapeGuardRef={escapeGuardRef} onBusyChange={setBusy} />
+        )}
       </DialogContent>
     </Dialog>
   )

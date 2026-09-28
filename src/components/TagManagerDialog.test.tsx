@@ -129,6 +129,36 @@ describe('TagManagerDialog', () => {
     expect(screen.getByText('No tags in this vault yet.')).toBeInTheDocument()
   })
 
+  it('cannot be closed or navigated away from while an apply is in progress', async () => {
+    let finishFirstWrite: () => void = () => {}
+    const updateFrontmatter = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirstWrite = resolve }))
+      .mockResolvedValue(undefined)
+    const { onClose, onOpenNote } = renderDialog(updateFrontmatter)
+    openRowMenu('blues')
+    fireEvent.click(screen.getByText('Show notes'))
+    openRowMenu('blues')
+    fireEvent.click(screen.getByText('Delete…'))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(screen.getByText('Updating 0 of 2 notes…')).toBeInTheDocument())
+
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    fireEvent.pointerDown(document.body)
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    const noteButton = screen.getByRole('button', { name: 'Alpha' })
+    expect(noteButton).toBeDisabled()
+    fireEvent.click(noteButton)
+    expect(screen.getByTestId('tag-manager-menu-jazz')).toBeDisabled()
+
+    expect(onClose).not.toHaveBeenCalled()
+    expect(onOpenNote).not.toHaveBeenCalled()
+    expect(screen.getByText('Updating 0 of 2 notes…')).toBeInTheDocument()
+
+    await act(async () => { finishFirstWrite() })
+    await waitFor(() => expect(screen.getByText('Updated 2 notes.')).toBeInTheDocument())
+    expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument()
+  })
+
   it('cancels the inline rename editor on Escape instead of closing the dialog', () => {
     const { updateFrontmatter, onClose } = renderDialog()
     openRowMenu('blues')

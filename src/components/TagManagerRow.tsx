@@ -73,12 +73,14 @@ function MergeEditor({ otherTags, locale, triggerRef, onMerge, onCancel }: {
   )
 }
 
-function NotesList({ notes, onOpenNote }: { notes: VaultEntry[]; onOpenNote: (entry: VaultEntry) => void }) {
+function NotesList({ notes, disabled, onOpenNote }: {
+  notes: VaultEntry[]; disabled: boolean; onOpenNote: (entry: VaultEntry) => void
+}) {
   return (
     <ul className="flex flex-col px-2 pb-2">
       {notes.map((entry) => (
         <li key={entry.path}>
-          <Button variant="ghost" size="sm" className="h-6 w-full justify-start truncate" onClick={() => onOpenNote(entry)}>
+          <Button variant="ghost" size="sm" className="h-6 w-full justify-start truncate" disabled={disabled} onClick={() => onOpenNote(entry)}>
             {entry.title}
           </Button>
         </li>
@@ -173,7 +175,7 @@ export function TagManagerRow(props: TagManagerRowProps) {
       {editMode === 'merge' && (
         <MergeEditor otherTags={otherTags} locale={locale} triggerRef={mergeTriggerRef} onMerge={props.onMerge} onCancel={props.onCancelEdit} />
       )}
-      {expanded && <NotesList notes={notes} onOpenNote={props.onOpenNote} />}
+      {expanded && <NotesList notes={notes} disabled={disabled} onOpenNote={props.onOpenNote} />}
     </li>
   )
 }
