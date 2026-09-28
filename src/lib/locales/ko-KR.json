@@ -1092,5 +1092,12 @@
   "tagManager.applying": "노트 {total}개 중 {done}개 업데이트 중…",
   "tagManager.result.success": "노트 {count}개를 업데이트했습니다.",
   "tagManager.result.partial": "노트 {total}개 중 {changed}개 변경, {failed}개 실패:",
-  "tagManager.result.noop": "변경이 필요한 노트가 없습니다."
+  "tagManager.result.noop": "변경이 필요한 노트가 없습니다.",
+  "tagManager.noteCountOne": "노트 1개",
+  "tagManager.confirm.renameOne": "노트 1개에서 “{from}”의 이름을 “{to}”로 변경하시겠습니까?",
+  "tagManager.confirm.mergeOne": "노트 1개에서 “{from}”을(를) “{to}”에 병합하시겠습니까?",
+  "tagManager.confirm.renameIntoExistingOne": "“{to}”이(가) 이미 있습니다. 노트 1개에서 “{from}”을(를) 여기에 병합하시겠습니까?",
+  "tagManager.confirm.deleteOne": "노트 1개에서 “{tag}”을(를) 삭제하시겠습니까?",
+  "tagManager.result.successOne": "노트 1개를 업데이트했습니다.",
+  "tagManager.result.partialOne": "노트 1개 중 {changed}개 변경, {failed}개 실패:"
 }

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeEntry } from '../test-utils/noteListTestUtils'
 import { useTagManagerDialogState } from '../hooks/useTagManagerDialogState'
@@ -40,6 +40,7 @@ describe('TagManagerDialog', () => {
       'tag-manager-row-blues', 'tag-manager-row-jazz', 'tag-manager-row-live',
     ])
     expect(screen.getByTestId('tag-manager-row-blues')).toHaveTextContent('2 notes')
+    expect(within(screen.getByTestId('tag-manager-row-jazz')).getByText('1 note')).toBeInTheDocument()
   })
 
   it('filters tags case-insensitively', () => {
@@ -98,16 +99,37 @@ describe('TagManagerDialog', () => {
     fireEvent.click(screen.getByText('Rename…'))
     fireEvent.change(screen.getByPlaceholderText('New tag name'), { target: { value: 'jazz' } })
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
-    expect(screen.getByText('“jazz” already exists. Merge “live” into it in 1 notes?')).toBeInTheDocument()
+    expect(screen.getByText('“jazz” already exists. Merge “live” into it in 1 note?')).toBeInTheDocument()
+  })
+
+  it('uses singular copy when a rename touches one note', async () => {
+    renderDialog()
+    openRowMenu('live')
+    fireEvent.click(screen.getByText('Rename…'))
+    fireEvent.change(screen.getByPlaceholderText('New tag name'), { target: { value: 'gig' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+    expect(screen.getByText('Rename “live” to “gig” in 1 note?')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(screen.getByText('Updated 1 note.')).toBeInTheDocument())
+  })
+
+  it('uses singular copy when the only affected note fails', async () => {
+    renderDialog(vi.fn().mockRejectedValue(new Error('locked')))
+    openRowMenu('jazz')
+    fireEvent.click(screen.getByText('Delete…'))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+    await waitFor(() => expect(screen.getByText('Changed 0 of 1 note; 1 failed:')).toBeInTheDocument())
   })
 
   it('cancelling a confirmation writes nothing', () => {
     const { updateFrontmatter } = renderDialog()
     openRowMenu('live')
     fireEvent.click(screen.getByText('Delete…'))
+    expect(screen.getByText('Remove “live” from 1 note?')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     expect(updateFrontmatter).not.toHaveBeenCalled()
-    expect(screen.queryByText('Remove “live” from 1 notes?')).not.toBeInTheDocument()
+    expect(screen.queryByText('Remove “live” from 1 note?')).not.toBeInTheDocument()
   })
 
   it('reports partial failures with note titles', async () => {

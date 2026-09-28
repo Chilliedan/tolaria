@@ -1103,7 +1103,7 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
 
-    expect(await screen.findByText('Updated 1 notes.')).toBeInTheDocument()
+    expect(await screen.findByText('Updated 1 note.')).toBeInTheDocument()
     expect(await screen.findByTestId('tag-manager-row-renamed-tag')).toBeInTheDocument()
     expect(screen.queryByTestId('tag-manager-row-visible-tag')).not.toBeInTheDocument()
   }, 15000)

@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Aktualizácia {done} z {total} poznámok…",
   "tagManager.result.success": "Aktualizovaných poznámok: {count}.",
   "tagManager.result.partial": "Zmenených {changed} z {total} poznámok; neúspešných: {failed}:",
-  "tagManager.result.noop": "Žiadna poznámka nevyžadovala zmenu."
+  "tagManager.result.noop": "Žiadna poznámka nevyžadovala zmenu.",
+  "tagManager.noteCountOne": "1 poznámka",
+  "tagManager.confirm.renameOne": "Premenovať „{from}“ na „{to}“ v 1 poznámke?",
+  "tagManager.confirm.mergeOne": "Zlúčiť „{from}“ s „{to}“ v 1 poznámke?",
+  "tagManager.confirm.renameIntoExistingOne": "„{to}“ už existuje. Zlúčiť s ňou „{from}“ v 1 poznámke?",
+  "tagManager.confirm.deleteOne": "Odstrániť „{tag}“ z 1 poznámky?",
+  "tagManager.result.successOne": "Aktualizovaná 1 poznámka.",
+  "tagManager.result.partialOne": "Zmenených {changed} z 1 poznámky; neúspešných: {failed}:"
 }

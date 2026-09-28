@@ -156,7 +156,7 @@ export function TagManagerRow(props: TagManagerRowProps) {
       <div className="flex items-center gap-2 px-2 py-1">
         <TagPill tag={usage.tag} className="min-w-0" />
         <span className="ml-auto text-xs text-muted-foreground">
-          {translate(locale, 'tagManager.noteCount', { count: usage.count })}
+          {translate(locale, usage.count === 1 ? 'tagManager.noteCountOne' : 'tagManager.noteCount', { count: usage.count })}
         </span>
         <RowMenu
           tag={usage.tag}

@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Абнаўленне {done} з {total} нататак…",
   "tagManager.result.success": "Абноўлена нататак: {count}.",
   "tagManager.result.partial": "Змянена {changed} з {total} нататак; памылак: {failed}:",
-  "tagManager.result.noop": "Ніводная нататка не патрабавала змен."
+  "tagManager.result.noop": "Ніводная нататка не патрабавала змен.",
+  "tagManager.noteCountOne": "1 нататка",
+  "tagManager.confirm.renameOne": "Перайменаваць «{from}» у «{to}» у 1 нататцы?",
+  "tagManager.confirm.mergeOne": "Аб'яднаць «{from}» з «{to}» у 1 нататцы?",
+  "tagManager.confirm.renameIntoExistingOne": "«{to}» ужо існуе. Аб'яднаць «{from}» з ім у 1 нататцы?",
+  "tagManager.confirm.deleteOne": "Выдаліць «{tag}» з 1 нататкі?",
+  "tagManager.result.successOne": "Абноўлена 1 нататка.",
+  "tagManager.result.partialOne": "Змянена {changed} з 1 нататкі; памылак: {failed}:"
 }

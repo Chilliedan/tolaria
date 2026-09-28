@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Обновление {done} из {total} заметок…",
   "tagManager.result.success": "Обновлено заметок: {count}.",
   "tagManager.result.partial": "Изменено {changed} из {total} заметок; ошибок: {failed}:",
-  "tagManager.result.noop": "Ни одну заметку не нужно было изменять."
+  "tagManager.result.noop": "Ни одну заметку не нужно было изменять.",
+  "tagManager.noteCountOne": "1 заметка",
+  "tagManager.confirm.renameOne": "Переименовать «{from}» в «{to}» в 1 заметке?",
+  "tagManager.confirm.mergeOne": "Объединить «{from}» с «{to}» в 1 заметке?",
+  "tagManager.confirm.renameIntoExistingOne": "«{to}» уже существует. Объединить «{from}» с ним в 1 заметке?",
+  "tagManager.confirm.deleteOne": "Удалить «{tag}» из 1 заметки?",
+  "tagManager.result.successOne": "Обновлена 1 заметка.",
+  "tagManager.result.partialOne": "Изменено {changed} из 1 заметки; ошибок: {failed}:"
 }

@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Abnaŭliennie {done} z {total} natatak…",
   "tagManager.result.success": "Abnoŭliena natatak: {count}.",
   "tagManager.result.partial": "Źmienena {changed} z {total} natatak; pamylak: {failed}:",
-  "tagManager.result.noop": "Nivodnaja natatka nie patrabavala źmien."
+  "tagManager.result.noop": "Nivodnaja natatka nie patrabavala źmien.",
+  "tagManager.noteCountOne": "1 natatka",
+  "tagManager.confirm.renameOne": "Pierajmienavać «{from}» u «{to}» u 1 natatcy?",
+  "tagManager.confirm.mergeOne": "Abjadnać «{from}» z «{to}» u 1 natatcy?",
+  "tagManager.confirm.renameIntoExistingOne": "«{to}» uže isnuje. Abjadnać «{from}» z im u 1 natatcy?",
+  "tagManager.confirm.deleteOne": "Vydalić «{tag}» z 1 natatki?",
+  "tagManager.result.successOne": "Abnoŭliena 1 natatka.",
+  "tagManager.result.partialOne": "Źmienena {changed} z 1 natatki; pamylak: {failed}:"
 }

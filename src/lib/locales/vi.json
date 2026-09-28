@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Đang cập nhật {done}/{total} ghi chú…",
   "tagManager.result.success": "Đã cập nhật {count} ghi chú.",
   "tagManager.result.partial": "Đã thay đổi {changed}/{total} ghi chú; {failed} thất bại:",
-  "tagManager.result.noop": "Không có ghi chú nào cần thay đổi."
+  "tagManager.result.noop": "Không có ghi chú nào cần thay đổi.",
+  "tagManager.noteCountOne": "1 ghi chú",
+  "tagManager.confirm.renameOne": "Đổi tên “{from}” thành “{to}” trong 1 ghi chú?",
+  "tagManager.confirm.mergeOne": "Hợp nhất “{from}” vào “{to}” trong 1 ghi chú?",
+  "tagManager.confirm.renameIntoExistingOne": "“{to}” đã tồn tại. Hợp nhất “{from}” vào đó trong 1 ghi chú?",
+  "tagManager.confirm.deleteOne": "Xóa “{tag}” khỏi 1 ghi chú?",
+  "tagManager.result.successOne": "Đã cập nhật 1 ghi chú.",
+  "tagManager.result.partialOne": "Đã thay đổi {changed}/1 ghi chú; {failed} thất bại:"
 }

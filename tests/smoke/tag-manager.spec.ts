@@ -51,7 +51,7 @@ test.describe('Tag manager', () => {
     await expect(page.getByText('Updated 2 notes.')).toBeVisible()
     await expect(page.getByTestId('tag-manager-row-soul')).toContainText('2 notes')
     await expect(page.getByTestId('tag-manager-row-blues')).toHaveCount(0)
-    await expect(page.getByTestId('tag-manager-row-live')).toContainText('1 notes')
+    await expect(page.getByTestId('tag-manager-row-live').getByText('1 note', { exact: true })).toBeVisible()
     expect(await page.evaluate(() => Reflect.get(window, '__tagManagerNoReload'))).toBe(true)
 
     // The fixture harness's mocked `update_frontmatter` command serializes array

@@ -1085,12 +1085,19 @@
   "tagManager.mergePlaceholder": "Choisir une étiquette",
   "tagManager.continue": "Continuer",
   "tagManager.confirm.rename": "Renommer « {from} » en « {to} » dans {count} notes ?",
-  "tagManager.confirm.merge": "Fusionner « {from} » dans « {to} » dans {count} notes ?",
+  "tagManager.confirm.merge": "Fusionner « {from} » avec « {to} » dans {count} notes ?",
   "tagManager.confirm.renameIntoExisting": "« {to} » existe déjà. Fusionner « {from} » avec elle dans {count} notes ?",
   "tagManager.confirm.delete": "Retirer « {tag} » de {count} notes ?",
   "tagManager.apply": "Appliquer",
   "tagManager.applying": "Mise à jour de {done} sur {total} notes…",
   "tagManager.result.success": "{count} notes mises à jour.",
   "tagManager.result.partial": "{changed} notes modifiées sur {total} ; {failed} en échec :",
-  "tagManager.result.noop": "Aucune note n'avait besoin d'être modifiée."
+  "tagManager.result.noop": "Aucune note n'avait besoin d'être modifiée.",
+  "tagManager.noteCountOne": "1 note",
+  "tagManager.confirm.renameOne": "Renommer « {from} » en « {to} » dans 1 note ?",
+  "tagManager.confirm.mergeOne": "Fusionner « {from} » avec « {to} » dans 1 note ?",
+  "tagManager.confirm.renameIntoExistingOne": "« {to} » existe déjà. Fusionner « {from} » avec elle dans 1 note ?",
+  "tagManager.confirm.deleteOne": "Retirer « {tag} » de 1 note ?",
+  "tagManager.result.successOne": "1 note mise à jour.",
+  "tagManager.result.partialOne": "{changed} note modifiée sur 1 ; {failed} en échec :"
 }

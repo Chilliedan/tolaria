@@ -1092,5 +1092,12 @@
   "tagManager.applying": "正在更新 {done}/{total} 則筆記…",
   "tagManager.result.success": "已更新 {count} 則筆記。",
   "tagManager.result.partial": "已變更 {total} 則筆記中的 {changed} 則；{failed} 則失敗：",
-  "tagManager.result.noop": "沒有筆記需要變更。"
+  "tagManager.result.noop": "沒有筆記需要變更。",
+  "tagManager.noteCountOne": "1 則筆記",
+  "tagManager.confirm.renameOne": "在 1 則筆記中將「{from}」重新命名為「{to}」？",
+  "tagManager.confirm.mergeOne": "在 1 則筆記中將「{from}」合併到「{to}」？",
+  "tagManager.confirm.renameIntoExistingOne": "「{to}」已存在。是否在 1 則筆記中將「{from}」合併到其中？",
+  "tagManager.confirm.deleteOne": "從 1 則筆記中移除「{tag}」？",
+  "tagManager.result.successOne": "已更新 1 則筆記。",
+  "tagManager.result.partialOne": "已變更 1 則筆記中的 {changed} 則；{failed} 則失敗："
 }

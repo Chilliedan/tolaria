@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Aktualizowanie {done} z {total} notatek…",
   "tagManager.result.success": "Zaktualizowano notatek: {count}.",
   "tagManager.result.partial": "Zmieniono {changed} z {total} notatek; niepowodzeń: {failed}:",
-  "tagManager.result.noop": "Żadna notatka nie wymagała zmian."
+  "tagManager.result.noop": "Żadna notatka nie wymagała zmian.",
+  "tagManager.noteCountOne": "1 notatka",
+  "tagManager.confirm.renameOne": "Zmienić nazwę „{from}” na „{to}” w 1 notatce?",
+  "tagManager.confirm.mergeOne": "Scalić „{from}” z „{to}” w 1 notatce?",
+  "tagManager.confirm.renameIntoExistingOne": "„{to}” już istnieje. Scalić z nim „{from}” w 1 notatce?",
+  "tagManager.confirm.deleteOne": "Usunąć „{tag}” z 1 notatki?",
+  "tagManager.result.successOne": "Zaktualizowano 1 notatkę.",
+  "tagManager.result.partialOne": "Zmieniono {changed} z 1 notatki; niepowodzeń: {failed}:"
 }

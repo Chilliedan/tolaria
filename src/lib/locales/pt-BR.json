@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Atualizando {done} de {total} notas…",
   "tagManager.result.success": "{count} notas atualizadas.",
   "tagManager.result.partial": "{changed} de {total} notas alteradas; {failed} falharam:",
-  "tagManager.result.noop": "Nenhuma nota precisou de alteração."
+  "tagManager.result.noop": "Nenhuma nota precisou de alteração.",
+  "tagManager.noteCountOne": "1 nota",
+  "tagManager.confirm.renameOne": "Renomear “{from}” para “{to}” em 1 nota?",
+  "tagManager.confirm.mergeOne": "Mesclar “{from}” com “{to}” em 1 nota?",
+  "tagManager.confirm.renameIntoExistingOne": "“{to}” já existe. Mesclar “{from}” com ela em 1 nota?",
+  "tagManager.confirm.deleteOne": "Remover “{tag}” de 1 nota?",
+  "tagManager.result.successOne": "1 nota atualizada.",
+  "tagManager.result.partialOne": "{changed} de 1 nota alterada; {failed} falhou:"
 }

@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Aktualisiere {done} von {total} Notizen…",
   "tagManager.result.success": "{count} Notizen aktualisiert.",
   "tagManager.result.partial": "{changed} von {total} Notizen geändert; {failed} fehlgeschlagen:",
-  "tagManager.result.noop": "Keine Notizen mussten geändert werden."
+  "tagManager.result.noop": "Keine Notizen mussten geändert werden.",
+  "tagManager.noteCountOne": "1 Notiz",
+  "tagManager.confirm.renameOne": "„{from}“ in „{to}“ umbenennen in 1 Notiz?",
+  "tagManager.confirm.mergeOne": "„{from}“ mit „{to}“ zusammenführen in 1 Notiz?",
+  "tagManager.confirm.renameIntoExistingOne": "„{to}“ existiert bereits. „{from}“ damit zusammenführen in 1 Notiz?",
+  "tagManager.confirm.deleteOne": "„{tag}“ aus 1 Notiz entfernen?",
+  "tagManager.result.successOne": "1 Notiz aktualisiert.",
+  "tagManager.result.partialOne": "{changed} von 1 Notiz geändert; {failed} fehlgeschlagen:"
 }

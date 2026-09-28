@@ -1092,5 +1092,12 @@
   "tagManager.applying": "正在更新 {done}/{total} 条笔记…",
   "tagManager.result.success": "已更新 {count} 条笔记。",
   "tagManager.result.partial": "已更改 {total} 条笔记中的 {changed} 条；{failed} 条失败：",
-  "tagManager.result.noop": "没有笔记需要更改。"
+  "tagManager.result.noop": "没有笔记需要更改。",
+  "tagManager.noteCountOne": "1 条笔记",
+  "tagManager.confirm.renameOne": "在 1 条笔记中将“{from}”重命名为“{to}”？",
+  "tagManager.confirm.mergeOne": "在 1 条笔记中将“{from}”合并到“{to}”？",
+  "tagManager.confirm.renameIntoExistingOne": "“{to}”已存在。是否在 1 条笔记中将“{from}”合并到其中？",
+  "tagManager.confirm.deleteOne": "从 1 条笔记中移除“{tag}”？",
+  "tagManager.result.successOne": "已更新 1 条笔记。",
+  "tagManager.result.partialOne": "已更改 1 条笔记中的 {changed} 条；{failed} 条失败："
 }

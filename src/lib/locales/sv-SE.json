@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Uppdaterar {done} av {total} anteckningar…",
   "tagManager.result.success": "{count} anteckningar uppdaterade.",
   "tagManager.result.partial": "{changed} av {total} anteckningar ändrade; {failed} misslyckades:",
-  "tagManager.result.noop": "Inga anteckningar behövde ändras."
+  "tagManager.result.noop": "Inga anteckningar behövde ändras.",
+  "tagManager.noteCountOne": "1 anteckning",
+  "tagManager.confirm.renameOne": "Byt namn på ”{from}” till ”{to}” i 1 anteckning?",
+  "tagManager.confirm.mergeOne": "Sammanfoga ”{from}” med ”{to}” i 1 anteckning?",
+  "tagManager.confirm.renameIntoExistingOne": "”{to}” finns redan. Sammanfoga ”{from}” med den i 1 anteckning?",
+  "tagManager.confirm.deleteOne": "Ta bort ”{tag}” från 1 anteckning?",
+  "tagManager.result.successOne": "1 anteckning uppdaterad.",
+  "tagManager.result.partialOne": "{changed} av 1 anteckning ändrades; {failed} misslyckades:"
 }

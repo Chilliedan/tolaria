@@ -1092,5 +1092,12 @@
   "tagManager.applying": "{total}件中{done}件のノートを更新中…",
   "tagManager.result.success": "{count}件のノートを更新しました。",
   "tagManager.result.partial": "{total}件中{changed}件のノートを変更、{failed}件失敗しました：",
-  "tagManager.result.noop": "変更が必要なノートはありませんでした。"
+  "tagManager.result.noop": "変更が必要なノートはありませんでした。",
+  "tagManager.noteCountOne": "1件のノート",
+  "tagManager.confirm.renameOne": "1件のノートで「{from}」を「{to}」に名前変更しますか？",
+  "tagManager.confirm.mergeOne": "1件のノートで「{from}」を「{to}」に統合しますか？",
+  "tagManager.confirm.renameIntoExistingOne": "「{to}」は既に存在します。1件のノートで「{from}」をこれに統合しますか？",
+  "tagManager.confirm.deleteOne": "1件のノートから「{tag}」を削除しますか？",
+  "tagManager.result.successOne": "1件のノートを更新しました。",
+  "tagManager.result.partialOne": "1件中{changed}件のノートを変更、{failed}件失敗しました："
 }

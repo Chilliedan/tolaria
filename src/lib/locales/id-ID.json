@@ -1092,5 +1092,12 @@
   "tagManager.applying": "Memperbarui {done} dari {total} catatan…",
   "tagManager.result.success": "{count} catatan diperbarui.",
   "tagManager.result.partial": "{changed} dari {total} catatan diubah; {failed} gagal:",
-  "tagManager.result.noop": "Tidak ada catatan yang perlu diubah."
+  "tagManager.result.noop": "Tidak ada catatan yang perlu diubah.",
+  "tagManager.noteCountOne": "1 catatan",
+  "tagManager.confirm.renameOne": "Ganti nama “{from}” menjadi “{to}” di 1 catatan?",
+  "tagManager.confirm.mergeOne": "Gabungkan “{from}” ke “{to}” di 1 catatan?",
+  "tagManager.confirm.renameIntoExistingOne": "“{to}” sudah ada. Gabungkan “{from}” ke dalamnya di 1 catatan?",
+  "tagManager.confirm.deleteOne": "Hapus “{tag}” dari 1 catatan?",
+  "tagManager.result.successOne": "1 catatan diperbarui.",
+  "tagManager.result.partialOne": "{changed} dari 1 catatan diubah; {failed} gagal:"
 }

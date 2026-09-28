@@ -43,12 +43,14 @@ export function TagManagerResult({ result, titleForPath, locale }: TagManagerRes
     return <p className="text-sm text-muted-foreground" role="status">{translate(locale, 'tagManager.result.noop')}</p>
   }
   if (result.failedPaths.length === 0) {
-    return <p className="text-sm" role="status">{translate(locale, 'tagManager.result.success', { count: result.changed })}</p>
+    const successKey = result.changed === 1 ? 'tagManager.result.successOne' : 'tagManager.result.success'
+    return <p className="text-sm" role="status">{translate(locale, successKey, { count: result.changed })}</p>
   }
+  const partialKey = result.total === 1 ? 'tagManager.result.partialOne' : 'tagManager.result.partial'
   return (
     <div className="flex flex-col gap-1 text-sm" role="status">
       <p>
-        {translate(locale, 'tagManager.result.partial', {
+        {translate(locale, partialKey, {
           changed: result.changed, total: result.total, failed: result.failedPaths.length,
         })}
       </p>

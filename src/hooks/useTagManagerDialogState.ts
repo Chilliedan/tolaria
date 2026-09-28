@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { translate, type AppLocale } from '../lib/i18n'
+import { translate, type AppLocale, type TranslationKey } from '../lib/i18n'
 import type { VaultEntry } from '../types'
 import type { TagUsage } from '../utils/tagInventory'
 import type { TagRewriteOp } from '../utils/tagRewrite'
@@ -24,10 +24,25 @@ export interface EscapeGuard {
 
 export const NO_ESCAPE_GUARD: EscapeGuard = { active: false, cancel: () => {} }
 
+type ConfirmCopy = 'delete' | 'rename' | 'merge' | 'renameIntoExisting'
+
+// [plural/other key, singular key]; the singular copy is used when exactly one note is affected.
+const CONFIRM_KEYS: Record<ConfirmCopy, readonly [TranslationKey, TranslationKey]> = {
+  delete: ['tagManager.confirm.delete', 'tagManager.confirm.deleteOne'],
+  rename: ['tagManager.confirm.rename', 'tagManager.confirm.renameOne'],
+  merge: ['tagManager.confirm.merge', 'tagManager.confirm.mergeOne'],
+  renameIntoExisting: ['tagManager.confirm.renameIntoExisting', 'tagManager.confirm.renameIntoExistingOne'],
+}
+
+function confirmKey(copy: ConfirmCopy, count: number): TranslationKey {
+  const [other, one] = CONFIRM_KEYS[copy]
+  return count === 1 ? one : other
+}
+
 function confirmMessage(op: TagRewriteOp, count: number, intoExisting: boolean, locale: AppLocale): string {
-  if (op.kind === 'delete') return translate(locale, 'tagManager.confirm.delete', { tag: op.tag, count })
-  if (op.kind === 'rename') return translate(locale, 'tagManager.confirm.rename', { from: op.from, to: op.to, count })
-  const key = intoExisting ? 'tagManager.confirm.renameIntoExisting' : 'tagManager.confirm.merge'
+  if (op.kind === 'delete') return translate(locale, confirmKey('delete', count), { tag: op.tag, count })
+  if (op.kind === 'rename') return translate(locale, confirmKey('rename', count), { from: op.from, to: op.to, count })
+  const key = confirmKey(intoExisting ? 'renameIntoExisting' : 'merge', count)
   return translate(locale, key, { from: op.sources.join(', '), to: op.target, count })
 }
 
