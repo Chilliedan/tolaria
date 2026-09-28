@@ -423,6 +423,13 @@ function shouldRecordFrontmatterHistory(
   return !options?.silent && !actionHistory.isReplaying()
 }
 
+// Silent callers (bulk writers such as the tag manager) have no toast to tell the user a
+// write did not happen, so a skipped update must surface to them as a failure.
+function assertSilentUpdateApplied(updated: boolean, path: string, key: string, options?: FrontmatterOpOptions): void {
+  if (updated || !options?.silent) return
+  throw new Error(`Skipped frontmatter update for ${path} (${key}): the note could not be safely written`)
+}
+
 function buildTabManagementOptions(
   config: Pick<
     NoteActionsConfig,
@@ -632,6 +639,7 @@ function useFrontmatterActionHandlers(functionOptions: {
       options,
       runFrontmatterOp,
     })
+    assertSilentUpdateApplied(updated, currentPath, key, options)
     if (updated && shouldRecordHistory) {
       recordFrontmatterHistory(currentPath, key, before, { exists: true, value }, `Update ${key}`, options)
     }

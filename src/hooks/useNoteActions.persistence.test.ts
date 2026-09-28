@@ -82,4 +82,34 @@ describe('useNoteActions frontmatter persistence', () => {
 
     expect(flushBeforeNoteMutation).toHaveBeenCalledWith('/vault/note.md')
   })
+
+  it('rejects a silent update that was skipped because pending content failed to flush', async () => {
+    const onFrontmatterPersisted = vi.fn()
+    const { result } = renderHook(() => useNoteActions({
+      ...makeConfig(onFrontmatterPersisted),
+      flushBeforeNoteMutation: vi.fn().mockRejectedValue(new Error('disk full')),
+    }))
+
+    await act(async () => {
+      await expect(
+        result.current.handleUpdateFrontmatter('/vault/note.md', 'tags', ['soul'], { silent: true }),
+      ).rejects.toThrow('Skipped frontmatter update for /vault/note.md')
+    })
+    expect(onFrontmatterPersisted).not.toHaveBeenCalled()
+  })
+
+  it('keeps resolving a non-silent update that was skipped because pending content failed to flush', async () => {
+    const onFrontmatterPersisted = vi.fn()
+    const { result } = renderHook(() => useNoteActions({
+      ...makeConfig(onFrontmatterPersisted),
+      flushBeforeNoteMutation: vi.fn().mockRejectedValue(new Error('disk full')),
+    }))
+
+    await act(async () => {
+      await expect(
+        result.current.handleUpdateFrontmatter('/vault/note.md', 'tags', ['soul']),
+      ).resolves.toBeUndefined()
+    })
+    expect(onFrontmatterPersisted).not.toHaveBeenCalled()
+  })
 })

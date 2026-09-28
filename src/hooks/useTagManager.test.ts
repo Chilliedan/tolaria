@@ -73,6 +73,25 @@ describe('useTagManager', () => {
     expect(trackEventMock).toHaveBeenCalledWith('tag_manager_action', { action: 'delete', notes_changed: 1, failed: 1 })
   })
 
+  it('counts a write that the note-actions layer skipped as a failure', async () => {
+    colors.blues = 'red'
+    // A silent update that was skipped (pending editor content failed to flush, or the
+    // active-path guard blocked it) rejects instead of resolving.
+    const updateFrontmatter = vi.fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('Skipped frontmatter update for /b.md'))
+    const { result } = renderHook(() => useTagManager({ entries, updateFrontmatter }))
+
+    let outcome: TagManagerApplyResult | undefined
+    await act(async () => {
+      outcome = await result.current.apply('tags', { kind: 'rename', from: 'blues', to: 'soul' })
+    })
+
+    expect(outcome).toEqual({ total: 2, changed: 1, failedPaths: ['/b.md'] })
+    expect(setTagColorMock).toHaveBeenCalledWith('soul', 'red')
+    expect(setTagColorMock).not.toHaveBeenCalledWith('blues', null)
+  })
+
   it('does nothing and tracks nothing when no note is affected', async () => {
     const updateFrontmatter = vi.fn()
     const { result } = renderHook(() => useTagManager({ entries, updateFrontmatter }))
