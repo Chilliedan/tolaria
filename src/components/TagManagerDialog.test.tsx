@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { makeEntry } from '../test-utils/noteListTestUtils'
 import { useTagManagerDialogState } from '../hooks/useTagManagerDialogState'
 import { TagManagerDialog } from './TagManagerDialog'
+import { getTagColorKey, setTagColor } from '../utils/tagStyles'
 
 vi.mock('../lib/telemetry', () => ({ trackEvent: vi.fn() }))
 
@@ -31,7 +32,10 @@ function openRowMenu(tag: string) {
 }
 
 describe('TagManagerDialog', () => {
-  beforeEach(() => vi.clearAllMocks())
+  beforeEach(() => {
+    vi.clearAllMocks()
+    for (const tag of ['live', 'jazz']) setTagColor(tag, null)
+  })
 
   it('lists tags with counts, most used first', () => {
     renderDialog()
@@ -91,6 +95,24 @@ describe('TagManagerDialog', () => {
     const trigger = screen.getByTestId('tag-manager-merge-target')
     await waitFor(() => expect(screen.queryByRole('menu')).not.toBeInTheDocument())
     await waitFor(() => expect(document.activeElement).toBe(trigger))
+  })
+
+  it('merges a tag into the target picked in the row editor and migrates its colour', async () => {
+    setTagColor('live', 'red')
+    const { updateFrontmatter } = renderDialog()
+    openRowMenu('live')
+    fireEvent.click(screen.getByText('Merge into…'))
+    fireEvent.keyDown(screen.getByTestId('tag-manager-merge-target'), { key: 'Enter' })
+    fireEvent.click(await screen.findByRole('option', { name: 'jazz' }))
+
+    expect(screen.getByText('Merge “live” into “jazz” in 1 note?')).toBeInTheDocument()
+    expect(updateFrontmatter).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }))
+
+    await waitFor(() => expect(screen.getByText('Updated 1 note.')).toBeInTheDocument())
+    expect(updateFrontmatter.mock.calls).toEqual([['/a.md', 'tags', ['blues', 'jazz'], { silent: true }]])
+    expect(getTagColorKey('jazz')).toBe('red')
+    expect(getTagColorKey('live')).toBeNull()
   })
 
   it('warns when a rename targets an existing tag', () => {
