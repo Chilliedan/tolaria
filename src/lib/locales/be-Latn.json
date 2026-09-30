@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Vydalić «{tag}» z {count} natatak?",
   "tagManager.apply": "Užyć",
   "tagManager.applying": "Abnaŭliennie {done} z {total} natatak…",
+  "tagManager.applyingOne": "Abnaŭliennie {done} z 1 natatki…",
   "tagManager.result.success": "Abnoŭliena natatak: {count}.",
   "tagManager.result.partial": "Źmienena {changed} z {total} natatak; pamylak: {failed}:",
   "tagManager.result.noop": "Nivodnaja natatka nie patrabavala źmien.",

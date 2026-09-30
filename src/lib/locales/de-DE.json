@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "„{tag}“ aus {count} Notizen entfernen?",
   "tagManager.apply": "Anwenden",
   "tagManager.applying": "Aktualisiere {done} von {total} Notizen…",
+  "tagManager.applyingOne": "Aktualisiere {done} von 1 Notiz…",
   "tagManager.result.success": "{count} Notizen aktualisiert.",
   "tagManager.result.partial": "{changed} von {total} Notizen geändert; {failed} fehlgeschlagen:",
   "tagManager.result.noop": "Keine Notizen mussten geändert werden.",

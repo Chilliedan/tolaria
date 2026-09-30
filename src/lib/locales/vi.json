@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Xóa “{tag}” khỏi {count} ghi chú?",
   "tagManager.apply": "Áp dụng",
   "tagManager.applying": "Đang cập nhật {done}/{total} ghi chú…",
+  "tagManager.applyingOne": "Đang cập nhật {done}/1 ghi chú…",
   "tagManager.result.success": "Đã cập nhật {count} ghi chú.",
   "tagManager.result.partial": "Đã thay đổi {changed}/{total} ghi chú; {failed} thất bại:",
   "tagManager.result.noop": "Không có ghi chú nào cần thay đổi.",

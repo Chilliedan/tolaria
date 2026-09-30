@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Remove “{tag}” from {count} notes?",
   "tagManager.apply": "Apply",
   "tagManager.applying": "Updating {done} of {total} notes…",
+  "tagManager.applyingOne": "Updating {done} of 1 note…",
   "tagManager.result.success": "Updated {count} notes.",
   "tagManager.result.partial": "Changed {changed} of {total} notes; {failed} failed:",
   "tagManager.result.noop": "No notes needed changing.",

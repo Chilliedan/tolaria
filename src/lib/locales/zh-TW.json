@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "從 {count} 則筆記中移除「{tag}」？",
   "tagManager.apply": "套用",
   "tagManager.applying": "正在更新 {done}/{total} 則筆記…",
+  "tagManager.applyingOne": "正在更新 {done}/1 則筆記…",
   "tagManager.result.success": "已更新 {count} 則筆記。",
   "tagManager.result.partial": "已變更 {total} 則筆記中的 {changed} 則；{failed} 則失敗：",
   "tagManager.result.noop": "沒有筆記需要變更。",

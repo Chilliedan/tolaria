@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Odstrániť „{tag}“ z {count} poznámok?",
   "tagManager.apply": "Použiť",
   "tagManager.applying": "Aktualizácia {done} z {total} poznámok…",
+  "tagManager.applyingOne": "Aktualizácia {done} z 1 poznámky…",
   "tagManager.result.success": "Aktualizovaných poznámok: {count}.",
   "tagManager.result.partial": "Zmenených {changed} z {total} poznámok; neúspešných: {failed}:",
   "tagManager.result.noop": "Žiadna poznámka nevyžadovala zmenu.",

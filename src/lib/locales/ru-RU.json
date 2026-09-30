@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Удалить «{tag}» из {count} заметок?",
   "tagManager.apply": "Применить",
   "tagManager.applying": "Обновление {done} из {total} заметок…",
+  "tagManager.applyingOne": "Обновление {done} из 1 заметки…",
   "tagManager.result.success": "Обновлено заметок: {count}.",
   "tagManager.result.partial": "Изменено {changed} из {total} заметок; ошибок: {failed}:",
   "tagManager.result.noop": "Ни одну заметку не нужно было изменять.",

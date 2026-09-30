@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Ta bort ”{tag}” från {count} anteckningar?",
   "tagManager.apply": "Verkställ",
   "tagManager.applying": "Uppdaterar {done} av {total} anteckningar…",
+  "tagManager.applyingOne": "Uppdaterar {done} av 1 anteckning…",
   "tagManager.result.success": "{count} anteckningar uppdaterade.",
   "tagManager.result.partial": "{changed} av {total} anteckningar ändrade; {failed} misslyckades:",
   "tagManager.result.noop": "Inga anteckningar behövde ändras.",

@@ -25,9 +25,10 @@ export function TagManagerConfirm({ message, destructive, locale, onCancel, onAp
 }
 
 export function TagManagerProgressLine({ progress, locale }: { progress: TagManagerProgress; locale: AppLocale }) {
+  const key = progress.total === 1 ? 'tagManager.applyingOne' : 'tagManager.applying'
   return (
     <p className="text-sm text-muted-foreground" role="status">
-      {translate(locale, 'tagManager.applying', { done: progress.done, total: progress.total })}
+      {translate(locale, key, { done: progress.done, total: progress.total })}
     </p>
   )
 }

@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Hapus “{tag}” dari {count} catatan?",
   "tagManager.apply": "Terapkan",
   "tagManager.applying": "Memperbarui {done} dari {total} catatan…",
+  "tagManager.applyingOne": "Memperbarui {done} dari 1 catatan…",
   "tagManager.result.success": "{count} catatan diperbarui.",
   "tagManager.result.partial": "{changed} dari {total} catatan diubah; {failed} gagal:",
   "tagManager.result.noop": "Tidak ada catatan yang perlu diubah.",

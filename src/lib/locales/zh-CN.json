@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "从 {count} 条笔记中移除“{tag}”？",
   "tagManager.apply": "应用",
   "tagManager.applying": "正在更新 {done}/{total} 条笔记…",
+  "tagManager.applyingOne": "正在更新 {done}/1 条笔记…",
   "tagManager.result.success": "已更新 {count} 条笔记。",
   "tagManager.result.partial": "已更改 {total} 条笔记中的 {changed} 条；{failed} 条失败：",
   "tagManager.result.noop": "没有笔记需要更改。",

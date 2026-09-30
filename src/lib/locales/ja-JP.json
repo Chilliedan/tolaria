@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "{count}件のノートから「{tag}」を削除しますか？",
   "tagManager.apply": "適用",
   "tagManager.applying": "{total}件中{done}件のノートを更新中…",
+  "tagManager.applyingOne": "1件中{done}件のノートを更新中…",
   "tagManager.result.success": "{count}件のノートを更新しました。",
   "tagManager.result.partial": "{total}件中{changed}件のノートを変更、{failed}件失敗しました：",
   "tagManager.result.noop": "変更が必要なノートはありませんでした。",

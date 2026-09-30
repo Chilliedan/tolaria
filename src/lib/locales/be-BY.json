@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Выдаліць «{tag}» з {count} нататак?",
   "tagManager.apply": "Ужыць",
   "tagManager.applying": "Абнаўленне {done} з {total} нататак…",
+  "tagManager.applyingOne": "Абнаўленне {done} з 1 нататкі…",
   "tagManager.result.success": "Абноўлена нататак: {count}.",
   "tagManager.result.partial": "Змянена {changed} з {total} нататак; памылак: {failed}:",
   "tagManager.result.noop": "Ніводная нататка не патрабавала змен.",

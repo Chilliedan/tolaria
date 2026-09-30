@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Видалити «{tag}» із {count} нотаток?",
   "tagManager.apply": "Застосувати",
   "tagManager.applying": "Оновлення {done} з {total} нотаток…",
+  "tagManager.applyingOne": "Оновлення {done} з 1 нотатки…",
   "tagManager.result.success": "Оновлено нотаток: {count}.",
   "tagManager.result.partial": "Змінено {changed} з {total} нотаток; помилок: {failed}:",
   "tagManager.result.noop": "Жодну нотатку не потрібно було змінювати.",

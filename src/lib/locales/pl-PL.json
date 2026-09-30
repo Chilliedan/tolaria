@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "Usunąć „{tag}” z {count} notatek?",
   "tagManager.apply": "Zastosuj",
   "tagManager.applying": "Aktualizowanie {done} z {total} notatek…",
+  "tagManager.applyingOne": "Aktualizowanie {done} z 1 notatki…",
   "tagManager.result.success": "Zaktualizowano notatek: {count}.",
   "tagManager.result.partial": "Zmieniono {changed} z {total} notatek; niepowodzeń: {failed}:",
   "tagManager.result.noop": "Żadna notatka nie wymagała zmian.",

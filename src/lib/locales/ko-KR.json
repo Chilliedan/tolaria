@@ -1090,6 +1090,7 @@
   "tagManager.confirm.delete": "노트 {count}개에서 “{tag}”을(를) 삭제하시겠습니까?",
   "tagManager.apply": "적용",
   "tagManager.applying": "노트 {total}개 중 {done}개 업데이트 중…",
+  "tagManager.applyingOne": "노트 1개 중 {done}개 업데이트 중…",
   "tagManager.result.success": "노트 {count}개를 업데이트했습니다.",
   "tagManager.result.partial": "노트 {total}개 중 {changed}개 변경, {failed}개 실패:",
   "tagManager.result.noop": "변경이 필요한 노트가 없습니다.",
