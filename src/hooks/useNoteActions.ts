@@ -338,6 +338,35 @@ async function updateFrontmatterAndMaybeRename({
   return true
 }
 
+interface DeleteFrontmatterPropertyParams {
+  activeTabPathRef: MutableRefObject<string | null>
+  config: NoteActionsConfig
+  key: string
+  options?: FrontmatterOpOptions
+  path: string
+  runFrontmatterOp: RunFrontmatterOp
+}
+
+async function deleteFrontmatterProperty({
+  activeTabPathRef,
+  config,
+  key,
+  options,
+  path,
+  runFrontmatterOp,
+}: DeleteFrontmatterPropertyParams): Promise<boolean> {
+  if (!activePathGuardAllowsMutation(path, activeTabPathRef, options)) return false
+  const canFlush = await flushBeforeNoteMutation(path, config.flushBeforeNoteMutation)
+  if (!canFlush) return false
+  if (!activePathGuardAllowsMutation(path, activeTabPathRef, options)) return false
+
+  config.onInternalVaultWrite?.(path)
+  const newContent = await runFrontmatterOp('delete', path, key, undefined, options)
+  if (!applyFrontmatterCallbacks({ config, path, newContent })) return false
+  await notifyFrontmatterPersisted(config, key)
+  return true
+}
+
 interface FrontmatterSnapshot {
   exists: boolean
   value?: FrontmatterValue
@@ -425,9 +454,15 @@ function shouldRecordFrontmatterHistory(
 
 // Silent callers (bulk writers such as the tag manager) have no toast to tell the user a
 // write did not happen, so a skipped update must surface to them as a failure.
-function assertSilentUpdateApplied(updated: boolean, path: string, key: string, options?: FrontmatterOpOptions): void {
-  if (updated || !options?.silent) return
-  throw new Error(`Skipped frontmatter update for ${path} (${key}): the note could not be safely written`)
+function assertSilentMutationApplied(
+  applied: boolean,
+  op: 'update' | 'delete',
+  path: string,
+  key: string,
+  options?: FrontmatterOpOptions,
+): void {
+  if (applied || !options?.silent) return
+  throw new Error(`Skipped frontmatter ${op} for ${path} (${key}): the note could not be safely written`)
 }
 
 function buildTabManagementOptions(
@@ -639,7 +674,7 @@ function useFrontmatterActionHandlers(functionOptions: {
       options,
       runFrontmatterOp,
     })
-    assertSilentUpdateApplied(updated, currentPath, key, options)
+    assertSilentMutationApplied(updated, 'update', currentPath, key, options)
     if (updated && shouldRecordHistory) {
       recordFrontmatterHistory(currentPath, key, before, { exists: true, value }, `Update ${key}`, options)
     }
@@ -671,16 +706,16 @@ function useFrontmatterActionHandlers(functionOptions: {
             key,
           })
       : ABSENT_FRONTMATTER
-    if (!activePathGuardAllowsMutation(currentPath, activeTabPathRef, options)) return
-    const canFlush = await flushBeforeNoteMutation(currentPath, config.flushBeforeNoteMutation)
-    if (!canFlush) return
-    if (!activePathGuardAllowsMutation(currentPath, activeTabPathRef, options)) return
-
-    config.onInternalVaultWrite?.(currentPath)
-    const newContent = await runFrontmatterOp('delete', currentPath, key, undefined, options)
-    if (!applyFrontmatterCallbacks({ config, path: currentPath, newContent })) return
-    await notifyFrontmatterPersisted(config, key)
-    if (shouldRecordHistory) {
+    const deleted = await deleteFrontmatterProperty({
+      config,
+      activeTabPathRef,
+      path: currentPath,
+      key,
+      options,
+      runFrontmatterOp,
+    })
+    assertSilentMutationApplied(deleted, 'delete', currentPath, key, options)
+    if (deleted && shouldRecordHistory) {
       recordFrontmatterHistory(currentPath, key, before, ABSENT_FRONTMATTER, `Delete ${key}`, options)
     }
     },

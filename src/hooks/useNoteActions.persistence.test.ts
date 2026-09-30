@@ -112,4 +112,34 @@ describe('useNoteActions frontmatter persistence', () => {
     })
     expect(onFrontmatterPersisted).not.toHaveBeenCalled()
   })
+
+  it('rejects a silent delete that was skipped because pending content failed to flush', async () => {
+    const onFrontmatterPersisted = vi.fn()
+    const { result } = renderHook(() => useNoteActions({
+      ...makeConfig(onFrontmatterPersisted),
+      flushBeforeNoteMutation: vi.fn().mockRejectedValue(new Error('disk full')),
+    }))
+
+    await act(async () => {
+      await expect(
+        result.current.handleDeleteProperty('/vault/note.md', '_favorite', { silent: true }),
+      ).rejects.toThrow('Skipped frontmatter delete for /vault/note.md')
+    })
+    expect(onFrontmatterPersisted).not.toHaveBeenCalled()
+  })
+
+  it('keeps resolving a non-silent delete that was skipped because pending content failed to flush', async () => {
+    const onFrontmatterPersisted = vi.fn()
+    const { result } = renderHook(() => useNoteActions({
+      ...makeConfig(onFrontmatterPersisted),
+      flushBeforeNoteMutation: vi.fn().mockRejectedValue(new Error('disk full')),
+    }))
+
+    await act(async () => {
+      await expect(
+        result.current.handleDeleteProperty('/vault/note.md', '_favorite'),
+      ).resolves.toBeUndefined()
+    })
+    expect(onFrontmatterPersisted).not.toHaveBeenCalled()
+  })
 })
