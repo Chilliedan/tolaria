@@ -67,7 +67,7 @@ type FavoriteActionDeps = Pick<
 
 type ReorderFavoritesDeps = Pick<
   EntryActionsConfig,
-  'updateEntry' | 'handleUpdateFrontmatter' | 'onFrontmatterPersisted'
+  'entries' | 'updateEntry' | 'handleUpdateFrontmatter' | 'setToastMessage' | 'onFrontmatterPersisted'
 >
 type FavoriteState = Pick<VaultEntry, 'favorite' | 'favoriteIndex'>
 type FavoriteReplay = (path: string, favorite: boolean, favoriteIndex: number | null) => Promise<void>
@@ -267,58 +267,30 @@ async function toggleTypeVisibility(deps: TypeActionDeps, typeName: string, type
 
 function useArchiveActions(options: ArchiveActionDeps) {
   const { entries, updateEntry, handleUpdateFrontmatter, handleDeleteProperty, setToastMessage, onFrontmatterPersisted, onBeforeAction, actionHistory } = options
-  const handleArchiveNote = useCallback(
-    (path: string) =>
-      archiveNote(
-        {
-    entries,
-    updateEntry,
-    handleUpdateFrontmatter,
-    handleDeleteProperty,
-    setToastMessage,
-    onFrontmatterPersisted,
-    onBeforeAction,
-    actionHistory,
-        },
-        path,
-      ),
+  const deps = useMemo<ArchiveActionDeps>(
+    () => ({
+      entries,
+      updateEntry,
+      handleUpdateFrontmatter,
+      handleDeleteProperty,
+      setToastMessage,
+      onFrontmatterPersisted,
+      onBeforeAction,
+      actionHistory,
+    }),
     [
-    actionHistory,
-    entries,
-    handleDeleteProperty,
-    handleUpdateFrontmatter,
-    onBeforeAction,
-    onFrontmatterPersisted,
-    setToastMessage,
-    updateEntry,
+      actionHistory,
+      entries,
+      handleDeleteProperty,
+      handleUpdateFrontmatter,
+      onBeforeAction,
+      onFrontmatterPersisted,
+      setToastMessage,
+      updateEntry,
     ],
   )
-  const handleUnarchiveNote = useCallback(
-    (path: string) =>
-      unarchiveNote(
-        {
-    entries,
-    updateEntry,
-    handleUpdateFrontmatter,
-    handleDeleteProperty,
-    setToastMessage,
-    onFrontmatterPersisted,
-    onBeforeAction,
-    actionHistory,
-        },
-        path,
-      ),
-    [
-    actionHistory,
-    entries,
-    handleDeleteProperty,
-    handleUpdateFrontmatter,
-    onBeforeAction,
-    onFrontmatterPersisted,
-    setToastMessage,
-    updateEntry,
-    ],
-  )
+  const handleArchiveNote = useCallback((path: string) => archiveNote(deps, path), [deps])
+  const handleUnarchiveNote = useCallback((path: string) => unarchiveNote(deps, path), [deps])
 
   return { handleArchiveNote, handleUnarchiveNote }
 }
@@ -703,24 +675,37 @@ function createOrganizedTransition(transition: StateTransitionInput) {
     }
 }
 
-function useReorderFavoritesAction({
-  updateEntry,
-  handleUpdateFrontmatter,
-  onFrontmatterPersisted,
-}: ReorderFavoritesDeps) {
+async function persistFavoriteOrder(deps: ReorderFavoritesDeps, orderedPaths: string[]): Promise<number> {
+  for (const [index, path] of orderedPaths.entries()) {
+    deps.updateEntry(path, { favoriteIndex: index })
+    try {
+      await deps.handleUpdateFrontmatter(path, '_favorite_index', index, { silent: true })
+    } catch (err) {
+      logOptimisticRollback('Optimistic favorite reorder rollback:', err)
+      return index
+    }
+  }
+  return orderedPaths.length
+}
+
+function rollbackFavoriteOrder(deps: ReorderFavoritesDeps, unsavedPaths: string[]): void {
+  for (const path of unsavedPaths) {
+    const entry = deps.entries.find((candidate) => candidate.path === path)
+    deps.updateEntry(path, { favoriteIndex: entry?.favoriteIndex ?? null })
+  }
+  deps.setToastMessage('Failed to reorder favorites — rolled back')
+}
+
+function useReorderFavoritesAction(deps: ReorderFavoritesDeps) {
+  const { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted } = deps
   return useCallback(
     async (orderedPaths: string[]) => {
-    for (let i = 0; i < orderedPaths.length; i++) {
-      const orderedPath = orderedPaths.at(i)
-      if (!orderedPath) continue
-      updateEntry(orderedPath, { favoriteIndex: i })
-        await handleUpdateFrontmatter(orderedPath, '_favorite_index', i, {
-          silent: true,
-        })
-    }
-    onFrontmatterPersisted?.()
+      const config = { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted }
+      const persistedCount = await persistFavoriteOrder(config, orderedPaths)
+      if (persistedCount < orderedPaths.length) rollbackFavoriteOrder(config, orderedPaths.slice(persistedCount))
+      if (persistedCount > 0 || orderedPaths.length === 0) onFrontmatterPersisted?.()
     },
-    [updateEntry, handleUpdateFrontmatter, onFrontmatterPersisted],
+    [entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted],
   )
 }
 

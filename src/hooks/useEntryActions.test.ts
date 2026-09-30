@@ -536,6 +536,35 @@ describe('useEntryActions', () => {
       expectEntryUpdate('/vault/c.md', { favoriteIndex: 2 })
       expect(onFrontmatterPersisted).toHaveBeenCalledTimes(1)
     })
+
+    describe('when a write fails partway through', () => {
+      const favorites = [
+        makeEntry({ path: '/vault/a.md', favorite: true, favoriteIndex: 0 }),
+        makeEntry({ path: '/vault/b.md', favorite: true, favoriteIndex: 1 }),
+        makeEntry({ path: '/vault/c.md', favorite: true, favoriteIndex: 2 }),
+      ]
+
+      beforeEach(() => {
+        handleUpdateFrontmatter
+          .mockResolvedValueOnce(undefined)
+          .mockRejectedValueOnce(new Error('Skipped frontmatter update for /vault/a.md'))
+      })
+
+      it('resolves, stops at the failed note, rolls back unsaved indexes and tells the user', async () => {
+        const { result } = setup(favorites)
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+        await runAction(() => result.current.handleReorderFavorites(['/vault/c.md', '/vault/a.md', '/vault/b.md']))
+
+        expect(handleUpdateFrontmatter).toHaveBeenCalledTimes(2)
+        expectEntryUpdate('/vault/a.md', { favoriteIndex: 0 })
+        expectEntryUpdate('/vault/b.md', { favoriteIndex: 1 })
+        expect(updateEntry).not.toHaveBeenCalledWith('/vault/c.md', { favoriteIndex: 2 })
+        expect(setToastMessage).toHaveBeenCalledWith('Failed to reorder favorites — rolled back')
+        expect(onFrontmatterPersisted).toHaveBeenCalledTimes(1)
+        consoleError.mockRestore()
+      })
+    })
   })
 
   describe('onBeforeAction callback', () => {
