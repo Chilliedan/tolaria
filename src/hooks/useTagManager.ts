@@ -58,6 +58,25 @@ function migrateColors(op: TagRewriteOp, inventory: TagInventory, property: stri
   for (const change of changes) setTagColor(change.tag, change.colorKey)
 }
 
+interface PostWriteEffects {
+  op: TagRewriteOp
+  inventory: TagInventory
+  property: string
+  changed: number
+  failed: number
+}
+
+// Colour migration and analytics run after the notes were already written, so a failure
+// here must not turn a completed rewrite into a reported write failure.
+function runPostWriteEffects({ op, inventory, property, changed, failed }: PostWriteEffects): void {
+  try {
+    if (changed > 0) migrateColors(op, inventory, property, failed > 0)
+    trackEvent('tag_manager_action', { action: op.kind, notes_changed: changed, failed })
+  } catch (error) {
+    console.warn('Tag manager post-write step failed:', error)
+  }
+}
+
 export function useTagManager({ entries, updateFrontmatter }: UseTagManagerOptions) {
   const [progress, setProgress] = useState<TagManagerProgress | null>(null)
   const inventory = useMemo(() => buildTagInventory(entries, loadDisplayModeOverrides()), [entries])
@@ -72,14 +91,16 @@ export function useTagManager({ entries, updateFrontmatter }: UseTagManagerOptio
     const steps = planTagRewrite(entries, property, op)
     if (steps.length === 0) return { total: 0, changed: 0, failedPaths: [] }
     setProgress({ done: 0, total: steps.length })
-    const failedPaths = await writeSteps(steps, property, updateFrontmatter, (done) => {
-      setProgress({ done, total: steps.length })
-    })
-    const changed = steps.length - failedPaths.length
-    if (changed > 0) migrateColors(op, inventory, property, failedPaths.length > 0)
-    trackEvent('tag_manager_action', { action: op.kind, notes_changed: changed, failed: failedPaths.length })
-    setProgress(null)
-    return { total: steps.length, changed, failedPaths }
+    try {
+      const failedPaths = await writeSteps(steps, property, updateFrontmatter, (done) => {
+        setProgress({ done, total: steps.length })
+      })
+      const changed = steps.length - failedPaths.length
+      runPostWriteEffects({ op, inventory, property, changed, failed: failedPaths.length })
+      return { total: steps.length, changed, failedPaths }
+    } finally {
+      setProgress(null)
+    }
   }, [entries, inventory, updateFrontmatter])
 
   return { inventory, properties, progress, countAffected, apply }

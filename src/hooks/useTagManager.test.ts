@@ -56,6 +56,27 @@ describe('useTagManager', () => {
     expect(result.current.progress).toBeNull()
   })
 
+  it.each([
+    ['colour migration', () => setTagColorMock.mockImplementationOnce(() => { throw new Error('config write failed') })],
+    ['analytics', () => trackEventMock.mockImplementationOnce(() => { throw new Error('telemetry down') })],
+  ])('still reports the completed writes and releases the dialog when %s throws', async (_label, breakPostWrite) => {
+    colors.blues = 'red'
+    breakPostWrite()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const updateFrontmatter = vi.fn().mockResolvedValue(undefined)
+    const { result } = renderHook(() => useTagManager({ entries, updateFrontmatter }))
+
+    let outcome: TagManagerApplyResult | undefined
+    await act(async () => {
+      outcome = await result.current.apply('tags', { kind: 'rename', from: 'blues', to: 'soul' })
+    })
+
+    expect(outcome).toEqual({ total: 2, changed: 2, failedPaths: [] })
+    expect(result.current.progress).toBeNull()
+    expect(warn).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
+  })
+
   it('collects failures, keeps going, and keeps the source colour', async () => {
     colors.blues = 'red'
     const updateFrontmatter = vi.fn()
