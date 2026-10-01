@@ -74,6 +74,7 @@ describe('useTagManager', () => {
     expect(outcome).toEqual({ total: 2, changed: 2, failedPaths: [] })
     expect(result.current.progress).toBeNull()
     expect(warn).toHaveBeenCalledTimes(1)
+    expect(trackEventMock).toHaveBeenCalledWith('tag_manager_action', { action: 'rename', notes_changed: 2, failed: 0 })
     warn.mockRestore()
   })
 

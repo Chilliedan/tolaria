@@ -69,11 +69,17 @@ interface PostWriteEffects {
 // Colour migration and analytics run after the notes were already written, so a failure
 // here must not turn a completed rewrite into a reported write failure.
 function runPostWriteEffects({ op, inventory, property, changed, failed }: PostWriteEffects): void {
+  if (changed > 0) {
+    try {
+      migrateColors(op, inventory, property, failed > 0)
+    } catch (error) {
+      console.warn('Tag manager colour migration failed:', error)
+    }
+  }
   try {
-    if (changed > 0) migrateColors(op, inventory, property, failed > 0)
     trackEvent('tag_manager_action', { action: op.kind, notes_changed: changed, failed })
   } catch (error) {
-    console.warn('Tag manager post-write step failed:', error)
+    console.warn('Tag manager analytics failed:', error)
   }
 }
 
