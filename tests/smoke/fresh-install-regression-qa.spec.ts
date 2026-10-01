@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { sendShortcut, openCommandPalette, findCommand } from './helpers'
+import { sendShortcut, openCommandPalette, findCommand, waitForAppReady } from './helpers'
 
 /**
  * Fresh-install regression QA: verify all 7 Done tasks work on a fresh
@@ -18,17 +18,17 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/vault/ping', route => route.fulfill({ status: 503 }))
     await page.goto('/')
-    await page.waitForTimeout(500)
+    await waitForAppReady(page)
   })
 
-  test('AI panel opens with Ctrl+I and has 3-layer structure', async ({ page }) => {
+  test('AI panel opens with Cmd+Shift+L and has 3-layer structure', async ({ page }) => {
     // Select a note for context
     const noteItem = page.locator('.app__note-list .cursor-pointer').first()
     await noteItem.click()
     await page.waitForTimeout(300)
 
     // Open AI panel
-    await sendShortcut(page, 'i', ['Control'])
+    await sendShortcut(page, 'L', ['Control', 'Shift'])
     const panel = page.getByTestId('ai-panel')
     await expect(panel).toBeVisible({ timeout: 3000 })
 
@@ -51,7 +51,7 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
     await noteItem.click()
     await page.waitForTimeout(300)
 
-    await sendShortcut(page, 'i', ['Control'])
+    await sendShortcut(page, 'L', ['Control', 'Shift'])
     await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 3000 })
 
     // Context bar should show active note title
@@ -63,7 +63,7 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
     await noteItem.click()
     await page.waitForTimeout(300)
 
-    await sendShortcut(page, 'i', ['Control'])
+    await sendShortcut(page, 'L', ['Control', 'Shift'])
     await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 3000 })
 
     // Input should auto-focus
@@ -86,7 +86,7 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
     await noteItem.click()
     await page.waitForTimeout(300)
 
-    await sendShortcut(page, 'i', ['Control'])
+    await sendShortcut(page, 'L', ['Control', 'Shift'])
     const panel = page.getByTestId('ai-panel')
     await expect(panel).toBeVisible({ timeout: 3000 })
 
@@ -101,7 +101,7 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
     await noteItem.click()
     await page.waitForTimeout(300)
 
-    await sendShortcut(page, 'i', ['Control'])
+    await sendShortcut(page, 'L', ['Control', 'Shift'])
     const panel = page.getByTestId('ai-panel')
     await expect(panel).toBeVisible({ timeout: 3000 })
 
@@ -126,7 +126,7 @@ test.describe('Fresh-install regression: search and command palette', () => {
   test.beforeEach(async ({ page }) => {
     await page.route('**/api/vault/ping', route => route.fulfill({ status: 503 }))
     await page.goto('/')
-    await page.waitForTimeout(500)
+    await waitForAppReady(page)
   })
 
   test('search UI renders and is accessible via Cmd+P', async ({ page }) => {
@@ -151,7 +151,7 @@ test.describe('Fresh-install regression: search and command palette', () => {
 test.describe('Fresh-install regression: no /api/ai/agent endpoint', () => {
   test('fetching /api/ai/agent returns 404 or no response', async ({ page }) => {
     await page.goto('/')
-    await page.waitForTimeout(500)
+    await waitForAppReady(page)
 
     // In dev mode, the Vite proxy plugin handles /api/ai/agent,
     // but in production Tauri there is no HTTP server at all.
@@ -168,7 +168,7 @@ test.describe('Fresh-install regression: no /api/ai/agent endpoint', () => {
     const noteItem = page.locator('.app__note-list .cursor-pointer').first()
     await noteItem.click()
     await page.waitForTimeout(300)
-    await sendShortcut(page, 'i', ['Control'])
+    await sendShortcut(page, 'L', ['Control', 'Shift'])
     await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 3000 })
 
     const input = page.locator('input[placeholder*="Ask"]')

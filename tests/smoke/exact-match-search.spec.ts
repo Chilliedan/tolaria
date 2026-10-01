@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { sendShortcut } from './helpers'
+import { sendShortcut, waitForAppReady } from './helpers'
 
 const QUICK_OPEN_INPUT = 'input[placeholder="Search notes..."]'
 
@@ -23,31 +23,32 @@ async function getFirstResultTitle(page: import('@playwright/test').Page): Promi
 test.describe('Exact match search ranking', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await waitForAppReady(page)
   })
 
   test('exact title match appears as first result', async ({ page }) => {
     await openQuickOpen(page)
-    // "Writing" is a Topic note in the demo vault; other notes have "Writing" as a prefix
-    await page.locator(QUICK_OPEN_INPUT).fill('Writing')
+    // "Refactoring" is an Area note in the browser mock vault (the default since 347df47c);
+    // "Refactoring Ideas", "Refactoring Key Ideas" and "Refactoring Patterns" share it as a prefix
+    await page.locator(QUICK_OPEN_INPUT).fill('Refactoring')
     await page.waitForTimeout(300)
 
     const firstTitle = await getFirstResultTitle(page)
-    expect(firstTitle).toBe('Writing')
+    expect(firstTitle).toBe('Refactoring')
   })
 
   test('case-insensitive exact match appears first', async ({ page }) => {
     await openQuickOpen(page)
-    await page.locator(QUICK_OPEN_INPUT).fill('writing')
+    await page.locator(QUICK_OPEN_INPUT).fill('refactoring')
     await page.waitForTimeout(300)
 
     const firstTitle = await getFirstResultTitle(page)
-    expect(firstTitle).toBe('Writing')
+    expect(firstTitle).toBe('Refactoring')
   })
 
   test('partial matches still appear below exact match', async ({ page }) => {
     await openQuickOpen(page)
-    await page.locator(QUICK_OPEN_INPUT).fill('Writing')
+    await page.locator(QUICK_OPEN_INPUT).fill('Refactoring')
     await page.waitForTimeout(300)
 
     // Should have multiple results (exact + prefix/fuzzy matches)
@@ -57,22 +58,22 @@ test.describe('Exact match search ranking', () => {
 
     // First result is the exact match
     const firstTitle = await getFirstResultTitle(page)
-    expect(firstTitle).toBe('Writing')
+    expect(firstTitle).toBe('Refactoring')
   })
 
   test('arrow keys navigate search results past the exact match', async ({ page }) => {
     await openQuickOpen(page)
-    await page.locator(QUICK_OPEN_INPUT).fill('Writing')
+    await page.locator(QUICK_OPEN_INPUT).fill('Refactoring')
     await page.waitForTimeout(300)
 
     // First result should be selected (exact match)
     const firstTitle = await getFirstResultTitle(page)
-    expect(firstTitle).toBe('Writing')
+    expect(firstTitle).toBe('Refactoring')
 
     // ArrowDown moves to next result (a prefix or fuzzy match)
     await page.keyboard.press('ArrowDown')
     await page.waitForTimeout(100)
     const secondTitle = await getFirstResultTitle(page)
-    expect(secondTitle).not.toBe('Writing')
+    expect(secondTitle).not.toBe('Refactoring')
   })
 })

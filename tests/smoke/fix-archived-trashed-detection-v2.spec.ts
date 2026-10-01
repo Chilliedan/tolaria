@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { sendShortcut } from './helpers'
+import { sendShortcut, waitForAppReady } from './helpers'
 
 const QUICK_OPEN_INPUT = 'input[placeholder="Search notes..."]'
 
@@ -23,7 +23,7 @@ function getResultTitles(container: import('@playwright/test').Locator) {
 test.describe('Archived Yes/No detection', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await waitForAppReady(page)
   })
 
   test('archived notes are filtered out of the default sidebar', async ({ page }) => {
