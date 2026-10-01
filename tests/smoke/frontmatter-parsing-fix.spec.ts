@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { sendShortcut } from './helpers'
+import { sendShortcut, waitForAppReady } from './helpers'
 
 const QUICK_OPEN_INPUT = 'input[placeholder="Search notes..."]'
 
@@ -12,15 +12,19 @@ async function openQuickOpen(page: import('@playwright/test').Page) {
 test.describe('Frontmatter parsing: type badge displays correctly', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await waitForAppReady(page)
   })
 
   test('procedure note shows type badge in Quick Open', async ({ page }) => {
     await openQuickOpen(page)
-    await page.locator(QUICK_OPEN_INPUT).fill('Weekly')
+    // Query the Procedure fixture by its full title: a bare "Weekly" prefix
+    // ranks hundreds of shorter generated "Weekly Plan N" notes (none of them
+    // Procedures) above it, so the Procedure note never reaches the results.
+    await page.locator(QUICK_OPEN_INPUT).fill('Write Weekly Essays')
     await page.waitForTimeout(400)
     // The Badge component renders the type name as text content
-    const badge = page.locator('.fixed.inset-0').locator('text=Procedure')
+    const result = page.getByTestId('quick-open-palette').getByRole('button').filter({ hasText: 'Write Weekly Essays' })
+    const badge = result.getByText('Procedure', { exact: true })
     await expect(badge.first()).toBeVisible({ timeout: 3000 })
   })
 

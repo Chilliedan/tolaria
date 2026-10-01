@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { sendShortcut } from './helpers'
+import { openPropertiesPanel, sendShortcut, waitForAppReady } from './helpers'
 
 async function openNoteViaQuickOpen(page: import('@playwright/test').Page, query: string) {
   await page.locator('body').click()
@@ -16,7 +16,7 @@ test.describe('Canonical type field', () => {
   test.beforeEach(async ({ page }) => {
     await page.setViewportSize({ width: 1600, height: 900 })
     await page.goto('/')
-    await page.waitForLoadState('networkidle')
+    await waitForAppReady(page)
   })
 
   test('sidebar shows type sections parsed from type: field', async ({ page }) => {
@@ -43,7 +43,9 @@ test.describe('Canonical type field', () => {
     // Open a Type definition note (e.g. "Project" type definition)
     await openNoteViaQuickOpen(page, 'Project')
 
-    // Type definitions should still show the Instances section
+    // Type definitions should still show the Instances section, which lives in
+    // the properties panel (closed by default since the Cmd+Shift+I toggle)
+    await openPropertiesPanel(page)
     const instancesLabel = page.getByText(/Instances \(\d+\)/)
     await expect(instancesLabel).toBeVisible({ timeout: 5000 })
   })

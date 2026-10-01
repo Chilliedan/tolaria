@@ -4,6 +4,22 @@ const COMMAND_INPUT = 'input[placeholder="Type a command..."]'
 type KeyboardModifier = 'Meta' | 'Control' | 'Shift' | 'Alt'
 const COMMAND_MODIFIER: KeyboardModifier = process.platform === 'darwin' ? 'Meta' : 'Control'
 
+/**
+ * `networkidle` resolves before the app shell mounts its global keyboard
+ * listener, so a shortcut sent right after it is silently dropped. The note
+ * list renders after that listener is attached, which makes it a reliable
+ * "ready for shortcuts" signal.
+ */
+export async function waitForAppReady(page: Page): Promise<void> {
+  await page.getByTestId('note-list-container').waitFor()
+}
+
+/** The properties panel (Inspector) is closed by default; open it if needed. */
+export async function openPropertiesPanel(page: Page): Promise<void> {
+  const openPanelButton = page.getByRole('button', { name: 'Open the properties panel' })
+  if (await openPanelButton.count()) await openPanelButton.click()
+}
+
 export async function openCommandPalette(page: Page): Promise<void> {
   const input = page.locator(COMMAND_INPUT)
 
