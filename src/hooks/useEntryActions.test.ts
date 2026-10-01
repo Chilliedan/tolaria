@@ -546,11 +546,11 @@ describe('useEntryActions', () => {
       const reorder = ['/vault/c.md', '/vault/a.md', '/vault/b.md']
 
       function finalMemoryIndexes() {
-        const indexes: Record<string, number | null> = {}
+        const indexes = new Map<string, number | null>()
         for (const [path, patch] of updateEntry.mock.calls as [string, { favoriteIndex: number | null }][]) {
-          indexes[path] = patch.favoriteIndex
+          indexes.set(path, patch.favoriteIndex)
         }
-        return indexes
+        return Object.fromEntries(indexes)
       }
 
       beforeEach(() => {
