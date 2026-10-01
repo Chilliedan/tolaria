@@ -688,12 +688,42 @@ async function persistFavoriteOrder(deps: ReorderFavoritesDeps, orderedPaths: st
   return orderedPaths.length
 }
 
-function rollbackFavoriteOrder(deps: ReorderFavoritesDeps, unsavedPaths: string[]): void {
-  for (const path of unsavedPaths) {
-    const entry = deps.entries.find((candidate) => candidate.path === path)
-    deps.updateEntry(path, { favoriteIndex: entry?.favoriteIndex ?? null })
+function originalFavoriteIndex(deps: ReorderFavoritesDeps, path: string): number | null {
+  return deps.entries.find((candidate) => candidate.path === path)?.favoriteIndex ?? null
+}
+
+// Best-effort: puts an already-written note back on disk. Returns false when the note
+// could not be restored, so its in-memory index must stay equal to what is on disk.
+async function restoreWrittenFavorite(deps: ReorderFavoritesDeps, path: string): Promise<boolean> {
+  const original = originalFavoriteIndex(deps, path)
+  if (original === null) return false
+  try {
+    await deps.handleUpdateFrontmatter(path, '_favorite_index', original, { silent: true })
+  } catch (err) {
+    logOptimisticRollback('Favorite reorder restore failed:', err)
+    return false
   }
-  deps.setToastMessage('Failed to reorder favorites — rolled back')
+  deps.updateEntry(path, { favoriteIndex: original })
+  return true
+}
+
+async function rollbackFavoriteOrder(
+  deps: ReorderFavoritesDeps,
+  orderedPaths: string[],
+  persistedCount: number,
+): Promise<void> {
+  for (const path of orderedPaths.slice(persistedCount)) {
+    deps.updateEntry(path, { favoriteIndex: originalFavoriteIndex(deps, path) })
+  }
+  let fullyRestored = true
+  for (const path of orderedPaths.slice(0, persistedCount)) {
+    fullyRestored = (await restoreWrittenFavorite(deps, path)) && fullyRestored
+  }
+  deps.setToastMessage(
+    fullyRestored
+      ? 'Failed to reorder favorites — rolled back'
+      : 'Failed to reorder favorites — some changes could not be rolled back',
+  )
 }
 
 function useReorderFavoritesAction(deps: ReorderFavoritesDeps) {
@@ -702,7 +732,7 @@ function useReorderFavoritesAction(deps: ReorderFavoritesDeps) {
     async (orderedPaths: string[]) => {
       const config = { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted }
       const persistedCount = await persistFavoriteOrder(config, orderedPaths)
-      if (persistedCount < orderedPaths.length) rollbackFavoriteOrder(config, orderedPaths.slice(persistedCount))
+      if (persistedCount < orderedPaths.length) await rollbackFavoriteOrder(config, orderedPaths, persistedCount)
       if (persistedCount > 0 || orderedPaths.length === 0) onFrontmatterPersisted?.()
     },
     [entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted],

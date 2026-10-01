@@ -543,6 +543,15 @@ describe('useEntryActions', () => {
         makeEntry({ path: '/vault/b.md', favorite: true, favoriteIndex: 1 }),
         makeEntry({ path: '/vault/c.md', favorite: true, favoriteIndex: 2 }),
       ]
+      const reorder = ['/vault/c.md', '/vault/a.md', '/vault/b.md']
+
+      function finalMemoryIndexes() {
+        const indexes: Record<string, number | null> = {}
+        for (const [path, patch] of updateEntry.mock.calls as [string, { favoriteIndex: number | null }][]) {
+          indexes[path] = patch.favoriteIndex
+        }
+        return indexes
+      }
 
       beforeEach(() => {
         handleUpdateFrontmatter
@@ -550,17 +559,37 @@ describe('useEntryActions', () => {
           .mockRejectedValueOnce(new Error('Skipped frontmatter update for /vault/a.md'))
       })
 
-      it('resolves, stops at the failed note, rolls back unsaved indexes and tells the user', async () => {
+      it('restores already-written notes so memory and disk end with the original indexes', async () => {
         const { result } = setup(favorites)
         const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-        await runAction(() => result.current.handleReorderFavorites(['/vault/c.md', '/vault/a.md', '/vault/b.md']))
+        await runAction(() => result.current.handleReorderFavorites(reorder))
 
-        expect(handleUpdateFrontmatter).toHaveBeenCalledTimes(2)
-        expectEntryUpdate('/vault/a.md', { favoriteIndex: 0 })
-        expectEntryUpdate('/vault/b.md', { favoriteIndex: 1 })
-        expect(updateEntry).not.toHaveBeenCalledWith('/vault/c.md', { favoriteIndex: 2 })
+        expect(handleUpdateFrontmatter.mock.calls.map(([path, , value]) => [path, value])).toEqual([
+          ['/vault/c.md', 0],
+          ['/vault/a.md', 1],
+          ['/vault/c.md', 2],
+        ])
+        expect(handleUpdateFrontmatter).toHaveBeenLastCalledWith('/vault/c.md', '_favorite_index', 2, { silent: true })
+        expect(finalMemoryIndexes()).toEqual({ '/vault/a.md': 0, '/vault/b.md': 1, '/vault/c.md': 2 })
         expect(setToastMessage).toHaveBeenCalledWith('Failed to reorder favorites — rolled back')
+        expect(onFrontmatterPersisted).toHaveBeenCalledTimes(1)
+        consoleError.mockRestore()
+      })
+
+      it('keeps memory equal to disk for a note whose restore write also fails, without rejecting', async () => {
+        handleUpdateFrontmatter.mockRejectedValueOnce(new Error('disk full'))
+        const { result } = setup(favorites)
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+        await runAction(() => result.current.handleReorderFavorites(reorder))
+
+        expect(handleUpdateFrontmatter).toHaveBeenCalledTimes(3)
+        expect(finalMemoryIndexes()).toEqual({ '/vault/a.md': 0, '/vault/b.md': 1, '/vault/c.md': 0 })
+        expect(setToastMessage).toHaveBeenCalledWith(
+          'Failed to reorder favorites — some changes could not be rolled back',
+        )
+        expect(consoleError).toHaveBeenCalledTimes(2)
         expect(onFrontmatterPersisted).toHaveBeenCalledTimes(1)
         consoleError.mockRestore()
       })
