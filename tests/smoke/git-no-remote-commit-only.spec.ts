@@ -68,9 +68,10 @@ test('nested parent-repository vault commits stay scoped and local without a rem
   await executeCommand(page, 'Open Settings')
   const gitRoot = page.getByTestId('settings-git-root')
   await expect(gitRoot).toHaveText('/parent-repository')
-  await gitRoot.focus()
-  await expect(gitRoot).toBeFocused()
+  // The repository root is plain text: 91bc0ef3 removed its tabIndex (a
+  // non-interactive element in the tab order), so it is no longer focusable.
   await page.keyboard.press('Escape')
+  await expect(page.getByTestId('settings-panel')).toHaveCount(0)
 
   await openCommandPalette(page)
   await executeCommand(page, 'Commit & Push')

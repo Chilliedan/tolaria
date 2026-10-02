@@ -113,7 +113,8 @@ async function setAutoGitEnabled(page: Page, enabled: boolean) {
   const settingsPanel = page.getByTestId('settings-panel')
   await expect(settingsPanel).toBeVisible({ timeout: 5_000 })
 
-  const toggle = page.getByRole('switch', { name: 'AutoGit' })
+  // Exact name: 2f9676f8 added a second "Use AI for AutoGit commit messages" switch.
+  const toggle = page.getByRole('switch', { name: 'Enable AutoGit', exact: true })
   const isEnabled = (await toggle.getAttribute('aria-checked')) === 'true'
   if (isEnabled !== enabled) {
     await toggle.click()

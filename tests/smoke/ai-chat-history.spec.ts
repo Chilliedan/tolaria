@@ -13,6 +13,15 @@ function visibleAiMessages(page: Page) {
   return page.locator('[data-testid="ai-message"]:visible')
 }
 
+/**
+ * The side AI workspace (the in-app default since 78892c46) puts "New chat" in
+ * its tab header; the `ai-workspace-sidebar-new-chat` button only renders in
+ * the docked/window layouts that have a conversation sidebar.
+ */
+function newChatButton(page: Page) {
+  return page.getByTestId('ai-workspace').getByRole('button', { name: 'New chat' })
+}
+
 test.describe('AI chat conversation history', () => {
   test.beforeEach(async ({ page }) => {
     await installMockAiAgent(page)
@@ -79,7 +88,7 @@ test.describe('AI chat conversation history', () => {
     await expect(firstResponse).toBeVisible({ timeout: 5000 })
 
     // Clear conversation (click the + button)
-    await page.getByTestId('ai-workspace-sidebar-new-chat').click()
+    await newChatButton(page).click()
     await page.waitForTimeout(300)
 
     // Messages should be cleared
@@ -109,11 +118,18 @@ test.describe('AI chat conversation history', () => {
     await sendShortcut(page, 'L', ['Meta', 'Shift'])
     const panel = page.getByTestId('ai-panel')
     await expect(panel).toBeVisible({ timeout: 3_000 })
-    await expect(page.getByTestId('ai-workspace')).toContainText('Keep Thread Alive')
-    await expect(visibleAiMessages(page)).toHaveCount(0)
+    // Since 78892c46 chat titles are sentence case and the chat transcript is
+    // kept in the AI workspace session store, so reopening restores both.
+    await expect(page.getByTestId('ai-workspace')).toContainText('Keep thread alive')
+    const restoredMessage = visibleAiMessages(page).last()
+    await expect(restoredMessage).toContainText('Keep this thread alive')
+    await expect(restoredMessage).toContainText('[mock-claude code]')
+    // With a restored transcript the panel takes focus (useAiPanelFocus); wait
+    // for that so it cannot pull focus back off the header button below.
+    await expect(panel).toBeFocused()
 
-    await page.getByTestId('ai-workspace-sidebar-new-chat').focus()
-    await expect(page.getByTestId('ai-workspace-sidebar-new-chat')).toBeFocused()
+    await newChatButton(page).focus()
+    await expect(newChatButton(page)).toBeFocused()
     await page.keyboard.press('Enter')
     await expect(visibleAiMessages(page)).toHaveCount(0)
   })
