@@ -16,6 +16,10 @@ function quickOpenPanel(page: import('@playwright/test').Page) {
   return page.locator('.fixed.inset-0').filter({ has: page.locator(QUICK_OPEN_INPUT) })
 }
 
+function quickOpenResult(container: import('@playwright/test').Locator, title: string) {
+  return container.locator('span.truncate').getByText(title, { exact: true })
+}
+
 function getResultTitles(container: import('@playwright/test').Locator) {
   return container.locator('span.truncate').allTextContents()
 }
@@ -95,15 +99,24 @@ test.describe('Archived Yes/No detection', () => {
     expect(badgeCount).toBeGreaterThan(0)
   })
 
-  test('archived notes do not appear in Quick Open search', async ({ page }) => {
+  // Quick Open deliberately keeps archived notes searchable (owner ruling,
+  // 2026-10-02; `useNoteSearch` "does not exclude archived notes"). Its result
+  // rows carry no archived marker, so the archived indicator checked here is
+  // the banner shown when the note is opened from Quick Open.
+  test('archived notes appear in Quick Open and open with the archived banner', async ({ page }) => {
     await openQuickOpen(page)
     const panel = quickOpenPanel(page)
+    const input = page.locator(QUICK_OPEN_INPUT)
     for (const title of ARCHIVED_TITLES) {
-      const query = title.split(' ')[0]
-      await page.locator(QUICK_OPEN_INPUT).fill(query)
-      await page.waitForTimeout(400)
-      const titles = await getResultTitles(panel)
-      expect(titles, `"${title}" should not appear in Quick Open`).not.toContain(title)
+      await input.fill(title)
+      await expect(quickOpenResult(panel, title), `"${title}" should appear in Quick Open`).toBeVisible()
     }
+
+    const [firstArchived] = ARCHIVED_TITLES
+    await input.fill(firstArchived)
+    await quickOpenResult(panel, firstArchived).click()
+    const banner = page.getByTestId('archived-note-banner')
+    await expect(banner).toBeVisible()
+    await expect(banner).toContainText('Archived')
   })
 })

@@ -1,5 +1,27 @@
-import { test, expect } from '@playwright/test'
+import { test, expect, type Locator, type Page } from '@playwright/test'
 import { sendShortcut, openCommandPalette, findCommand, waitForAppReady } from './helpers'
+
+/** `ai.panel.empty.withContextDescription` / `noContextDescription` in en.json. */
+const NOTE_CONTEXT_DESCRIPTION = 'Summarize, find connections, expand ideas'
+const NO_CONTEXT_DESCRIPTION = 'The AI will use the active note as context'
+
+/**
+ * Opening a note also loads the lazy editor module. Until it loads, the AI
+ * workspace renders inside `EditorStartupFallback`, and it remounts (dropping
+ * any typed prompt) when the real editor replaces the fallback, so wait for
+ * the editor first. That remount is reported separately (f6-report, D1).
+ */
+async function selectFirstNote(page: Page): Promise<void> {
+  await page.locator('.app__note-list .cursor-pointer').first().click()
+  await expect(page.getByTestId('editor-module-loading')).toHaveCount(0)
+}
+
+async function openAiPanel(page: Page): Promise<Locator> {
+  await sendShortcut(page, 'L', ['Control', 'Shift'])
+  const panel = page.getByTestId('ai-panel')
+  await expect(panel).toBeVisible({ timeout: 3000 })
+  return panel
+}
 
 /**
  * Fresh-install regression QA: verify all 7 Done tasks work on a fresh
@@ -10,7 +32,7 @@ import { sendShortcut, openCommandPalette, findCommand, waitForAppReady } from '
  * 3. AGENTS.md vault-level instructions
  * 4. AI Agent panel: vault-native AI
  * 5. Claude API wiring + full agent loop
- * 6. AI panel UI (3 layers + blue glow)
+ * 6. AI panel UI (workspace header, empty state, composer + blue glow)
  * 7. /api/ai/agent endpoint fix (uses Tauri invoke, not fetch)
  */
 
@@ -21,63 +43,52 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
     await waitForAppReady(page)
   })
 
-  test('AI panel opens with Cmd+Shift+L and has 3-layer structure', async ({ page }) => {
-    // Select a note for context
-    const noteItem = page.locator('.app__note-list .cursor-pointer').first()
-    await noteItem.click()
-    await page.waitForTimeout(300)
+  // The March 2026 "3-layer" panel (own "AI Chat" header, context bar, plain
+  // <input>) was replaced: d540d76f (2026-04-13) moved the composer to the
+  // wikilink chat input, 8828516d (2026-05-26) hosted the panel inside the AI
+  // workspace, and 78892c46 (2026-05-29) made that a side workspace whose
+  // context shows in the empty state instead of a context bar.
+  test('AI panel opens with Cmd+Shift+L with workspace header, empty state and composer', async ({ page }) => {
+    await selectFirstNote(page)
+    const panel = await openAiPanel(page)
 
-    // Open AI panel
-    await sendShortcut(page, 'L', ['Control', 'Shift'])
-    const panel = page.getByTestId('ai-panel')
-    await expect(panel).toBeVisible({ timeout: 3000 })
+    // Header: the workspace chrome around the panel
+    const workspace = page.getByTestId('ai-workspace')
+    await expect(workspace.getByRole('button', { name: 'New chat' })).toBeVisible()
+    await expect(workspace.getByRole('button', { name: 'Close AI workspace' })).toBeVisible()
 
-    // Layer 1: Header with title and buttons
-    await expect(panel.locator('text=AI Chat')).toBeVisible()
-    await expect(panel.locator('button[title="New AI chat"]')).toBeVisible()
-    await expect(panel.locator('button[title="Close AI panel"]')).toBeVisible()
+    // Message area: empty state for the active agent
+    await expect(panel.getByText(NOTE_CONTEXT_DESCRIPTION)).toBeVisible()
 
-    // Layer 2: Message area (empty state with robot icon suggestion)
-    await expect(
-      panel.locator('text=Ask about this note').or(panel.locator('text=Open a note')),
-    ).toBeVisible()
-
-    // Layer 3: Input area with send button
-    await expect(page.getByTestId('agent-send')).toBeVisible()
+    // Composer: input with send button
+    await expect(panel.getByTestId('agent-input')).toBeVisible()
+    await expect(panel.getByTestId('agent-send')).toBeVisible()
   })
 
-  test('AI panel shows context bar when note is selected', async ({ page }) => {
-    const noteItem = page.locator('.app__note-list .cursor-pointer').first()
-    await noteItem.click()
-    await page.waitForTimeout(300)
+  test('AI panel uses the selected note as context', async ({ page }) => {
+    await selectFirstNote(page)
+    const panel = await openAiPanel(page)
 
-    await sendShortcut(page, 'L', ['Control', 'Shift'])
-    await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 3000 })
-
-    // Context bar should show active note title
-    await expect(page.getByTestId('context-bar')).toBeVisible()
+    await expect(panel.getByText(NOTE_CONTEXT_DESCRIPTION)).toBeVisible()
+    await expect(panel.getByText(NO_CONTEXT_DESCRIPTION)).toHaveCount(0)
   })
 
   test('AI panel input is focusable and sendable', async ({ page }) => {
-    const noteItem = page.locator('.app__note-list .cursor-pointer').first()
-    await noteItem.click()
-    await page.waitForTimeout(300)
+    await selectFirstNote(page)
+    const panel = await openAiPanel(page)
 
-    await sendShortcut(page, 'L', ['Control', 'Shift'])
-    await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 3000 })
-
-    // Input should auto-focus
-    const input = page.locator('input[placeholder*="Ask"]')
-    await expect(input).toBeVisible()
+    const input = panel.getByTestId('agent-input')
+    await input.click()
+    await expect(input).toBeFocused()
     await input.fill('Test message')
 
     // Send button should be enabled when input has text
-    const sendBtn = page.getByTestId('agent-send')
+    const sendBtn = panel.getByTestId('agent-send')
     await expect(sendBtn).toBeEnabled()
 
     // Click send — should produce a response (mock in dev mode)
     await sendBtn.click()
-    const response = page.getByTestId('ai-message').last()
+    const response = panel.getByTestId('ai-message').last()
     await expect(response).toBeVisible({ timeout: 5000 })
   })
 
@@ -165,15 +176,11 @@ test.describe('Fresh-install regression: no /api/ai/agent endpoint', () => {
     })
 
     // Open AI panel and send a message
-    const noteItem = page.locator('.app__note-list .cursor-pointer').first()
-    await noteItem.click()
-    await page.waitForTimeout(300)
-    await sendShortcut(page, 'L', ['Control', 'Shift'])
-    await expect(page.getByTestId('ai-panel')).toBeVisible({ timeout: 3000 })
-
-    const input = page.locator('input[placeholder*="Ask"]')
-    await input.fill('Test')
-    await page.getByTestId('agent-send').click()
+    await selectFirstNote(page)
+    const panel = await openAiPanel(page)
+    await panel.getByTestId('agent-input').fill('Test')
+    await panel.getByTestId('agent-send').click()
+    await expect(panel.getByTestId('ai-message').last()).toBeVisible({ timeout: 5000 })
     await page.waitForTimeout(1000)
 
     // No fetch to /api/ai/agent should have been made
