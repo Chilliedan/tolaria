@@ -24,6 +24,21 @@ function focusPreferredElement(
   inputRef.current?.focus()
 }
 
+/** Both AI workspace layouts mark their root with this attribute. */
+const AI_WORKSPACE_SELECTOR = '[data-ai-workspace-mode]'
+
+/**
+ * The delayed focus pass re-claims focus lost while the panel mounts, but it
+ * must not pull focus back off a control in the surrounding AI workspace (such
+ * as "New chat" in the side header) that took it after the first pass.
+ */
+function focusMovedToWorkspaceControl(panelRef: React.RefObject<HTMLElement | null>): boolean {
+  const panel = panelRef.current
+  const active = document.activeElement
+  if (!panel || !active || panel.contains(active)) return false
+  return Boolean(panel.closest(AI_WORKSPACE_SELECTOR)?.contains(active))
+}
+
 function shouldHandleEscape(
   event: KeyboardEvent,
   panelRef: React.RefObject<HTMLElement | null>,
@@ -45,6 +60,7 @@ export function useAiPanelFocus({
     if (!enabled) return
 
     const timer = setTimeout(() => {
+      if (focusMovedToWorkspaceControl(panelRef)) return
       focusPreferredElement(panelRef, inputRef, shouldFocusPanel)
     }, 0)
     return () => clearTimeout(timer)

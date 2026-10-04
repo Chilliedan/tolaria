@@ -124,9 +124,6 @@ test.describe('AI chat conversation history', () => {
     const restoredMessage = visibleAiMessages(page).last()
     await expect(restoredMessage).toContainText('Keep this thread alive')
     await expect(restoredMessage).toContainText('[mock-claude code]')
-    // With a restored transcript the panel takes focus (useAiPanelFocus); wait
-    // for that so it cannot pull focus back off the header button below.
-    await expect(panel).toBeFocused()
 
     await newChatButton(page).focus()
     await expect(newChatButton(page)).toBeFocused()
