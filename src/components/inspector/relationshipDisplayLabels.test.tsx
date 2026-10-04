@@ -72,6 +72,27 @@ describe('relationship display labels', () => {
     expect(onAddProperty).toHaveBeenCalledWith('belongs_to', '[[project-alpha]]')
   })
 
+  // d60c47ee made suggested slots snake_case (`belongs_to`) but kept matching
+  // them against the raw key, so a spaced `Belongs to:` key still got an empty
+  // "Belongs to" suggestion. Owner decision (2026-10-04): the two spellings are
+  // the same key when deciding which suggested slots are already filled. Keys
+  // the note actually has still render as separate groups, as below.
+  it('treats a spaced relationship key as filling its snake_case suggested slot', () => {
+    render(
+      <DynamicRelationshipsPanel
+        frontmatter={{ 'Belongs to': ['[[project-alpha]]'] }}
+        entries={[makeEntry({ path: '/vault/project-alpha.md', filename: 'project-alpha.md', title: 'Project Alpha', isA: 'Project' })]}
+        typeEntryMap={{}}
+        onNavigate={onNavigate}
+        onAddProperty={vi.fn()}
+      />,
+    )
+
+    const suggestedLabels = screen.getAllByTestId('suggested-relationship').map((slot) => slot.textContent)
+    expect(suggestedLabels.some((label) => label?.includes('Belongs to'))).toBe(false)
+    expect(screen.getAllByText('Belongs to')).toHaveLength(1)
+  })
+
   it('keeps snake_case and spaced relationship keys as separate groups', () => {
     render(
       <DynamicRelationshipsPanel

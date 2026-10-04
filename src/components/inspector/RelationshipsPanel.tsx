@@ -592,6 +592,14 @@ function buildExistingRelationshipKeys(
   return existingKeys
 }
 
+function typeRelationshipKeys(typeEntry: VaultEntry): string[] {
+  const linkedKeys = Object.entries(typeEntry.relationships ?? {})
+    .filter(([, refs]) => refs.length > 0)
+    .map(([key]) => key)
+  const schemaKeys = Object.keys(typeEntry.properties ?? {}).filter(isRelationshipSchemaKey)
+  return [...linkedKeys, ...schemaKeys]
+}
+
 function buildTypeDerivedRelationshipEntries({
   entry,
   entries,
@@ -609,21 +617,12 @@ function buildTypeDerivedRelationshipEntries({
   const existingKeys = buildExistingRelationshipKeys(frontmatter, relationshipEntries)
   const result: RelationshipEntryGroup[] = []
   const seen = new Set<string>()
-
-  const addPlaceholder = (key: string) => {
+  for (const key of typeRelationshipKeys(typeEntry)) {
     const canonicalKey = canonicalFrontmatterKey(key)
-    if (canonicalKey === 'type' || existingKeys.has(canonicalKey) || seen.has(canonicalKey)) return
+    if (canonicalKey === 'type' || existingKeys.has(canonicalKey) || seen.has(canonicalKey)) continue
     seen.add(canonicalKey)
     result.push({ key, refs: [] })
   }
-
-  for (const [key, refs] of Object.entries(typeEntry.relationships ?? {})) {
-    if (refs.length > 0) addPlaceholder(key)
-  }
-  for (const key of Object.keys(typeEntry.properties ?? {})) {
-    if (isRelationshipSchemaKey(key)) addPlaceholder(key)
-  }
-
   return result
 }
 
@@ -816,11 +815,11 @@ function useMissingSuggestedRelationships(
   onAddProperty?: RelationshipPanelEditHandlers['onAddProperty'],
 ) {
   const existingRelKeys = useMemo(
-    () => new Set(relationshipEntries.map((g) => g.key.toLowerCase())),
+    () => new Set(relationshipEntries.map((g) => canonicalFrontmatterKey(g.key))),
     [relationshipEntries],
   )
   return useMemo(
-    () => (onAddProperty ? SUGGESTED_RELATIONSHIPS.filter((r) => !existingRelKeys.has(r.toLowerCase())) : []),
+    () => (onAddProperty ? SUGGESTED_RELATIONSHIPS.filter((r) => !existingRelKeys.has(canonicalFrontmatterKey(r))) : []),
     [onAddProperty, existingRelKeys],
   )
 }

@@ -65,15 +65,8 @@ function editableProperty(page: Page, key: string) {
   return page.getByTestId('editable-property').filter({ hasText: key })
 }
 
-/**
- * Label of a relationship the note actually has. Empty "suggested" slots reuse
- * the same label element and still offer `belongs_to` when the note has a
- * spaced `Belongs to` key (f6-report, D2), so they are excluded here.
- */
 function relationshipLabel(page: Page, key: string) {
-  return page
-    .locator('[data-testid="relationship-section-label"]:not([data-testid="suggested-relationship"] *)')
-    .filter({ hasText: key })
+  return page.getByTestId('relationship-section-label').filter({ hasText: key })
 }
 
 test.describe('Dynamic wikilink relationship detection', () => {
@@ -119,8 +112,10 @@ test.describe('Dynamic wikilink relationship detection', () => {
     // 'Belongs to' has wikilink → should be in Relationships (not Properties)
     await expect(editableProperty(page, 'Belongs to')).not.toBeVisible()
 
-    // 'Belongs to' should appear as a relationship label
+    // 'Belongs to' should appear as a relationship label, with no empty
+    // "Belongs to" suggestion beside it
     await expect(relationshipLabel(page, 'Belongs to')).toBeVisible()
+    await expect(page.getByTestId('suggested-relationship').filter({ hasText: 'Belongs to' })).toHaveCount(0)
 
     // 'Owner' has wikilink → should be in Relationships
     await expect(editableProperty(page, 'Owner')).not.toBeVisible()
