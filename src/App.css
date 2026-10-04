@@ -68,6 +68,25 @@ body.mac-chrome.mac-chrome-fullscreen {
   flex: 1;
 }
 
+/* LazyEditor's row: the editor (or its startup fallback) beside the AI workspace. */
+.editor-shell > .editor {
+  flex: 1;
+  min-width: 0;
+}
+
+@media print {
+  body.tolaria-note-pdf-exporting .editor-shell {
+    display: block !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  body.tolaria-note-pdf-exporting .editor-shell > :not(.editor) {
+    display: none !important;
+  }
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }

@@ -5,15 +5,8 @@ import { sendShortcut, openCommandPalette, findCommand, waitForAppReady } from '
 const NOTE_CONTEXT_DESCRIPTION = 'Summarize, find connections, expand ideas'
 const NO_CONTEXT_DESCRIPTION = 'The AI will use the active note as context'
 
-/**
- * Opening a note also loads the lazy editor module. Until it loads, the AI
- * workspace renders inside `EditorStartupFallback`, and it remounts (dropping
- * any typed prompt) when the real editor replaces the fallback, so wait for
- * the editor first. That remount is reported separately (f6-report, D1).
- */
 async function selectFirstNote(page: Page): Promise<void> {
   await page.locator('.app__note-list .cursor-pointer').first().click()
-  await expect(page.getByTestId('editor-module-loading')).toHaveCount(0)
 }
 
 async function openAiPanel(page: Page): Promise<Locator> {
@@ -77,8 +70,8 @@ test.describe('Fresh-install regression: AI panel renders and works', () => {
     await selectFirstNote(page)
     const panel = await openAiPanel(page)
 
+    // Input should auto-focus
     const input = panel.getByTestId('agent-input')
-    await input.click()
     await expect(input).toBeFocused()
     await input.fill('Test message')
 

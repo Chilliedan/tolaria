@@ -30,7 +30,14 @@ function commitLoadedEditor(
   if (!lifecycle.signal.aborted) setEditor(Editor)
 }
 
+/**
+ * The AI workspace surface is rendered here, beside whichever editor tree is
+ * mounted, so it keeps one position while the lazy editor bundle replaces the
+ * startup fallback. Rendering it inside each of them remounted it on load and
+ * dropped its state, such as a prompt being typed.
+ */
 export function LazyEditor(props: EditorProps) {
+  const { aiWorkspaceSurface, ...editorProps } = props
   const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(null)
 
   useEffect(() => {
@@ -44,5 +51,10 @@ export function LazyEditor(props: EditorProps) {
     return () => { lifecycle.abort() }
   }, [props.activeTabPath])
 
-  return Editor ? <LoadedEditor Editor={Editor} {...props} /> : <EditorStartupFallback {...props} />
+  return (
+    <div className="editor-shell relative flex min-h-0 min-w-0">
+      {Editor ? <LoadedEditor Editor={Editor} {...editorProps} /> : <EditorStartupFallback {...editorProps} />}
+      {props.showAIChat ? aiWorkspaceSurface : null}
+    </div>
+  )
 }

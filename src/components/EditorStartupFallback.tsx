@@ -1,13 +1,10 @@
 import { formatShortcutDisplay } from '../hooks/appCommandCatalog'
 import { translate, type AppLocale } from '../lib/i18n'
-import type { ReactNode } from 'react'
 
 interface EditorStartupFallbackProps {
   activeTabPath: string | null
   isVaultLoading?: boolean
   locale?: AppLocale
-  showAIChat?: boolean
-  aiWorkspaceSurface?: ReactNode
 }
 
 function LoadingBreadcrumb() {
@@ -43,7 +40,6 @@ export function EditorStartupFallback(props: EditorStartupFallbackProps) {
   return (
     <div className="editor flex min-h-0 flex-col overflow-hidden bg-background text-foreground" data-testid="editor-module-loading">
       {showEmpty ? <EmptyEditor locale={props.locale} /> : <LoadingBreadcrumb />}
-      {props.showAIChat ? props.aiWorkspaceSurface : null}
     </div>
   )
 }
