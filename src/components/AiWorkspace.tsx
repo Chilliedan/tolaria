@@ -280,16 +280,13 @@ function activeContextForSession({
   ConversationSessionProps,
   'active' | 'activeEntry' | 'activeNoteContent' | 'entries' | 'noteList' | 'noteListFilter' | 'openTabs'
 >): ConversationSessionContext {
-  if (!active) {
-    return {
-      activeEntry: null,
-      activeNoteContent: null,
-    }
-  }
-
+  // Inactive sessions get no active note, so they build no note context, but
+  // they keep the same vault list references as the active one. Swapping the
+  // large notes list for `undefined` on every chat switch re-rendered them with
+  // a changed prop that React's dev performance tracks diff in full.
   return {
-    activeEntry: activeEntry ?? null,
-    activeNoteContent: activeNoteContent ?? null,
+    activeEntry: active ? activeEntry ?? null : null,
+    activeNoteContent: active ? activeNoteContent ?? null : null,
     entries,
     noteList,
     noteListFilter,
