@@ -76,14 +76,14 @@ body.mac-chrome.mac-chrome-fullscreen {
 
 @media print {
   body.tolaria-note-pdf-exporting .editor-shell {
-    display: block !important;
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
+    display: block;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
   }
 
   body.tolaria-note-pdf-exporting .editor-shell > :not(.editor) {
-    display: none !important;
+    display: none;
   }
 }
 

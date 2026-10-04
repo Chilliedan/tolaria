@@ -14,7 +14,7 @@ function FocusHarness({ hasMessages }: { hasMessages: boolean }) {
       <div data-ai-workspace-mode="side">
         <button type="button">New chat</button>
         <aside ref={panelRef} tabIndex={-1} data-testid="panel">
-          <div ref={inputRef} tabIndex={0} data-testid="composer" />
+          <div ref={inputRef} contentEditable suppressContentEditableWarning data-testid="composer" />
         </aside>
       </div>
     </>
