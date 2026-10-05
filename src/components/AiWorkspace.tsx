@@ -193,6 +193,20 @@ function firstCompletedAssistantMessage(messages: AiAgentMessage[]): AiAgentMess
   )
 }
 
+interface ConversationTitleSource {
+  assistantResponse: string
+  prompt: string
+  titleKey: string
+}
+
+function conversationTitleSource(conversationId: string, messages: AiAgentMessage[]): ConversationTitleSource | null {
+  const firstMessage = firstCompletedAssistantMessage(messages)
+  const prompt = firstMessage?.userMessage.trim()
+  const assistantResponse = firstMessage?.response?.trim()
+  if (!firstMessage || !prompt || !assistantResponse) return null
+  return { assistantResponse, prompt, titleKey: `${conversationId}:${firstMessage.id ?? prompt}` }
+}
+
 function useGeneratedConversationTitle(options: {
   aiAgentsStatus: AiAgentsStatus
   conversation: AiConversation
@@ -222,14 +236,10 @@ function useGeneratedConversationTitle(options: {
   useEffect(() => {
     if (!conversation.usesDefaultTitle) return
 
-    const firstMessage = firstCompletedAssistantMessage(messages)
-    const prompt = firstMessage?.userMessage.trim()
-    const assistantResponse = firstMessage?.response?.trim()
-    if (!firstMessage || !prompt || !assistantResponse) return
-
-    const titleKey = `${conversation.id}:${firstMessage.id ?? prompt}`
-    if (requestedTitleKeysRef.current.has(titleKey)) return
-    requestedTitleKeysRef.current.add(titleKey)
+    const source = conversationTitleSource(conversation.id, messages)
+    if (!source || requestedTitleKeysRef.current.has(source.titleKey)) return
+    requestedTitleKeysRef.current.add(source.titleKey)
+    const { assistantResponse, prompt } = source
 
     onTitleFromAnswer({
       assistantResponse,
