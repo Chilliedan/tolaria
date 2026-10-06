@@ -30,6 +30,7 @@ import {
 } from '../lib/startupPerformance'
 import { useUnavailableVaultState } from './useUnavailableVaultState'
 import { resetVaultState } from './vaultStateReset'
+import { removeEntriesByPath, removeEntryByPath, replaceEntryByPath } from './vaultEntryListUpdates'
 import {
   initialVaultsForPath,
   loadedWorkspacePathsFromEntries,
@@ -585,32 +586,6 @@ function useEntryMutations(
   }, [setEntries])
 
   return { addEntry, updateEntry, removeEntry, removeEntries, replaceEntry }
-}
-
-function removeEntryByPath(entries: VaultEntry[], path: string): VaultEntry[] {
-  const nextEntries = entries.filter((entry) => entry.path !== path)
-  return nextEntries.length === entries.length ? entries : nextEntries
-}
-
-function removeEntriesByPath(entries: VaultEntry[], paths: string[]): VaultEntry[] {
-  if (paths.length === 0) return entries
-
-  const pathSet = new Set(paths)
-  const nextEntries = entries.filter((entry) => !pathSet.has(entry.path))
-  return nextEntries.length === entries.length ? entries : nextEntries
-}
-
-function replaceEntryByPath(
-  entries: VaultEntry[],
-  oldPath: string,
-  patch: Partial<VaultEntry> & { path: string },
-): VaultEntry[] {
-  const entryIndex = entries.findIndex((entry) => entry.path === oldPath)
-  if (entryIndex < 0) return entries
-
-  const nextEntries = [...entries]
-  nextEntries[entryIndex] = normalizeVaultEntry({ ...entries[entryIndex], ...patch }, '', entryIndex)
-  return nextEntries
 }
 
 function useGitLoaders(vaultPath: string) {
