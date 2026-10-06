@@ -703,13 +703,15 @@ describe('AiWorkspace', () => {
       />,
     )
 
+    // The marker, the persisted fallback and the controller update come from separate effects,
+    // so wait for all of them rather than asserting the later ones synchronously.
     await waitFor(() => {
       expect(addLocalMarkerMock).toHaveBeenCalledWith(expect.stringContaining('Agent default'))
+      expect(onConversationSettingsChange).toHaveBeenLastCalledWith([
+        expect.objectContaining({ id: 'legacy-model-chat', model_id: null }),
+      ])
+      expect(controllerCalls.at(-1)).toEqual(expect.objectContaining({ model: undefined }))
     })
-    expect(onConversationSettingsChange).toHaveBeenLastCalledWith([
-      expect.objectContaining({ id: 'legacy-model-chat', model_id: null }),
-    ])
-    expect(controllerCalls.at(-1)).toEqual(expect.objectContaining({ model: undefined }))
   })
 
   it('locks the combined agent and model selector while a response is active', async () => {
