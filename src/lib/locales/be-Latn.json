@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "«{to}» uže isnuje. Abjadnać «{from}» z im u 1 natatcy?",
   "tagManager.confirm.deleteOne": "Vydalić «{tag}» z 1 natatki?",
   "tagManager.result.successOne": "Abnoŭliena 1 natatka.",
-  "tagManager.result.partialOne": "Źmienena {changed} z 1 natatki; pamylak: {failed}:"
+  "tagManager.result.partialOne": "Źmienena {changed} z 1 natatki; pamylak: {failed}:",
+  "entryActions.noteArchived": "Natatka ŭ archivie",
+  "entryActions.noteUnarchived": "Natatka dastanaja z archiva",
+  "entryActions.archiveFailed": "Nie ŭdalosia pieranieści natatku ŭ archiŭ — zmianiennie admieniena",
+  "entryActions.unarchiveFailed": "Nie ŭdalosia dastać natatku z archiva — zmianiennie admieniena",
+  "entryActions.favoriteFailed": "Nie ŭdalosia dadać u abranaje — zmianiennie admieniena",
+  "entryActions.unfavoriteFailed": "Nie ŭdalosia vydalić z abranaha — zmianiennie admieniena",
+  "entryActions.organizeFailed": "Nie ŭdalosia adznačyć jak uparadkavanaje — zmianiennie admieniena",
+  "entryActions.unorganizeFailed": "Nie ŭdalosia adznačyć jak nieŭparadkavanaje — zmianiennie admieniena",
+  "entryActions.reorderFavoritesFailed": "Nie ŭdalosia zmianić paradak abranaha — zmianiennie admieniena",
+  "entryActions.reorderFavoritesPartial": "Nie ŭdalosia zmianić paradak abranaha — niekatoryja zmianienni nie ŭdalosia admianić"
 }

@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "“{to}” đã tồn tại. Hợp nhất “{from}” vào đó trong 1 ghi chú?",
   "tagManager.confirm.deleteOne": "Xóa “{tag}” khỏi 1 ghi chú?",
   "tagManager.result.successOne": "Đã cập nhật 1 ghi chú.",
-  "tagManager.result.partialOne": "Đã thay đổi {changed}/1 ghi chú; {failed} thất bại:"
+  "tagManager.result.partialOne": "Đã thay đổi {changed}/1 ghi chú; {failed} thất bại:",
+  "entryActions.noteArchived": "Đã lưu trữ ghi chú",
+  "entryActions.noteUnarchived": "Đã bỏ lưu trữ ghi chú",
+  "entryActions.archiveFailed": "Không thể lưu trữ ghi chú — đã hoàn tác",
+  "entryActions.unarchiveFailed": "Không thể bỏ lưu trữ ghi chú — đã hoàn tác",
+  "entryActions.favoriteFailed": "Không thể thêm vào mục yêu thích — đã hoàn tác",
+  "entryActions.unfavoriteFailed": "Không thể xóa khỏi mục yêu thích — đã hoàn tác",
+  "entryActions.organizeFailed": "Không thể đánh dấu đã sắp xếp — đã hoàn tác",
+  "entryActions.unorganizeFailed": "Không thể đánh dấu chưa sắp xếp — đã hoàn tác",
+  "entryActions.reorderFavoritesFailed": "Không thể sắp xếp lại mục yêu thích — đã hoàn tác",
+  "entryActions.reorderFavoritesPartial": "Không thể sắp xếp lại mục yêu thích — một số thay đổi không thể hoàn tác"
 }

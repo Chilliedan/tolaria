@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "„{to}“ už existuje. Zlúčiť s ňou „{from}“ v 1 poznámke?",
   "tagManager.confirm.deleteOne": "Odstrániť „{tag}“ z 1 poznámky?",
   "tagManager.result.successOne": "Aktualizovaná 1 poznámka.",
-  "tagManager.result.partialOne": "Zmenených {changed} z 1 poznámky; neúspešných: {failed}:"
+  "tagManager.result.partialOne": "Zmenených {changed} z 1 poznámky; neúspešných: {failed}:",
+  "entryActions.noteArchived": "Poznámka archivovaná",
+  "entryActions.noteUnarchived": "Archivácia poznámky zrušená",
+  "entryActions.archiveFailed": "Poznámku sa nepodarilo archivovať — zmena vrátená",
+  "entryActions.unarchiveFailed": "Archiváciu poznámky sa nepodarilo zrušiť — zmena vrátená",
+  "entryActions.favoriteFailed": "Nepodarilo sa pridať do obľúbených — zmena vrátená",
+  "entryActions.unfavoriteFailed": "Nepodarilo sa odstrániť z obľúbených — zmena vrátená",
+  "entryActions.organizeFailed": "Nepodarilo sa označiť ako usporiadané — zmena vrátená",
+  "entryActions.unorganizeFailed": "Nepodarilo sa označiť ako neusporiadané — zmena vrátená",
+  "entryActions.reorderFavoritesFailed": "Nepodarilo sa zmeniť poradie obľúbených — zmena vrátená",
+  "entryActions.reorderFavoritesPartial": "Nepodarilo sa zmeniť poradie obľúbených — niektoré zmeny sa nepodarilo vrátiť"
 }

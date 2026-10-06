@@ -1199,6 +1199,7 @@ function MainApp({ noteWindowParams }: { noteWindowParams: NoteWindowParams | nu
     createTypeEntry: notes.createTypeEntrySilent,
     onBeforeAction: flushEditorStateBeforeAction,
     actionHistory: notes.actionHistory,
+    locale: appLocale,
   })
 
   const resolveVaultPathForNotePath = useCallback((path: string) => {

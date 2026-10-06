@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "« {to} » existe déjà. Fusionner « {from} » avec elle dans 1 note ?",
   "tagManager.confirm.deleteOne": "Retirer « {tag} » de 1 note ?",
   "tagManager.result.successOne": "1 note mise à jour.",
-  "tagManager.result.partialOne": "{changed} note modifiée sur 1 ; {failed} en échec :"
+  "tagManager.result.partialOne": "{changed} note modifiée sur 1 ; {failed} en échec :",
+  "entryActions.noteArchived": "Note archivée",
+  "entryActions.noteUnarchived": "Note désarchivée",
+  "entryActions.archiveFailed": "Impossible d'archiver la note — modification annulée",
+  "entryActions.unarchiveFailed": "Impossible de désarchiver la note — modification annulée",
+  "entryActions.favoriteFailed": "Impossible d'ajouter aux favoris — modification annulée",
+  "entryActions.unfavoriteFailed": "Impossible de supprimer des favoris — modification annulée",
+  "entryActions.organizeFailed": "Impossible de marquer comme organisée — modification annulée",
+  "entryActions.unorganizeFailed": "Impossible de marquer comme non organisée — modification annulée",
+  "entryActions.reorderFavoritesFailed": "Impossible de réorganiser les favoris — modification annulée",
+  "entryActions.reorderFavoritesPartial": "Impossible de réorganiser les favoris — certaines modifications n'ont pas pu être annulées"
 }

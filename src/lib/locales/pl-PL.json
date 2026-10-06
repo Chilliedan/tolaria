@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "„{to}” już istnieje. Scalić z nim „{from}” w 1 notatce?",
   "tagManager.confirm.deleteOne": "Usunąć „{tag}” z 1 notatki?",
   "tagManager.result.successOne": "Zaktualizowano 1 notatkę.",
-  "tagManager.result.partialOne": "Zmieniono {changed} z 1 notatki; niepowodzeń: {failed}:"
+  "tagManager.result.partialOne": "Zmieniono {changed} z 1 notatki; niepowodzeń: {failed}:",
+  "entryActions.noteArchived": "Notatka zarchiwizowana",
+  "entryActions.noteUnarchived": "Notatka przywrócona z archiwum",
+  "entryActions.archiveFailed": "Nie udało się zarchiwizować notatki — zmiana cofnięta",
+  "entryActions.unarchiveFailed": "Nie udało się przywrócić notatki z archiwum — zmiana cofnięta",
+  "entryActions.favoriteFailed": "Nie udało się dodać do ulubionych — zmiana cofnięta",
+  "entryActions.unfavoriteFailed": "Nie udało się usunąć z ulubionych — zmiana cofnięta",
+  "entryActions.organizeFailed": "Nie udało się oznaczyć jako uporządkowaną — zmiana cofnięta",
+  "entryActions.unorganizeFailed": "Nie udało się oznaczyć jako nieuporządkowaną — zmiana cofnięta",
+  "entryActions.reorderFavoritesFailed": "Nie udało się zmienić kolejności ulubionych — zmiana cofnięta",
+  "entryActions.reorderFavoritesPartial": "Nie udało się zmienić kolejności ulubionych — niektórych zmian nie udało się cofnąć"
 }

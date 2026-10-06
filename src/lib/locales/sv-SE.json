@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "”{to}” finns redan. Sammanfoga ”{from}” med den i 1 anteckning?",
   "tagManager.confirm.deleteOne": "Ta bort ”{tag}” från 1 anteckning?",
   "tagManager.result.successOne": "1 anteckning uppdaterad.",
-  "tagManager.result.partialOne": "{changed} av 1 anteckning ändrades; {failed} misslyckades:"
+  "tagManager.result.partialOne": "{changed} av 1 anteckning ändrades; {failed} misslyckades:",
+  "entryActions.noteArchived": "Anteckning arkiverad",
+  "entryActions.noteUnarchived": "Anteckning avarkiverad",
+  "entryActions.archiveFailed": "Det gick inte att arkivera anteckningen — ändringen återställdes",
+  "entryActions.unarchiveFailed": "Det gick inte att avarkivera anteckningen — ändringen återställdes",
+  "entryActions.favoriteFailed": "Det gick inte att lägga till i favoriter — ändringen återställdes",
+  "entryActions.unfavoriteFailed": "Det gick inte att ta bort från favoriter — ändringen återställdes",
+  "entryActions.organizeFailed": "Det gick inte att markera som organiserad — ändringen återställdes",
+  "entryActions.unorganizeFailed": "Det gick inte att markera som oorganiserad — ändringen återställdes",
+  "entryActions.reorderFavoritesFailed": "Det gick inte att ändra ordning på favoriter — ändringen återställdes",
+  "entryActions.reorderFavoritesPartial": "Det gick inte att ändra ordning på favoriter — vissa ändringar kunde inte återställas"
 }

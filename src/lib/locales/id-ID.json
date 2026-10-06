@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "“{to}” sudah ada. Gabungkan “{from}” ke dalamnya di 1 catatan?",
   "tagManager.confirm.deleteOne": "Hapus “{tag}” dari 1 catatan?",
   "tagManager.result.successOne": "1 catatan diperbarui.",
-  "tagManager.result.partialOne": "{changed} dari 1 catatan diubah; {failed} gagal:"
+  "tagManager.result.partialOne": "{changed} dari 1 catatan diubah; {failed} gagal:",
+  "entryActions.noteArchived": "Catatan diarsipkan",
+  "entryActions.noteUnarchived": "Arsip catatan dibatalkan",
+  "entryActions.archiveFailed": "Gagal mengarsipkan catatan — perubahan dibatalkan",
+  "entryActions.unarchiveFailed": "Gagal membatalkan arsip catatan — perubahan dibatalkan",
+  "entryActions.favoriteFailed": "Gagal menambahkan ke Favorit — perubahan dibatalkan",
+  "entryActions.unfavoriteFailed": "Gagal menghapus dari Favorit — perubahan dibatalkan",
+  "entryActions.organizeFailed": "Gagal menandai sebagai Terorganisir — perubahan dibatalkan",
+  "entryActions.unorganizeFailed": "Gagal menandai sebagai Belum Terorganisir — perubahan dibatalkan",
+  "entryActions.reorderFavoritesFailed": "Gagal mengurutkan ulang Favorit — perubahan dibatalkan",
+  "entryActions.reorderFavoritesPartial": "Gagal mengurutkan ulang Favorit — beberapa perubahan tidak dapat dibatalkan"
 }

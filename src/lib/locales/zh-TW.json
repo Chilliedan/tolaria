@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "「{to}」已存在。是否在 1 則筆記中將「{from}」合併到其中？",
   "tagManager.confirm.deleteOne": "從 1 則筆記中移除「{tag}」？",
   "tagManager.result.successOne": "已更新 1 則筆記。",
-  "tagManager.result.partialOne": "已變更 1 則筆記中的 {changed} 則；{failed} 則失敗："
+  "tagManager.result.partialOne": "已變更 1 則筆記中的 {changed} 則；{failed} 則失敗：",
+  "entryActions.noteArchived": "筆記已歸檔",
+  "entryActions.noteUnarchived": "筆記已取消歸檔",
+  "entryActions.archiveFailed": "無法歸檔筆記 — 已復原",
+  "entryActions.unarchiveFailed": "無法取消歸檔筆記 — 已復原",
+  "entryActions.favoriteFailed": "無法新增到收藏 — 已復原",
+  "entryActions.unfavoriteFailed": "無法從收藏中移除 — 已復原",
+  "entryActions.organizeFailed": "無法標記為已整理 — 已復原",
+  "entryActions.unorganizeFailed": "無法標記為未整理 — 已復原",
+  "entryActions.reorderFavoritesFailed": "無法重新排序收藏 — 已復原",
+  "entryActions.reorderFavoritesPartial": "無法重新排序收藏 — 部分變更無法復原"
 }

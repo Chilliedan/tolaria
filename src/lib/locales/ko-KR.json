@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "“{to}”이(가) 이미 있습니다. 노트 1개에서 “{from}”을(를) 여기에 병합하시겠습니까?",
   "tagManager.confirm.deleteOne": "노트 1개에서 “{tag}”을(를) 삭제하시겠습니까?",
   "tagManager.result.successOne": "노트 1개를 업데이트했습니다.",
-  "tagManager.result.partialOne": "노트 1개 중 {changed}개 변경, {failed}개 실패:"
+  "tagManager.result.partialOne": "노트 1개 중 {changed}개 변경, {failed}개 실패:",
+  "entryActions.noteArchived": "노트를 보관했습니다",
+  "entryActions.noteUnarchived": "노트 보관을 해제했습니다",
+  "entryActions.archiveFailed": "노트를 보관하지 못했습니다 — 되돌렸습니다",
+  "entryActions.unarchiveFailed": "노트 보관을 해제하지 못했습니다 — 되돌렸습니다",
+  "entryActions.favoriteFailed": "즐겨찾기에 추가하지 못했습니다 — 되돌렸습니다",
+  "entryActions.unfavoriteFailed": "즐겨찾기에서 삭제하지 못했습니다 — 되돌렸습니다",
+  "entryActions.organizeFailed": "정리됨으로 표시하지 못했습니다 — 되돌렸습니다",
+  "entryActions.unorganizeFailed": "정리되지 않음으로 표시하지 못했습니다 — 되돌렸습니다",
+  "entryActions.reorderFavoritesFailed": "즐겨찾기 순서를 변경하지 못했습니다 — 되돌렸습니다",
+  "entryActions.reorderFavoritesPartial": "즐겨찾기 순서를 변경하지 못했습니다 — 일부 변경 사항을 되돌리지 못했습니다"
 }

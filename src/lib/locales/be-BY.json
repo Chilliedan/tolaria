@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "«{to}» ужо існуе. Аб'яднаць «{from}» з ім у 1 нататцы?",
   "tagManager.confirm.deleteOne": "Выдаліць «{tag}» з 1 нататкі?",
   "tagManager.result.successOne": "Абноўлена 1 нататка.",
-  "tagManager.result.partialOne": "Змянена {changed} з 1 нататкі; памылак: {failed}:"
+  "tagManager.result.partialOne": "Змянена {changed} з 1 нататкі; памылак: {failed}:",
+  "entryActions.noteArchived": "Нататка ў архіве",
+  "entryActions.noteUnarchived": "Нататка дастаная з архіва",
+  "entryActions.archiveFailed": "Не ўдалося перанесці нататку ў архіў — змяненне адменена",
+  "entryActions.unarchiveFailed": "Не ўдалося дастаць нататку з архіва — змяненне адменена",
+  "entryActions.favoriteFailed": "Не ўдалося дадаць у абранае — змяненне адменена",
+  "entryActions.unfavoriteFailed": "Не ўдалося выдаліць з абранага — змяненне адменена",
+  "entryActions.organizeFailed": "Не ўдалося адзначыць як упарадкаванае — змяненне адменена",
+  "entryActions.unorganizeFailed": "Не ўдалося адзначыць як неўпарадкаванае — змяненне адменена",
+  "entryActions.reorderFavoritesFailed": "Не ўдалося змяніць парадак абранага — змяненне адменена",
+  "entryActions.reorderFavoritesPartial": "Не ўдалося змяніць парадак абранага — некаторыя змяненні не ўдалося адмяніць"
 }

@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "„{to}“ existiert bereits. „{from}“ damit zusammenführen in 1 Notiz?",
   "tagManager.confirm.deleteOne": "„{tag}“ aus 1 Notiz entfernen?",
   "tagManager.result.successOne": "1 Notiz aktualisiert.",
-  "tagManager.result.partialOne": "{changed} von 1 Notiz geändert; {failed} fehlgeschlagen:"
+  "tagManager.result.partialOne": "{changed} von 1 Notiz geändert; {failed} fehlgeschlagen:",
+  "entryActions.noteArchived": "Notiz archiviert",
+  "entryActions.noteUnarchived": "Notiz aus dem Archiv geholt",
+  "entryActions.archiveFailed": "Notiz konnte nicht archiviert werden – rückgängig gemacht",
+  "entryActions.unarchiveFailed": "Notiz konnte nicht aus dem Archiv geholt werden – rückgängig gemacht",
+  "entryActions.favoriteFailed": "Konnte nicht zu Favoriten hinzugefügt werden – rückgängig gemacht",
+  "entryActions.unfavoriteFailed": "Konnte nicht aus Favoriten entfernt werden – rückgängig gemacht",
+  "entryActions.organizeFailed": "Konnte nicht als organisiert markiert werden – rückgängig gemacht",
+  "entryActions.unorganizeFailed": "Konnte nicht als unorganisiert markiert werden – rückgängig gemacht",
+  "entryActions.reorderFavoritesFailed": "Favoriten konnten nicht neu sortiert werden – rückgängig gemacht",
+  "entryActions.reorderFavoritesPartial": "Favoriten konnten nicht neu sortiert werden – einige Änderungen konnten nicht rückgängig gemacht werden"
 }

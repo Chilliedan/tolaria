@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "“{to}”已存在。是否在 1 条笔记中将“{from}”合并到其中？",
   "tagManager.confirm.deleteOne": "从 1 条笔记中移除“{tag}”？",
   "tagManager.result.successOne": "已更新 1 条笔记。",
-  "tagManager.result.partialOne": "已更改 1 条笔记中的 {changed} 条；{failed} 条失败："
+  "tagManager.result.partialOne": "已更改 1 条笔记中的 {changed} 条；{failed} 条失败：",
+  "entryActions.noteArchived": "笔记已归档",
+  "entryActions.noteUnarchived": "笔记已取消归档",
+  "entryActions.archiveFailed": "无法归档笔记 — 已回滚",
+  "entryActions.unarchiveFailed": "无法取消归档笔记 — 已回滚",
+  "entryActions.favoriteFailed": "无法添加到收藏 — 已回滚",
+  "entryActions.unfavoriteFailed": "无法从收藏中移除 — 已回滚",
+  "entryActions.organizeFailed": "无法标记为已整理 — 已回滚",
+  "entryActions.unorganizeFailed": "无法标记为未整理 — 已回滚",
+  "entryActions.reorderFavoritesFailed": "无法重新排序收藏 — 已回滚",
+  "entryActions.reorderFavoritesPartial": "无法重新排序收藏 — 部分更改无法回滚"
 }

@@ -2,8 +2,11 @@ import { useCallback, useMemo } from 'react'
 import type { VaultEntry } from '../types'
 import { isMissingFrontmatterTargetError, type FrontmatterOpOptions } from './frontmatterOps'
 import { trackEvent } from '../lib/telemetry'
+import { createTranslator, type AppLocale, type TranslationKey } from '../lib/i18n'
 import { findTypeDefinition } from '../utils/typeDefinitions'
 import type { ActionHistoryController, ActionHistoryEntry } from './useActionHistory'
+
+type Translate = ReturnType<typeof createTranslator>
 
 interface EntryActionsConfig {
   entries: VaultEntry[]
@@ -21,10 +24,15 @@ interface EntryActionsConfig {
   /** Called before trash/archive to flush unsaved editor content to disk. */
   onBeforeAction?: (path: string) => Promise<void>
   actionHistory?: ActionHistoryController
+  /** UI language for toasts and undo/redo labels. Defaults to English. */
+  locale?: AppLocale
 }
 
+/** The config plus a translator for the user-facing toasts and action labels. */
+type LocalizedEntryActionsConfig = EntryActionsConfig & { t: Translate }
+
 type ArchiveActionDeps = Pick<
-  EntryActionsConfig,
+  LocalizedEntryActionsConfig,
   | 'entries'
   | 'updateEntry'
   | 'handleUpdateFrontmatter'
@@ -33,6 +41,7 @@ type ArchiveActionDeps = Pick<
   | 'onFrontmatterPersisted'
   | 'onBeforeAction'
   | 'actionHistory'
+  | 't'
 >
 
 type TypeActionDeps = Pick<
@@ -46,7 +55,7 @@ type TypeActionDeps = Pick<
 >
 
 type EntryStateActionDeps = Pick<
-  EntryActionsConfig,
+  LocalizedEntryActionsConfig,
   | 'entries'
   | 'updateEntry'
   | 'handleUpdateFrontmatter'
@@ -54,20 +63,22 @@ type EntryStateActionDeps = Pick<
   | 'setToastMessage'
   | 'onFrontmatterPersisted'
   | 'actionHistory'
+  | 't'
 >
 type FavoriteActionDeps = Pick<
-  EntryActionsConfig,
+  LocalizedEntryActionsConfig,
   | 'updateEntry'
   | 'handleUpdateFrontmatter'
   | 'handleDeleteProperty'
   | 'setToastMessage'
   | 'onFrontmatterPersisted'
   | 'actionHistory'
+  | 't'
 >
 
 type ReorderFavoritesDeps = Pick<
-  EntryActionsConfig,
-  'entries' | 'updateEntry' | 'handleUpdateFrontmatter' | 'setToastMessage' | 'onFrontmatterPersisted'
+  LocalizedEntryActionsConfig,
+  'entries' | 'updateEntry' | 'handleUpdateFrontmatter' | 'setToastMessage' | 'onFrontmatterPersisted' | 't'
 >
 type FavoriteState = Pick<VaultEntry, 'favorite' | 'favoriteIndex'>
 type FavoriteReplay = (path: string, favorite: boolean, favoriteIndex: number | null) => Promise<void>
@@ -77,9 +88,9 @@ interface ArchiveTransition {
   before: boolean
   after: boolean
   eventName: string
-  label: string
-  toast: string
-  rollbackToast: string
+  label: TranslationKey
+  toast: TranslationKey
+  rollbackToast: TranslationKey
   rollbackLog: string
 }
 
@@ -87,11 +98,11 @@ interface FavoriteTransition {
   path: string
   action: 'favorite' | 'unfavorite'
   eventName: string
-  label: string
+  label: TranslationKey
   before: FavoriteState
   after: FavoriteState
   rollback: FavoriteState
-  rollbackToast: string
+  rollbackToast: TranslationKey
 }
 
 interface StateTransitionInput {
@@ -266,7 +277,7 @@ async function toggleTypeVisibility(deps: TypeActionDeps, typeName: string, type
 }
 
 function useArchiveActions(options: ArchiveActionDeps) {
-  const { entries, updateEntry, handleUpdateFrontmatter, handleDeleteProperty, setToastMessage, onFrontmatterPersisted, onBeforeAction, actionHistory } = options
+  const { entries, updateEntry, handleUpdateFrontmatter, handleDeleteProperty, setToastMessage, onFrontmatterPersisted, onBeforeAction, actionHistory, t } = options
   const deps = useMemo<ArchiveActionDeps>(
     () => ({
       entries,
@@ -277,6 +288,7 @@ function useArchiveActions(options: ArchiveActionDeps) {
       onFrontmatterPersisted,
       onBeforeAction,
       actionHistory,
+      t,
     }),
     [
       actionHistory,
@@ -286,6 +298,7 @@ function useArchiveActions(options: ArchiveActionDeps) {
       onBeforeAction,
       onFrontmatterPersisted,
       setToastMessage,
+      t,
       updateEntry,
     ],
   )
@@ -327,9 +340,9 @@ function createArchiveTransition(input: StateTransitionInput): ArchiveTransition
       before: input.before,
       after: input.after,
       eventName: 'note_archived',
-      label: 'Archive Note',
-      toast: 'Note archived',
-      rollbackToast: 'Failed to archive note — rolled back',
+      label: 'command.note.archiveNote',
+      toast: 'entryActions.noteArchived',
+      rollbackToast: 'entryActions.archiveFailed',
       rollbackLog: 'Optimistic archive rollback:',
     }
   }
@@ -339,9 +352,9 @@ function createArchiveTransition(input: StateTransitionInput): ArchiveTransition
     before: input.before,
     after: input.after,
     eventName: 'note_unarchived',
-    label: 'Unarchive Note',
-    toast: 'Note unarchived',
-    rollbackToast: 'Failed to unarchive note — rolled back',
+    label: 'command.note.unarchiveNote',
+    toast: 'entryActions.noteUnarchived',
+    rollbackToast: 'entryActions.unarchiveFailed',
     rollbackLog: 'Optimistic unarchive rollback:',
   }
 }
@@ -349,7 +362,7 @@ function createArchiveTransition(input: StateTransitionInput): ArchiveTransition
 async function runArchiveTransition(deps: ArchiveActionDeps, transition: ArchiveTransition): Promise<void> {
   deps.updateEntry(transition.path, { archived: transition.after })
   trackEvent(transition.eventName)
-  deps.setToastMessage(transition.toast)
+  deps.setToastMessage(deps.t(transition.toast))
   const persistPromise = persistBooleanProperty(deps, transition.path, '_archived', transition.after)
   const cleanupHistory = recordArchiveHistory(deps, transition, persistPromise)
   try {
@@ -357,7 +370,7 @@ async function runArchiveTransition(deps: ArchiveActionDeps, transition: Archive
   } catch (err) {
     cleanupHistory?.()
     deps.updateEntry(transition.path, { archived: transition.before })
-    deps.setToastMessage(transition.rollbackToast)
+    deps.setToastMessage(deps.t(transition.rollbackToast))
     logOptimisticRollback(transition.rollbackLog, err)
   }
 }
@@ -369,7 +382,7 @@ function recordArchiveHistory(
 ): (() => void) | undefined {
   return recordBooleanStateHistory(deps, {
     id: `${transition.after ? 'archive' : 'unarchive'}:${transition.path}:${Date.now()}`,
-    label: transition.label,
+    label: deps.t(transition.label),
     path: transition.path,
     key: '_archived',
     patchKey: 'archived',
@@ -479,11 +492,11 @@ async function toggleFavoriteEntry(
         path: entry.path,
         action: 'unfavorite',
         eventName: 'note_unfavorited',
-        label: 'Remove from Favorites',
+        label: 'command.note.removeFavorite',
         before,
         after: { favorite: false, favoriteIndex: null },
         rollback: { favorite: true, favoriteIndex: entry.favoriteIndex },
-        rollbackToast: 'Failed to unfavorite — rolled back',
+        rollbackToast: 'entryActions.unfavoriteFailed',
       },
       applyFavoriteState,
     )
@@ -496,18 +509,18 @@ async function toggleFavoriteEntry(
       path: entry.path,
       action: 'favorite',
       eventName: 'note_favorited',
-      label: 'Add to Favorites',
+      label: 'command.note.addFavorite',
       before,
       after: { favorite: true, favoriteIndex: newIndex },
       rollback: { favorite: false, favoriteIndex: null },
-      rollbackToast: 'Failed to favorite — rolled back',
+      rollbackToast: 'entryActions.favoriteFailed',
     },
     applyFavoriteState,
   )
 }
 
 function useFavoriteAction(deps: EntryStateActionDeps) {
-  const { entries, updateEntry, handleUpdateFrontmatter, handleDeleteProperty, setToastMessage, onFrontmatterPersisted, actionHistory } = deps
+  const { entries, updateEntry, handleUpdateFrontmatter, handleDeleteProperty, setToastMessage, onFrontmatterPersisted, actionHistory, t } = deps
   const applyFavoriteState = useApplyFavoriteState(deps)
   return useCallback(
     async (path: string) => {
@@ -520,6 +533,7 @@ function useFavoriteAction(deps: EntryStateActionDeps) {
         updateEntry,
         setToastMessage,
         actionHistory,
+        t,
       }, applyFavoriteState)
     },
     [
@@ -531,6 +545,7 @@ function useFavoriteAction(deps: EntryStateActionDeps) {
       setToastMessage,
       onFrontmatterPersisted,
       actionHistory,
+      t,
     ],
   )
 }
@@ -557,7 +572,7 @@ async function runFavoriteTransition(
   } catch {
     cleanupHistory?.()
     deps.updateEntry(transition.path, transition.rollback)
-    deps.setToastMessage(transition.rollbackToast)
+    deps.setToastMessage(deps.t(transition.rollbackToast))
   }
 }
 
@@ -575,7 +590,7 @@ async function persistFavoriteFrontmatter(deps: FavoriteActionDeps, path: string
 }
 
 function recordFavoriteHistory(
-  deps: Pick<EntryStateActionDeps, 'actionHistory'>,
+  deps: Pick<EntryStateActionDeps, 'actionHistory' | 't'>,
   transition: FavoriteTransition,
   applyFavoriteState: FavoriteReplay,
   waitForPersist: Promise<void>,
@@ -587,22 +602,15 @@ function recordFavoriteHistory(
 
   return recordEntryActionHistory(deps.actionHistory, {
     id: `${transition.action}:${transition.path}:${Date.now()}`,
-    label: transition.label,
+    label: deps.t(transition.label),
     path: transition.path,
     undo: () => replay(transition.before),
     redo: () => replay(transition.after),
   })
 }
 
-function useOrganizedAction({
-  entries,
-  updateEntry,
-  handleUpdateFrontmatter,
-  handleDeleteProperty,
-  setToastMessage,
-  onFrontmatterPersisted,
-  actionHistory,
-}: EntryStateActionDeps) {
+function useOrganizedAction(deps: EntryStateActionDeps) {
+  const { entries, updateEntry, handleUpdateFrontmatter, handleDeleteProperty, setToastMessage, onFrontmatterPersisted, actionHistory, t } = deps
   return useCallback(
     async (path: string) => {
     const entry = entries.find((candidate) => candidate.path === path)
@@ -616,6 +624,7 @@ function useOrganizedAction({
       setToastMessage,
       onFrontmatterPersisted,
       actionHistory,
+      t,
         },
         { path, before: entry.organized, after: !entry.organized },
       )
@@ -627,6 +636,7 @@ function useOrganizedAction({
     onFrontmatterPersisted,
     actionHistory,
     setToastMessage,
+    t,
     updateEntry,
     ],
   )
@@ -639,7 +649,7 @@ async function runOrganizedTransition(deps: EntryStateActionDeps, transition: St
   const persistPromise = persistBooleanProperty(deps, transition.path, '_organized', transition.after)
   const cleanupHistory = recordBooleanStateHistory(deps, {
     id: `${action.idPrefix}:${transition.path}:${Date.now()}`,
-    label: action.label,
+    label: deps.t(action.label),
     path: transition.path,
     key: '_organized',
     patchKey: 'organized',
@@ -654,7 +664,7 @@ async function runOrganizedTransition(deps: EntryStateActionDeps, transition: St
   } catch {
     cleanupHistory?.()
     deps.updateEntry(transition.path, { organized: transition.before })
-    deps.setToastMessage(action.rollbackToast)
+    deps.setToastMessage(deps.t(action.rollbackToast))
     return false
   }
 }
@@ -664,14 +674,14 @@ function createOrganizedTransition(transition: StateTransitionInput) {
     ? {
       idPrefix: 'organize',
       eventName: 'note_organized',
-      label: 'Mark as Organized',
-      rollbackToast: 'Failed to organize — rolled back',
+      label: 'command.note.markOrganized' as const,
+      rollbackToast: 'entryActions.organizeFailed' as const,
     }
     : {
       idPrefix: 'unorganize',
       eventName: 'note_unorganized',
-      label: 'Mark as Unorganized',
-      rollbackToast: 'Failed to unorganize — rolled back',
+      label: 'command.note.markUnorganized' as const,
+      rollbackToast: 'entryActions.unorganizeFailed' as const,
     }
 }
 
@@ -719,32 +729,30 @@ async function rollbackFavoriteOrder(
   for (const path of orderedPaths.slice(0, persistedCount)) {
     fullyRestored = (await restoreWrittenFavorite(deps, path)) && fullyRestored
   }
-  deps.setToastMessage(
-    fullyRestored
-      ? 'Failed to reorder favorites — rolled back'
-      : 'Failed to reorder favorites — some changes could not be rolled back',
-  )
+  deps.setToastMessage(deps.t(fullyRestored ? 'entryActions.reorderFavoritesFailed' : 'entryActions.reorderFavoritesPartial'))
 }
 
 function useReorderFavoritesAction(deps: ReorderFavoritesDeps) {
-  const { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted } = deps
+  const { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted, t } = deps
   return useCallback(
     async (orderedPaths: string[]) => {
-      const config = { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted }
+      const config = { entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted, t }
       const persistedCount = await persistFavoriteOrder(config, orderedPaths)
       if (persistedCount < orderedPaths.length) await rollbackFavoriteOrder(config, orderedPaths, persistedCount)
       if (persistedCount > 0 || orderedPaths.length === 0) onFrontmatterPersisted?.()
     },
-    [entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted],
+    [entries, updateEntry, handleUpdateFrontmatter, setToastMessage, onFrontmatterPersisted, t],
   )
 }
 
 export function useEntryActions(config: EntryActionsConfig) {
-  const archiveActions = useArchiveActions(config)
+  const t = useMemo(() => createTranslator(config.locale), [config.locale])
+  const localizedConfig: LocalizedEntryActionsConfig = { ...config, t }
+  const archiveActions = useArchiveActions(localizedConfig)
   const typeActions = useTypeActions(config)
-  const handleToggleFavorite = useFavoriteAction(config)
-  const handleToggleOrganized = useOrganizedAction(config)
-  const handleReorderFavorites = useReorderFavoritesAction(config)
+  const handleToggleFavorite = useFavoriteAction(localizedConfig)
+  const handleToggleOrganized = useOrganizedAction(localizedConfig)
+  const handleReorderFavorites = useReorderFavoritesAction(localizedConfig)
 
   return {
     ...archiveActions,

@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "「{to}」は既に存在します。1件のノートで「{from}」をこれに統合しますか？",
   "tagManager.confirm.deleteOne": "1件のノートから「{tag}」を削除しますか？",
   "tagManager.result.successOne": "1件のノートを更新しました。",
-  "tagManager.result.partialOne": "1件中{changed}件のノートを変更、{failed}件失敗しました："
+  "tagManager.result.partialOne": "1件中{changed}件のノートを変更、{failed}件失敗しました：",
+  "entryActions.noteArchived": "ノートをアーカイブしました",
+  "entryActions.noteUnarchived": "ノートのアーカイブを解除しました",
+  "entryActions.archiveFailed": "ノートをアーカイブできませんでした — 元に戻しました",
+  "entryActions.unarchiveFailed": "ノートのアーカイブを解除できませんでした — 元に戻しました",
+  "entryActions.favoriteFailed": "お気に入りに追加できませんでした — 元に戻しました",
+  "entryActions.unfavoriteFailed": "お気に入りから削除できませんでした — 元に戻しました",
+  "entryActions.organizeFailed": "整理済みとしてマークできませんでした — 元に戻しました",
+  "entryActions.unorganizeFailed": "未整理としてマークできませんでした — 元に戻しました",
+  "entryActions.reorderFavoritesFailed": "お気に入りの並べ替えに失敗しました — 元に戻しました",
+  "entryActions.reorderFavoritesPartial": "お気に入りの並べ替えに失敗しました — 一部の変更を元に戻せませんでした"
 }

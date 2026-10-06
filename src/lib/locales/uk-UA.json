@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "«{to}» вже існує. Об'єднати «{from}» з ним в 1 нотатці?",
   "tagManager.confirm.deleteOne": "Видалити «{tag}» з 1 нотатки?",
   "tagManager.result.successOne": "Оновлено 1 нотатку.",
-  "tagManager.result.partialOne": "Змінено {changed} з 1 нотатки; помилок: {failed}:"
+  "tagManager.result.partialOne": "Змінено {changed} з 1 нотатки; помилок: {failed}:",
+  "entryActions.noteArchived": "Нотатку архівовано",
+  "entryActions.noteUnarchived": "Нотатку вилучено з архіву",
+  "entryActions.archiveFailed": "Не вдалося архівувати нотатку — зміну скасовано",
+  "entryActions.unarchiveFailed": "Не вдалося вилучити нотатку з архіву — зміну скасовано",
+  "entryActions.favoriteFailed": "Не вдалося додати до обраного — зміну скасовано",
+  "entryActions.unfavoriteFailed": "Не вдалося вилучити з обраного — зміну скасовано",
+  "entryActions.organizeFailed": "Не вдалося позначити як впорядковану — зміну скасовано",
+  "entryActions.unorganizeFailed": "Не вдалося позначити як невпорядковану — зміну скасовано",
+  "entryActions.reorderFavoritesFailed": "Не вдалося змінити порядок обраного — зміну скасовано",
+  "entryActions.reorderFavoritesPartial": "Не вдалося змінити порядок обраного — деякі зміни не вдалося скасувати"
 }

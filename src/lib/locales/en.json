@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "“{to}” already exists. Merge “{from}” into it in 1 note?",
   "tagManager.confirm.deleteOne": "Remove “{tag}” from 1 note?",
   "tagManager.result.successOne": "Updated 1 note.",
-  "tagManager.result.partialOne": "Changed {changed} of 1 note; {failed} failed:"
+  "tagManager.result.partialOne": "Changed {changed} of 1 note; {failed} failed:",
+  "entryActions.noteArchived": "Note archived",
+  "entryActions.noteUnarchived": "Note unarchived",
+  "entryActions.archiveFailed": "Failed to archive note — rolled back",
+  "entryActions.unarchiveFailed": "Failed to unarchive note — rolled back",
+  "entryActions.favoriteFailed": "Failed to favorite — rolled back",
+  "entryActions.unfavoriteFailed": "Failed to unfavorite — rolled back",
+  "entryActions.organizeFailed": "Failed to organize — rolled back",
+  "entryActions.unorganizeFailed": "Failed to unorganize — rolled back",
+  "entryActions.reorderFavoritesFailed": "Failed to reorder favorites — rolled back",
+  "entryActions.reorderFavoritesPartial": "Failed to reorder favorites — some changes could not be rolled back"
 }

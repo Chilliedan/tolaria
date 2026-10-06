@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "«{to}» уже существует. Объединить «{from}» с ним в 1 заметке?",
   "tagManager.confirm.deleteOne": "Удалить «{tag}» из 1 заметки?",
   "tagManager.result.successOne": "Обновлена 1 заметка.",
-  "tagManager.result.partialOne": "Изменено {changed} из 1 заметки; ошибок: {failed}:"
+  "tagManager.result.partialOne": "Изменено {changed} из 1 заметки; ошибок: {failed}:",
+  "entryActions.noteArchived": "Заметка архивирована",
+  "entryActions.noteUnarchived": "Заметка разархивирована",
+  "entryActions.archiveFailed": "Не удалось архивировать заметку — изменение отменено",
+  "entryActions.unarchiveFailed": "Не удалось разархивировать заметку — изменение отменено",
+  "entryActions.favoriteFailed": "Не удалось добавить в избранное — изменение отменено",
+  "entryActions.unfavoriteFailed": "Не удалось удалить из избранного — изменение отменено",
+  "entryActions.organizeFailed": "Не удалось пометить как упорядоченную — изменение отменено",
+  "entryActions.unorganizeFailed": "Не удалось пометить как неорганизованную — изменение отменено",
+  "entryActions.reorderFavoritesFailed": "Не удалось изменить порядок избранного — изменение отменено",
+  "entryActions.reorderFavoritesPartial": "Не удалось изменить порядок избранного — некоторые изменения не удалось отменить"
 }

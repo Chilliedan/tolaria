@@ -1099,5 +1099,15 @@
   "tagManager.confirm.renameIntoExistingOne": "«{to}» ya existe. ¿Combinar «{from}» con ella en 1 nota?",
   "tagManager.confirm.deleteOne": "¿Quitar «{tag}» de 1 nota?",
   "tagManager.result.successOne": "Se actualizó 1 nota.",
-  "tagManager.result.partialOne": "Se cambiaron {changed} de 1 nota; falló {failed}:"
+  "tagManager.result.partialOne": "Se cambiaron {changed} de 1 nota; falló {failed}:",
+  "entryActions.noteArchived": "Nota archivada",
+  "entryActions.noteUnarchived": "Nota desarchivada",
+  "entryActions.archiveFailed": "No se pudo archivar la nota — cambio revertido",
+  "entryActions.unarchiveFailed": "No se pudo desarchivar la nota — cambio revertido",
+  "entryActions.favoriteFailed": "No se pudo agregar a Favoritos — cambio revertido",
+  "entryActions.unfavoriteFailed": "No se pudo eliminar de Favoritos — cambio revertido",
+  "entryActions.organizeFailed": "No se pudo marcar como organizada — cambio revertido",
+  "entryActions.unorganizeFailed": "No se pudo marcar como no organizada — cambio revertido",
+  "entryActions.reorderFavoritesFailed": "No se pudieron reordenar los favoritos — cambio revertido",
+  "entryActions.reorderFavoritesPartial": "No se pudieron reordenar los favoritos — algunos cambios no se pudieron revertir"
 }
