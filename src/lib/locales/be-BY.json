@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Канфігурацыя MCP",
   "ai.panel.newChat": "Новы ШІ чат",
   "ai.panel.close": "Закрыць панэль ШІ",
-  "ai.panel.linkedCount": "+ {count} звязана",
   "ai.panel.empty.checkingTitle": "Праверка даступнасці ШІ...",
   "ai.panel.empty.checkingDescription": "Паведамленні стануць даступныя пасля загрузкі",
   "ai.panel.empty.missingTitle": "{agent} недаступны на гэтай прыладзе",

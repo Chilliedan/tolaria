@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Конфігурація MCP",
   "ai.panel.newChat": "Новий чат зі ШІ",
   "ai.panel.close": "Закрити панель ШІ",
-  "ai.panel.linkedCount": "+ {count} пов'язано",
   "ai.panel.empty.checkingTitle": "Перевірка доступності агента ШІ",
   "ai.panel.empty.checkingDescription": "Повідомлення можна надсилати, коли вибраний агент готовий",
   "ai.panel.empty.missingTitle": "{agent} недоступний на цій машині",

@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Konfigurasi MCP",
   "ai.panel.newChat": "Obrolan AI Baru",
   "ai.panel.close": "Tutup panel AI",
-  "ai.panel.linkedCount": "+ {count} tertaut",
   "ai.panel.empty.checkingTitle": "Memeriksa ketersediaan agen AI",
   "ai.panel.empty.checkingDescription": "Pesan dapat dikirim ketika agen yang dipilih sudah siap",
   "ai.panel.empty.missingTitle": "{agent} tidak tersedia di mesin ini",

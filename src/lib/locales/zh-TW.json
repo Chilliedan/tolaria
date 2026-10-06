@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "MCP 設定",
   "ai.panel.newChat": "新建 AI 聊天",
   "ai.panel.close": "關閉 AI 面板",
-  "ai.panel.linkedCount": "+ {count} 個已連結",
   "ai.panel.empty.checkingTitle": "正在檢查 AI 客服人員的空閒狀態",
   "ai.panel.empty.checkingDescription": "當所選客服人員準備就緒時，即可傳送訊息",
   "ai.panel.empty.missingTitle": "{agent} 在此電腦上無法使用",

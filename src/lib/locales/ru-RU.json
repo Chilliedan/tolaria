@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Конфигурация MCP",
   "ai.panel.newChat": "Новый AI-чат",
   "ai.panel.close": "Закрыть панель ИИ",
-  "ai.panel.linkedCount": "+ {count} связано",
   "ai.panel.empty.checkingTitle": "Проверка доступности AI-агента",
   "ai.panel.empty.checkingDescription": "Сообщения можно будет отправлять, когда выбранный агент будет готов",
   "ai.panel.empty.missingTitle": "{agent} недоступен на этом компьютере",

@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "MCP 配置",
   "ai.panel.newChat": "新建 AI 聊天",
   "ai.panel.close": "关闭 AI 面板",
-  "ai.panel.linkedCount": "+ {count} 个已关联",
   "ai.panel.empty.checkingTitle": "正在检查 AI 客服专员的可用状态",
   "ai.panel.empty.checkingDescription": "所选代理就绪后，即可发送消息",
   "ai.panel.empty.missingTitle": "{agent} 在此计算机上不可用",

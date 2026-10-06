@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "MCP-konfiguration",
   "ai.panel.newChat": "Ny AI-chatt",
   "ai.panel.close": "Stäng AI-panel",
-  "ai.panel.linkedCount": "+ {count} länkade",
   "ai.panel.empty.checkingTitle": "Kontrollerar AI-agentens tillgänglighet",
   "ai.panel.empty.checkingDescription": "Meddelanden kan skickas när den valda agenten är redo",
   "ai.panel.empty.missingTitle": "{agent} är inte tillgänglig på den här datorn",

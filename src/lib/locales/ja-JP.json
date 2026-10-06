@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "MCP config",
   "ai.panel.newChat": "新しいAIチャット",
   "ai.panel.close": "AIパネルを閉じる",
-  "ai.panel.linkedCount": "+ {count}件リンク済み",
   "ai.panel.empty.checkingTitle": "AIエージェントの対応可能状況を確認中",
   "ai.panel.empty.checkingDescription": "選択したエージェントの準備が整ったら、メッセージを送信できます",
   "ai.panel.empty.missingTitle": "{agent}はこのマシンでは利用できません",

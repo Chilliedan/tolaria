@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Configuração do MCP",
   "ai.panel.newChat": "Nova chat de IA",
   "ai.panel.close": "Fechar painel de IA",
-  "ai.panel.linkedCount": "+ {count} associados",
   "ai.panel.empty.checkingTitle": "A verificar a disponibilidade do agente de IA",
   "ai.panel.empty.checkingDescription": "As mensagens podem ser enviadas quando o agente selecionado estiver disponível",
   "ai.panel.empty.missingTitle": "{agent} não está disponível neste computador",

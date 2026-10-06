@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Konfigurácia MCP",
   "ai.panel.newChat": "Nový AI chat",
   "ai.panel.close": "Zatvoriť panel AI",
-  "ai.panel.linkedCount": "+ {count} prepojených",
   "ai.panel.empty.checkingTitle": "Kontrola dostupnosti agenta AI",
   "ai.panel.empty.checkingDescription": "Správy je možné odoslať, keď je vybraný agent pripravený",
   "ai.panel.empty.missingTitle": "{agent} nie je na tomto zariadení k dispozícii",

@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "MCP-Konfiguration",
   "ai.panel.newChat": "Neuer KI-Chat",
   "ai.panel.close": "KI-Panel schließen",
-  "ai.panel.linkedCount": "+ {count} verknüpft",
   "ai.panel.empty.checkingTitle": "Verfügbarkeit des KI-Agents wird geprüft",
   "ai.panel.empty.checkingDescription": "Nachrichten können gesendet werden, sobald der ausgewählte Agent bereit ist",
   "ai.panel.empty.missingTitle": "{agent} ist auf diesem Computer nicht verfügbar",

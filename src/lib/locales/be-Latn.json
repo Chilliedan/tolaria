@@ -437,7 +437,6 @@
   "ai.panel.mcpConfig": "Kanfihuracyja MCP",
   "ai.panel.newChat": "Novy ŠI čat",
   "ai.panel.close": "Zakryć paneĺ ŠI",
-  "ai.panel.linkedCount": "+ {count} zviazana",
   "ai.panel.empty.checkingTitle": "Pravierka dastupnasci ŠI...",
   "ai.panel.empty.checkingDescription": "Paviedamlienni stanuć dastupnyja paslia zahruzki",
   "ai.panel.empty.missingTitle": "{agent} niedastupny na hetaj pryladzie",
