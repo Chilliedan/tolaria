@@ -30,6 +30,7 @@ import {
 } from '../lib/startupPerformance'
 import { useUnavailableVaultState } from './useUnavailableVaultState'
 import { resetVaultState } from './vaultStateReset'
+import { useVaultEntriesState } from './useVaultEntriesState'
 import { removeEntriesByPath, removeEntryByPath, replaceEntryByPath } from './vaultEntryListUpdates'
 import {
   initialVaultsForPath,
@@ -782,7 +783,7 @@ function useGitignoredVisibilityReloads(
 }
 
 function useVaultState(vaultPath: string, loadModifiedFiles: boolean) {
-  const [entries, setEntries] = useState<VaultEntry[]>([])
+  const [entries, setEntries] = useVaultEntriesState()
   const [folders, setFolders] = useState<FolderNode[]>([])
   const [hasCompletedInitialLoad, setHasCompletedInitialLoad] = useState(false)
   const [isLoading, setIsLoading] = useState(() => hasVaultPath({ vaultPath }))
