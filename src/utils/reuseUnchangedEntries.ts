@@ -32,7 +32,7 @@ interface ReusableEntryOptions {
 }
 
 function reusableEntry({ entry, index, previous, lookup }: ReusableEntryOptions): VaultEntry {
-  const samePosition = previous[index]
+  const samePosition = previous.at(index)
   if (samePosition === entry) return entry
 
   const key = entryKey(entry)
@@ -65,7 +65,7 @@ function indexByKey(entries: readonly VaultEntry[]): Map<string, VaultEntry> {
 }
 
 function sameItems(left: readonly VaultEntry[], right: readonly VaultEntry[]): boolean {
-  return left.length === right.length && left.every((entry, index) => entry === right[index])
+  return left.length === right.length && left.every((entry, index) => entry === right.at(index))
 }
 
 type PlainRecord = Record<string, unknown>
@@ -83,14 +83,14 @@ function plainValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 function arraysEqual(left: readonly unknown[], right: readonly unknown[]): boolean {
-  return left.length === right.length && left.every((value, index) => plainValuesEqual(value, right[index]))
+  return left.length === right.length && left.every((value, index) => plainValuesEqual(value, right.at(index)))
 }
 
 function recordsEqual(left: PlainRecord, right: PlainRecord): boolean {
   const leftKeys = Object.keys(left)
   if (leftKeys.length !== Object.keys(right).length) return false
   return leftKeys.every((key) => (
-    Object.prototype.hasOwnProperty.call(right, key)
+    Object.hasOwn(right, key)
     && plainValuesEqual(Reflect.get(left, key), Reflect.get(right, key))
   ))
 }
