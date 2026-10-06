@@ -315,6 +315,15 @@ function handleRenameNote(args: { vault_path: string; old_path: string; new_titl
   return { new_path: newPath, updated_files: updatedFiles, failed_updates: 0 }
 }
 
+function renamedNotePath(oldPath: string, newFilename: string): string {
+  const parentDir = oldPath.replace(/\/[^/]+$/, '')
+  const newPath = `${parentDir}/${newFilename}`
+  if (newPath !== oldPath && Object.hasOwn(MOCK_CONTENT, newPath)) {
+    throw new Error('A note with that name already exists')
+  }
+  return newPath
+}
+
 function handleRenameNoteFilename(args: {
   vault_path: string
   old_path: string
@@ -334,11 +343,7 @@ function handleRenameNoteFilename(args: {
     return { new_path: args.old_path, updated_files: 0, failed_updates: 0 }
   }
 
-  const parentDir = args.old_path.replace(/\/[^/]+$/, '')
-  const newPath = `${parentDir}/${newFilename}`
-  if (newPath !== args.old_path && Object.hasOwn(MOCK_CONTENT, newPath)) {
-    throw new Error('A note with that name already exists')
-  }
+  const newPath = renamedNotePath(args.old_path, newFilename)
 
   deleteMockContent({ path: args.old_path })
   writeMockContent({ path: newPath, content: oldContent })
@@ -425,6 +430,18 @@ function handleMoveNoteToWorkspace(args: {
   return { new_path: newPath, updated_files: updatedFiles, failed_updates: 0 }
 }
 
+const MOCK_FILESYSTEM_ROOT = '/Users/mock/'
+
+/**
+ * The mock notes live in the mock filesystem. A registered vault outside it (such as the
+ * dev-injected real demo-vault path used for Getting Started) has no mock files, so it lists
+ * nothing instead of a second copy of the mock notes under another workspace.
+ */
+function mockVaultEntriesForPath(args: { path?: string } = {}) {
+  const { path } = args
+  return !path || path.startsWith(MOCK_FILESYSTEM_ROOT) ? MOCK_ENTRIES : []
+}
+
 export const mockHandlers = {
   read_vault_snapshot: () => MOCK_ENTRIES,
   record_startup_milestone: ({ name, detail }: { name: string; detail?: number | null }) => ({
@@ -433,12 +450,12 @@ export const mockHandlers = {
     elapsed_ms: 0,
   }),
   get_startup_trace: () => [],
-  list_vault: () => MOCK_ENTRIES,
+  list_vault: mockVaultEntriesForPath,
   list_vault_folders: () => [],
   list_views: () => [],
   save_view_cmd: () => {},
   delete_view_cmd: () => {},
-  reload_vault: () => MOCK_ENTRIES,
+  reload_vault: mockVaultEntriesForPath,
   reload_vault_entry: (args: { path: string }) => MOCK_ENTRIES.find(e => e.path === args.path) ?? { path: args.path, title: 'Unknown', filename: 'unknown.md', aliases: [], belongsTo: [], relatedTo: [], archived: false, snippet: '', wordCount: 0, fileSize: 0, relationships: {}, outgoingLinks: [], properties: {} },
   sync_note_title: () => false,
   get_note_content: (args: { path: string }) => MOCK_CONTENT[args.path] ?? '',
