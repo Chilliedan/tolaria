@@ -22,8 +22,8 @@ export function replaceEntryByPath(
   const entryIndex = entries.findIndex((entry) => entry.path === oldPath)
   if (entryIndex < 0) return entries
 
-  const nextEntries = [...entries]
-  nextEntries[entryIndex] = normalizeVaultEntry({ ...entries[entryIndex], ...patch }, '', entryIndex)
-  return nextEntries
+  return entries.map((entry, index) => (
+    index === entryIndex ? normalizeVaultEntry({ ...entry, ...patch }, '', index) : entry
+  ))
 }
 
