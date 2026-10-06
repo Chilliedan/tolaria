@@ -1,4 +1,4 @@
-import { useEffect, useState, type ComponentType } from 'react'
+import { useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import type { EditorProps } from './Editor'
 import { EditorStartupFallback } from './EditorStartupFallback'
 import { markStartupPhase, waitForStartupPhase } from '../lib/startupPerformance'
@@ -36,7 +36,11 @@ function commitLoadedEditor(
  * startup fallback. Rendering it inside each of them remounted it on load and
  * dropped its state, such as a prompt being typed.
  */
-export function LazyEditor(props: EditorProps) {
+export type LazyEditorProps = EditorProps & {
+  aiWorkspaceSurface?: ReactNode
+}
+
+export function LazyEditor(props: LazyEditorProps) {
   const { aiWorkspaceSurface, ...editorProps } = props
   const [Editor, setEditor] = useState<ComponentType<EditorProps> | null>(null)
 

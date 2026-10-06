@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, memo, useState, type ReactNode } from 'react'
+import { useRef, useEffect, useCallback, memo, useState } from 'react'
 import { useEditorTabSwap } from '../hooks/useEditorTabSwap'
 import { useCreateBlockNote } from '@blocknote/react'
 import '@blocknote/mantine/style.css'
@@ -107,7 +107,6 @@ export interface EditorProps {
   onInitializeProperties?: (path: string) => void
   showAIChat?: boolean
   onToggleAIChat?: () => void
-  aiWorkspaceSurface?: ReactNode
   vaultPath?: string
   vaultPaths?: string[]
   noteList?: NoteListItem[]
@@ -517,7 +516,6 @@ function useEditorSetup(options: EditorSetupParams) {
       showDiffToggle: boolean
       showAIChat?: boolean
       onToggleAIChat?: () => void
-      aiWorkspaceSurface?: ReactNode
       showTableOfContents?: boolean
       onToggleTableOfContents?: () => void
       inspectorCollapsed: boolean
@@ -601,7 +599,6 @@ function useEditorSetup(options: EditorSetupParams) {
       showDiffToggle,
       showAIChat,
       onToggleAIChat,
-      aiWorkspaceSurface,
       showTableOfContents,
       onToggleTableOfContents,
       inspectorCollapsed,
@@ -770,7 +767,6 @@ function useEditorSetup(options: EditorSetupParams) {
           workspaces={workspaces}
           locale={locale}
         />
-        {showAIChat && aiWorkspaceSurface}
       </div>
       <EditorMemoryProbe entries={entries} vaultPath={vaultPath} locale={locale} />
     </div>
